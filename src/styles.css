@@ -1042,6 +1042,16 @@ select.input {
   font-size: 14px;
   pointer-events: none;
 }
+.cornell-label {
+  position: absolute;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  opacity: 0.6;
+  pointer-events: none;
+}
 .ink-toolbar {
   position: sticky;
   top: 0;

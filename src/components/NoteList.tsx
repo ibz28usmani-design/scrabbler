@@ -3,8 +3,9 @@ import { useState } from 'react';
 import { db, deleteNotesForever, type Note } from '../db';
 import { nav, toggleSidebar, openModal, useNav } from '../lib/nav';
 import { groupLabel, shortDate } from '../lib/dates';
-import { createNote, restoreNote } from '../lib/notes';
-import { confirmDialog, Empty, Menu } from './ui';
+import { createNote, createHandwrittenNote, restoreNote } from '../lib/notes';
+import { HANDWRITING_TEMPLATES } from '../lib/paper';
+import { confirmDialog, Empty, Menu, useMenu } from './ui';
 import { ICompose, IMic, IPencil, IPin, ISidebar, ITrash, IChevL } from './Icons';
 
 function highlight(text: string, q: string) {
@@ -23,6 +24,7 @@ function highlight(text: string, q: string) {
 export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showSidebarToggle: boolean }) {
   const { view, folderId, noteId, query } = useNav();
   const [menu, setMenu] = useState<{ note: Note; el: HTMLElement } | null>(null);
+  const [tplAnchor, openTpl, closeTpl] = useMenu();
   const folder = useLiveQuery(() => (folderId ? db.folders.get(folderId) : undefined), [folderId]);
   const notes =
     useLiveQuery(async () => {
@@ -77,12 +79,7 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
             <button className="icon-btn rec" onClick={() => openModal({ type: 'recorder', folderId })} aria-label="Record lecture" title="Record lecture">
               <IMic />
             </button>
-            <button
-              className="icon-btn"
-              aria-label="New handwritten note"
-              title="New handwritten note"
-              onClick={() => createNote(folderId, { content: { type: 'doc', content: [{ type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'Handwritten note' }] }, { type: 'drawing', attrs: { paper: 'lines', height: 1200, autoActive: true } }, { type: 'paragraph' }] }, title: 'Handwritten note' })}
-            >
+            <button className="icon-btn" aria-label="New handwritten note" title="New handwritten note" onClick={(e) => openTpl(e.currentTarget)}>
               <IPencil />
             </button>
             <button className="icon-btn accent" onClick={() => createNote(folderId)} aria-label="New note" title="New note">
@@ -145,6 +142,18 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
           </div>
         ))}
       </div>
+      {tplAnchor && folderId && (
+        <Menu
+          anchor={tplAnchor}
+          onClose={closeTpl}
+          items={HANDWRITING_TEMPLATES.map((t) => ({
+            label: t.label,
+            hint: t.description,
+            icon: <IPencil size={17} />,
+            onClick: () => createHandwrittenNote(folderId, t.paper),
+          }))}
+        />
+      )}
       {menu && (
         <Menu
           anchor={menu.el}

@@ -1,6 +1,7 @@
 import { getStroke } from 'perfect-freehand';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useSettings, updateSettings } from '../lib/settings';
+import { cornellGuides, type Paper } from '../lib/paper';
 import { IEraser, IHighlighter, ILasso, IMarker, IPencil, IRedo, ITrash, IUndo } from './Icons';
 
 /**
@@ -11,7 +12,7 @@ import { IEraser, IHighlighter, ILasso, IMarker, IPencil, IRedo, ITrash, IUndo }
  */
 
 export type Tool = 'pen' | 'pencil' | 'marker' | 'eraser' | 'lasso';
-export type Paper = 'blank' | 'lines' | 'grid' | 'dots';
+export type { Paper };
 
 export interface Stroke {
   t: Exclude<Tool, 'eraser' | 'lasso'>;
@@ -432,7 +433,8 @@ export function InkCanvas({ strokes, height, paper, active, onChange, onHeight, 
     onChange(next);
   };
 
-  const paperStyle = paperBackground(paper, scale, dark);
+  const paperStyle = paperBackground(paper, scale, dark, height);
+  const guides = paper === 'cornell' ? cornellGuides(height) : null;
 
   return (
     <div className={`ink ${active ? 'active' : ''}`}>
@@ -513,6 +515,19 @@ export function InkCanvas({ strokes, height, paper, active, onChange, onHeight, 
           onPointerLeave={() => !drawing.current && drawLive(null)}
         />
         {!active && strokes.length === 0 && <div className="ink-hint">Tap to draw with Apple Pencil</div>}
+        {guides && (
+          <>
+            <span className="cornell-label cues" style={{ left: 14 * scale, top: 8 * scale }}>
+              Cues
+            </span>
+            <span className="cornell-label notes" style={{ left: (guides.cueX + 14) * scale, top: 8 * scale }}>
+              Notes
+            </span>
+            <span className="cornell-label summary" style={{ left: 14 * scale, top: (guides.summaryY + 8) * scale }}>
+              Summary
+            </span>
+          </>
+        )}
       </div>
       {active && (
         <div
@@ -537,7 +552,7 @@ export function InkCanvas({ strokes, height, paper, active, onChange, onHeight, 
   );
 }
 
-function paperBackground(paper: Paper, scale: number, dark: boolean): React.CSSProperties {
+function paperBackground(paper: Paper, scale: number, dark: boolean, height: number): React.CSSProperties {
   const line = dark ? 'rgba(255,255,255,.09)' : 'rgba(60,60,67,.12)';
   const step = 32 * scale;
   if (paper === 'lines') return { backgroundImage: `linear-gradient(to bottom, transparent ${step - 1}px, ${line} ${step - 1}px)`, backgroundSize: `100% ${step}px` };
@@ -547,5 +562,21 @@ function paperBackground(paper: Paper, scale: number, dark: boolean): React.CSSP
       backgroundSize: `${step}px ${step}px`,
     };
   if (paper === 'dots') return { backgroundImage: `radial-gradient(${line} 1.4px, transparent 1.6px)`, backgroundSize: `${step}px ${step}px` };
+  if (paper === 'cornell') {
+    const divider = dark ? 'rgba(245,197,24,.45)' : 'rgba(199,143,0,.4)';
+    const { cueX, summaryY } = cornellGuides(height);
+    return {
+      // Layers paint top-first: ruled lines everywhere, a vertical cue/notes divider,
+      // and a horizontal divider above the summary band.
+      backgroundImage: [
+        `linear-gradient(to bottom, transparent ${step - 1}px, ${line} ${step - 1}px)`,
+        `linear-gradient(${divider}, ${divider})`,
+        `linear-gradient(${divider}, ${divider})`,
+      ].join(', '),
+      backgroundSize: [`100% ${step}px`, `2px ${summaryY}px`, `100% 2px`].join(', '),
+      backgroundPosition: [`0 0`, `${cueX * scale}px 0`, `0 ${summaryY * scale}px`].join(', '),
+      backgroundRepeat: 'repeat-y, no-repeat, no-repeat',
+    };
+  }
   return {};
 }

@@ -11,6 +11,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { db, type Note } from '../db';
 import { Drawing } from './DrawingNode';
+import { CORNELL_DEFAULT_HEIGHT } from '../lib/paper';
 import { LecturePanel } from './LecturePanel';
 import { AIToolsButton } from './AITools';
 import { nav, toggleSidebar, openModal, useNav } from '../lib/nav';
@@ -95,9 +96,12 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
     };
   }, [editor, noteId]);
 
-  // Focus a brand-new empty note.
+  // Focus a brand-new empty note — but not a handwritten one, where focusing the
+  // trailing paragraph would scroll past the drawing block's own top (e.g. a Cornell
+  // page's "Cues"/"Notes" labels) before the user ever sees it.
   useEffect(() => {
-    if (editor && !note.text && note.kind === 'note' && Date.now() - note.createdAt < 3000) editor.commands.focus('end');
+    const hasDrawing = editor?.getJSON().content?.some((n) => n.type === 'drawing');
+    if (editor && !note.text && note.kind === 'note' && !hasDrawing && Date.now() - note.createdAt < 3000) editor.commands.focus('end');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
 
@@ -241,6 +245,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
           <div className="fmt-row">
             {fmt('✎ Lined drawing', () => editor.chain().focus().insertDrawing({ paper: 'lines', height: 900 }).run(), false)}
             {fmt('Grid drawing', () => editor.chain().focus().insertDrawing({ paper: 'grid', height: 700 }).run(), false)}
+            {fmt('Cornell drawing', () => editor.chain().focus().insertDrawing({ paper: 'cornell', height: CORNELL_DEFAULT_HEIGHT }).run(), false)}
           </div>
         </FormatPanel>
       )}
