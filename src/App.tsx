@@ -4,7 +4,7 @@ import { db, deleteNotesForever } from './db';
 import { closeModal, nav, setSidebarInline, useNav } from './lib/nav';
 import { useApplyTheme } from './lib/theme';
 import { restoreNote } from './lib/notes';
-import { hasKey } from './lib/gemini';
+import { hasTextKey } from './lib/llm';
 import { Sidebar } from './components/Sidebar';
 import { NoteList } from './components/NoteList';
 import { NoteEditor } from './components/NoteEditor';
@@ -103,7 +103,7 @@ export default function App() {
                       New note
                     </button>
                   )}
-                  {!hasKey() && (
+                  {!hasTextKey() && (
                     <button className="btn" onClick={() => nav({ modal: { type: 'settings' } })}>
                       <ISparkle size={16} /> Set up free AI
                     </button>

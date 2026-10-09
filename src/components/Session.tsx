@@ -5,7 +5,7 @@ import {
   buildQueue, clozeAnswers, clozeBack, clozeFront, getGame, MAX_LIVES, nextLifeIn, previewIntervals, Rating, recordReview, similarity, type GameState,
 } from '../lib/study';
 import { explainCard, gradeTyped } from '../lib/ai';
-import { hasKey } from '../lib/gemini';
+import { hasTextKey } from '../lib/llm';
 import { mdToHtml } from '../lib/markdown';
 import { useSettings } from '../lib/settings';
 import { toastError } from '../lib/events';
@@ -125,7 +125,7 @@ export function Session({ deckIds, mode }: { deckIds: string[]; mode: Mode }) {
     const sim = Math.max(...expected.split(/\s*[,;/]\s*|\s+or\s+/).concat(expected).map((e) => similarity(typed, e)));
     if (sim >= 0.85) return setVerdict({ correct: true });
     if (!typed.trim()) return setVerdict({ correct: false });
-    if (!hasKey()) return setVerdict({ correct: false, self: true });
+    if (!hasTextKey()) return setVerdict({ correct: false, self: true });
     setVerdict({ correct: false, pending: true });
     try {
       const r = await gradeTyped(item.prompt, expected, typed);
@@ -381,7 +381,7 @@ export function Session({ deckIds, mode }: { deckIds: string[]; mode: Mode }) {
         )}
         {answered && item.kind !== 'reveal' && !(item.kind === 'typed' && verdict?.self) && (
           <div className="after">
-            {!isCorrect && hasKey() && !explain && (
+            {!isCorrect && hasTextKey() && !explain && (
               <button className="btn" onClick={doExplain} disabled={explaining}>
                 {explaining ? <Spinner size={14} /> : <ISparkle size={16} />} Explain it to me
               </button>
@@ -391,7 +391,7 @@ export function Session({ deckIds, mode }: { deckIds: string[]; mode: Mode }) {
             </button>
           </div>
         )}
-        {item.kind === 'reveal' && revealed && hasKey() && !explain && (
+        {item.kind === 'reveal' && revealed && hasTextKey() && !explain && (
           <button className="link-btn" onClick={doExplain} disabled={explaining}>
             {explaining ? <Spinner size={12} /> : <ISparkle size={14} />} Explain this card
           </button>

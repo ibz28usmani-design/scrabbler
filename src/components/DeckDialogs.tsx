@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { db, uid, type CardType } from '../db';
 import { closeModal, nav } from '../lib/nav';
 import { folderMaterial, generateCards } from '../lib/ai';
-import { hasKey } from '../lib/gemini';
+import { hasTextKey } from '../lib/llm';
 import { makeCard } from '../lib/study';
 import { parseAnki, parseDelimited, type ImportedDeck } from '../lib/importers';
 import { takePendingText } from '../lib/studyActions';
@@ -52,8 +52,8 @@ export function GenerateDeckDialog({ from, quiz }: { from: From; quiz?: boolean 
   const toggle = (t: CardType) => setTypes((ts) => (ts.includes(t) ? (ts.length > 1 ? ts.filter((x) => x !== t) : ts) : [...ts, t]));
 
   const run = async () => {
-    if (!hasKey()) {
-      toast('Add your free Gemini key in Settings first.', 'error');
+    if (!hasTextKey()) {
+      toast('Add an AI key in Settings first.', 'error');
       return nav({ modal: { type: 'settings' } });
     }
     const src = material?.trim() || topic.trim();

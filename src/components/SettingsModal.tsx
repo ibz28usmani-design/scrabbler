@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { closeModal } from '../lib/nav';
 import { GEMINI_VOICES, updateSettings, useSettings } from '../lib/settings';
+import { listModels as listBytezModels } from '../lib/bytez';
 import { listModels, type ModelInfo } from '../lib/gemini';
 import { download, eraseEverything, exportBackup, importBackup } from '../lib/backup';
 import { toast, toastError } from '../lib/events';
@@ -21,6 +22,23 @@ export function SettingsModal() {
   const [checking, setChecking] = useState(false);
   const [usage, setUsage] = useState<string>('');
   const [persisted, setPersisted] = useState<boolean | null>(null);
+  const [bytezKey, setBytezKey] = useState(s.bytezKey);
+  const [bytezModels, setBytezModels] = useState<string[] | null>(null);
+  const [bytezBusy, setBytezBusy] = useState(false);
+
+  const verifyBytez = async () => {
+    setBytezBusy(true);
+    try {
+      const list = await listBytezModels(bytezKey.trim());
+      setBytezModels(list.map((m) => m.id));
+      updateSettings({ bytezKey: bytezKey.trim() });
+      toast(`Bytez key works ✓ (${list.length} models)`, 'success');
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setBytezBusy(false);
+    }
+  };
 
   useEffect(() => {
     navigator.storage?.estimate?.().then((e) => setUsage(`${((e.usage ?? 0) / 1048576).toFixed(1)} MB used`));
@@ -56,7 +74,56 @@ export function SettingsModal() {
   return (
     <Modal title="Settings" onClose={closeModal} wide className="settings">
       <section className="set-section">
-        <h3>AI (free)</h3>
+        <h3>Text engine</h3>
+        <p className="muted">
+          Which model writes your chat answers, study documents, flashcards and lecture notes. Everything else — transcription, PDF and
+          handwriting reading, YouTube, websites, web research and Audio Overview voices — always runs on Gemini.
+        </p>
+        <Segmented
+          value={s.textProvider}
+          onChange={(textProvider) => updateSettings({ textProvider })}
+          options={[
+            { value: 'gemini', label: 'Gemini' },
+            { value: 'bytez', label: 'Bytez' },
+          ]}
+        />
+        {s.textProvider === 'bytez' && (
+          <>
+            <p className="muted small">
+              Bytez serves open-source models (Qwen, Llama, DeepSeek…). Get a key at{' '}
+              <a href="https://bytez.com/api" target="_blank" rel="noreferrer">
+                bytez.com/api
+              </a>
+              . Billing is per second of inference, not free, and open models have shorter context — very large notebooks may need Gemini.
+            </p>
+            <div className="key-row">
+              <input className="input mono" type="password" autoComplete="off" placeholder="Bytez API key" value={bytezKey} onChange={(e) => setBytezKey(e.target.value)} />
+              <button className="btn primary" onClick={verifyBytez} disabled={!bytezKey.trim() || bytezBusy}>
+                {bytezBusy ? <Spinner size={14} /> : s.bytezKey && s.bytezKey === bytezKey.trim() ? <ICheck size={16} /> : null}{' '}
+                {s.bytezKey === bytezKey.trim() && s.bytezKey ? 'Saved' : 'Save & test'}
+              </button>
+            </div>
+            <label className="field">
+              <span>Model</span>
+              {bytezModels?.length ? (
+                <select className="input" value={s.bytezModel} onChange={(e) => updateSettings({ bytezModel: e.target.value })}>
+                  {!bytezModels.includes(s.bytezModel) && <option value={s.bytezModel}>{s.bytezModel}</option>}
+                  {bytezModels.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input className="input mono" value={s.bytezModel} onChange={(e) => updateSettings({ bytezModel: e.target.value })} placeholder="Qwen/Qwen3-4B" />
+              )}
+            </label>
+          </>
+        )}
+      </section>
+
+      <section className="set-section">
+        <h3>Gemini key</h3>
         <p className="muted">
           Scrabbler uses Google Gemini’s free tier with your own key — it’s stored only on this device. Get one in a minute at{' '}
           <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">

@@ -1,6 +1,7 @@
 /** High-level AI features built on the Gemini client. */
 import { db, type CardType, type Citation, type ChatMessage, type MindNode, type PodcastLine, type StudioKind, type TranscriptSegment } from '../db';
-import { blobPart, generate, generateJSON, S, stream, tts, type Content } from './gemini';
+import { blobPart, S, tts, type Content } from './gemini';
+import { generate, generateJSON, stream } from './llm';
 import { citedNumbers, chunkText, sampleChunks, selectChunks } from './retrieval';
 import { getSettings } from './settings';
 import { parseClock } from './dates';

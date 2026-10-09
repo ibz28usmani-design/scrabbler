@@ -2,6 +2,10 @@ import { useSyncExternalStore } from 'react';
 
 export interface Settings {
   apiKey: string;
+  /** Which engine runs plain-text generation. Gemini still handles media and web tools. */
+  textProvider: 'gemini' | 'bytez';
+  bytezKey: string;
+  bytezModel: string;
   textModel: string;
   proModel: string;
   ttsModel: string;
@@ -19,6 +23,9 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   apiKey: '',
+  textProvider: 'gemini',
+  bytezKey: '',
+  bytezModel: 'Qwen/Qwen3-4B',
   textModel: 'gemini-2.5-flash',
   proModel: 'gemini-2.5-pro',
   ttsModel: 'gemini-2.5-flash-preview-tts',

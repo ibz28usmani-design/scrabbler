@@ -5,6 +5,7 @@ import { nav, openModal, useNav, type NotebookTab } from '../lib/nav';
 import { addDiscover, addFile, addText, addUrl, retrySource } from '../lib/sources';
 import { answerQuestion, notebookOverview } from '../lib/ai';
 import { generate, hasKey } from '../lib/gemini';
+import { hasTextKey } from '../lib/llm';
 import { openGenerateFromText } from '../lib/studyActions';
 import { mdToEditorHtml, mdToHtml } from '../lib/markdown';
 import { createNote } from '../lib/notes';
@@ -115,7 +116,7 @@ function SourcesTab({ folderId }: { folderId: string }) {
           onSubmit={(e) => {
             e.preventDefault();
             if (!topic.trim()) return;
-            if (!hasKey()) return toast('Add your Gemini key in Settings first.', 'error');
+            if (!hasKey()) return toast('Web research needs a Gemini key — add one in Settings.', 'error');
             addDiscover(folderId, topic.trim());
             setTopic('');
             setMode(null);
@@ -305,7 +306,7 @@ export function SourceViewer({ sourceId, chunkId, onClose }: { sourceId: string;
             <IFile size={15} /> Open original
           </a>
         )}
-        {!summary && hasKey() && (
+        {!summary && hasTextKey() && (
           <button className="btn small" onClick={guide} disabled={busy}>
             {busy ? <Spinner size={13} /> : <ISparkle size={15} />} Source guide
           </button>
@@ -357,8 +358,8 @@ function ChatTab({ folderId }: { folderId: string }) {
   const send = async (q: string) => {
     q = q.trim();
     if (!q || streaming !== null) return;
-    if (!hasKey()) {
-      toast('Add your free Gemini key in Settings to chat.', 'error');
+    if (!hasTextKey()) {
+      toast('Add an AI key in Settings to chat.', 'error');
       openModal({ type: 'settings' });
       return;
     }
@@ -576,12 +577,20 @@ function StudioTab({ folderId }: { folderId: string }) {
   const current = view ? items.find((i) => i.id === view.id) ?? view : null;
 
   const start = (kind: StudioItem['kind']) => {
-    if (!hasKey()) {
-      toast('Add your free Gemini key in Settings to use Studio.', 'error');
+    if (!hasTextKey()) {
+      toast('Add an AI key in Settings to use Studio.', 'error');
       openModal({ type: 'settings' });
       return;
     }
-    if (kind === 'podcast') return setPodcastOpts(true);
+    if (kind === 'podcast') {
+      // Spoken overviews are rendered by Gemini's multi-speaker voices.
+      if (!hasKey()) {
+        toast('Audio Overviews need a Gemini key for the voices — add one in Settings.', 'error');
+        openModal({ type: 'settings' });
+        return;
+      }
+      return setPodcastOpts(true);
+    }
     runStudio(folderId, kind);
   };
 

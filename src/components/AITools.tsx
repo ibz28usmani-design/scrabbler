@@ -2,7 +2,7 @@ import type { Editor } from '@tiptap/react';
 import { useRef, useState } from 'react';
 import type { Note } from '../db';
 import { runWritingTool, WRITING_TOOLS, type WritingTool } from '../lib/ai';
-import { hasKey } from '../lib/gemini';
+import { hasTextKey } from '../lib/llm';
 import { mdToEditorHtml, mdToHtml } from '../lib/markdown';
 import { openModal } from '../lib/nav';
 import { toast, toastError } from '../lib/events';
@@ -16,6 +16,8 @@ interface Result {
   range: { from: number; to: number };
 }
 
+const MSG = 'Add an AI key in Settings';
+
 export function AIToolsButton({ editor, note }: { editor: Editor; note: Note }) {
   const [anchor, open, close] = useMenu();
   const [result, setResult] = useState<Result | null>(null);
@@ -24,8 +26,8 @@ export function AIToolsButton({ editor, note }: { editor: Editor; note: Note }) 
   const abort = useRef<AbortController | null>(null);
 
   const run = async (tool: WritingTool | 'custom', instruction?: string) => {
-    if (!hasKey()) {
-      toast('Add your free Gemini key in Settings to use AI tools.', 'error');
+    if (!hasTextKey()) {
+      toast(`${MSG} to use AI tools.`, 'error');
       openModal({ type: 'settings' });
       return;
     }

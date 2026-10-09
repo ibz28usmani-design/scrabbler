@@ -135,3 +135,18 @@ describe('misc', () => {
     expect(youtubeId('https://example.com')).toBeNull();
   });
 });
+
+describe('bytez json salvage', () => {
+  it('parses plain, fenced and prose-wrapped JSON', async () => {
+    const { extractJson } = await import('../lib/bytez');
+    expect(extractJson('{"a":1}')).toEqual({ a: 1 });
+    expect(extractJson('```json\n{"a":2}\n```')).toEqual({ a: 2 });
+    expect(extractJson('Sure! Here you go:\n{"cards":[{"front":"q"}]}\nHope that helps.')).toEqual({ cards: [{ front: 'q' }] });
+    expect(extractJson('Here is the list: [1,2,3]')).toEqual([1, 2, 3]);
+  });
+
+  it('throws a useful error on unparseable output', async () => {
+    const { extractJson } = await import('../lib/bytez');
+    expect(() => extractJson('I cannot do that.')).toThrow(/malformed JSON/i);
+  });
+});
