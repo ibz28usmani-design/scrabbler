@@ -8,6 +8,8 @@ import { hasTextKey } from './lib/llm';
 import { Sidebar } from './components/Sidebar';
 import { NoteList } from './components/NoteList';
 import { NoteEditor } from './components/NoteEditor';
+import { InkEditor } from './components/InkEditor';
+import { FocusChrome, useFocusShortcuts } from './components/FocusMode';
 import { NotebookPanel, SourceViewer } from './components/NotebookPanel';
 import { StudyView } from './components/StudyView';
 import { Recorder } from './components/Recorder';
@@ -20,6 +22,7 @@ import { mdToHtml } from './lib/markdown';
 
 export default function App() {
   useApplyTheme();
+  useFocusShortcuts();
   const s = useNav();
   const narrow = useMediaQuery('(max-width: 699px)');
   const wide = useMediaQuery('(min-width: 1100px)');
@@ -55,20 +58,22 @@ export default function App() {
 
   const isStudy = s.view === 'study';
   const notebookFolder = note?.folderId ?? s.folderId;
+  // Full-screen focus: only the page stays; panels float in on demand (FocusChrome).
+  const focus = s.focus && !isStudy && !!note && !note.deletedAt;
   // On iPad landscape the notebook docks beside the editor and the side panes fold away.
-  const notebookDocked = s.notebookOpen && wide && !isStudy && !!notebookFolder;
-  const notebookOverlay = s.notebookOpen && !notebookDocked && !isStudy && !!notebookFolder;
+  const notebookDocked = !focus && s.notebookOpen && wide && !isStudy && !!notebookFolder;
+  const notebookOverlay = !focus && s.notebookOpen && !notebookDocked && !isStudy && !!notebookFolder;
   const canInline = wide && (!notebookDocked || xwide);
   setSidebarInline(canInline);
-  const showSidebar = narrow ? s.pane === 'sidebar' : canInline && s.sidebarOpen;
-  const sidebarOverlay = !narrow && !showSidebar && s.drawer;
+  const showSidebar = !focus && (narrow ? s.pane === 'sidebar' : canInline && s.sidebarOpen);
+  const sidebarOverlay = !focus && !narrow && !showSidebar && s.drawer;
 
-  const showList = !isStudy && (narrow ? s.pane === 'list' : !notebookDocked || roomy);
-  const showEditor = !isStudy && (narrow ? s.pane === 'editor' : true);
+  const showList = !focus && !isStudy && (narrow ? s.pane === 'list' : !notebookDocked || roomy);
+  const showEditor = focus || (!isStudy && (narrow ? s.pane === 'editor' : true));
   const showStudy = isStudy && (narrow ? s.pane !== 'sidebar' : true);
 
   return (
-    <div className={`app ${narrow ? 'narrow' : wide ? 'wide' : 'medium'}`}>
+    <div className={`app ${narrow ? 'narrow' : wide ? 'wide' : 'medium'}${focus ? ' focus' : ''}`}>
       {showSidebar && (
         <ErrorBoundary label="the sidebar">
           <Sidebar />
@@ -90,7 +95,11 @@ export default function App() {
         <main className="main">
           <ErrorBoundary label="the editor" key={s.noteId ?? 'none'}>
           {note && !note.deletedAt ? (
-            <NoteEditor key={note.id} note={note} narrow={narrow} wide={showSidebar || showList} />
+            note.kind === 'ink' ? (
+              <InkEditor key={note.id} note={note} narrow={narrow && !focus} wide={focus || showSidebar || showList} />
+            ) : (
+              <NoteEditor key={note.id} note={note} narrow={narrow && !focus} wide={focus || showSidebar || showList} />
+            )
           ) : note?.deletedAt ? (
             <DeletedPreview id={note.id} title={note.title} text={note.text} />
           ) : (
@@ -136,6 +145,8 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {focus && <FocusChrome folderId={notebookFolder ?? null} />}
 
       {s.modal?.type === 'settings' && <SettingsModal />}
       {s.modal?.type === 'recorder' && <Recorder folderId={s.modal.folderId} />}

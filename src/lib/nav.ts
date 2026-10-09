@@ -23,6 +23,9 @@ export interface NavState {
   sidebarOpen: boolean;
   /** Sidebar shown as a slide-over drawer (when it can't sit inline). */
   drawer: boolean;
+  /** Full-screen writing: side panels retract and float over the page on demand. */
+  focus: boolean;
+  focusPanel: null | 'library' | 'notebook';
   modal: ModalState;
   deckId: string | null;
   session: null | { deckIds: string[]; mode: 'study' | 'quiz' };
@@ -47,6 +50,8 @@ function initial(): NavState {
     pane: 'list',
     sidebarOpen: saved.sidebarOpen ?? true,
     drawer: false,
+    focus: false,
+    focusPanel: null,
     modal: null,
     deckId: null,
     session: null,

@@ -2,7 +2,7 @@ import { Node, mergeAttributes } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react';
 import { useEffect, useRef, useState } from 'react';
 import { InkCanvas, renderStrokesToPng, type Stroke } from './InkCanvas';
-import { CORNELL_DEFAULT_HEIGHT, type Paper } from '../lib/paper';
+import type { Paper } from '../lib/paper';
 import { handwritingToText } from '../lib/ai';
 import { mdToEditorHtml } from '../lib/markdown';
 import { toastError, toast } from '../lib/events';
@@ -67,22 +67,7 @@ function DrawingView({ node, updateAttributes, deleteNode, editor, getPos, selec
       <div ref={ref}>
         {active && (
           <div className="drawing-head">
-            <select
-              value={node.attrs.paper}
-              onChange={(e) => {
-                const paper = e.target.value as Paper;
-                // Cornell needs room for the cue/notes columns above the summary band.
-                const bump = paper === 'cornell' && node.attrs.height < CORNELL_DEFAULT_HEIGHT;
-                updateAttributes({ paper, ...(bump ? { height: CORNELL_DEFAULT_HEIGHT } : {}) });
-              }}
-              aria-label="Paper style"
-            >
-              <option value="blank">Plain</option>
-              <option value="lines">Lined</option>
-              <option value="grid">Square grid</option>
-              <option value="dots">Dots</option>
-              <option value="cornell">Cornell</option>
-            </select>
+            <span className="drawing-label">Sketch</span>
             <button className="chip" onClick={toText} disabled={busy || !strokes.length}>
               {busy ? <Spinner size={13} /> : <ISparkle size={15} />} Handwriting → text
             </button>

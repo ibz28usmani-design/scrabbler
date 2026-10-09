@@ -3,15 +3,17 @@ import { useEffect, useState } from 'react';
 import { db, deleteFolder, uid, type Folder } from '../db';
 import { nav, openModal, useNav } from '../lib/nav';
 import { computeStreak, deckCounts } from '../lib/study';
-import { useSettings } from '../lib/settings';
+import { updateSettings, useSettings } from '../lib/settings';
+import { useDark } from '../lib/theme';
 import { confirmDialog, Menu, promptDialog } from './ui';
-import { ICards, IFlame, IFolder, IGear, IMore, IPlus, ISearch, ITrash, IX } from './Icons';
+import { ICards, IFlame, IFolder, IGear, IMoon, IMore, IPlus, ISearch, ISun, ITrash, IX } from './Icons';
 
 const EMOJIS = ['🗒️', '📚', '🧪', '🧠', '💼', '🎓', '🧬', '📐', '🌍', '💡', '🎨', '🩺', '⚖️', '💻', '🎵', '✈️', '🏠', '❤️'];
 
 export function Sidebar() {
   const { view, folderId, query } = useNav();
   const { dailyGoal } = useSettings();
+  const dark = useDark();
   const folders = useLiveQuery(() => db.folders.orderBy('order').toArray(), []) ?? [];
   const counts = useLiveQuery(async () => {
     const notes = await db.notes.toArray();
@@ -49,9 +51,18 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-head">
-        <div className="brand">
-          <span className="brand-mark">✦</span> Scrabbler
+        <div className="brand masthead">
+          <span className="brand-name">Scrabbler</span>
+          <span className="brand-tag">Notebook &amp; Study</span>
         </div>
+        <button
+          className="icon-btn"
+          onClick={() => updateSettings({ theme: dark ? 'light' : 'dark' })}
+          aria-label={dark ? 'Paper (light) mode' : 'Charcoal (dark) mode'}
+          title={dark ? 'Paper (light) mode' : 'Charcoal (dark) mode'}
+        >
+          {dark ? <ISun /> : <IMoon />}
+        </button>
         <button className="icon-btn" onClick={() => openModal({ type: 'settings' })} aria-label="Settings">
           <IGear />
         </button>

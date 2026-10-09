@@ -6,7 +6,7 @@ import { groupLabel, shortDate } from '../lib/dates';
 import { createNote, createHandwrittenNote, restoreNote } from '../lib/notes';
 import { HANDWRITING_TEMPLATES } from '../lib/paper';
 import { confirmDialog, Empty, Menu, useMenu } from './ui';
-import { ICompose, IMic, IPencil, IPin, ISidebar, ITrash, IChevL } from './Icons';
+import { ICompose, IHandwriting, IMic, IPin, ISidebar, ITrash, IChevL } from './Icons';
 
 function highlight(text: string, q: string) {
   if (!q) return text;
@@ -80,9 +80,9 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
               <IMic />
             </button>
             <button className="icon-btn" aria-label="New handwritten note" title="New handwritten note" onClick={(e) => openTpl(e.currentTarget)}>
-              <IPencil />
+              <IHandwriting />
             </button>
-            <button className="icon-btn accent" onClick={() => createNote(folderId)} aria-label="New note" title="New note">
+            <button className="icon-btn accent" onClick={() => createNote(folderId)} aria-label="New note" title="New typed note">
               <ICompose />
             </button>
           </>
@@ -108,7 +108,7 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
       <div className="list-scroll">
         {notes.length === 0 && (
           <Empty title={view === 'search' ? 'No results' : view === 'deleted' ? 'Nothing here' : 'No notes yet'}>
-            {view === 'folder' && 'Tap the compose button, draw with Apple Pencil, or record a lecture.'}
+            {view === 'folder' && 'Type a note, start a handwritten page for Apple Pencil, or record a lecture.'}
           </Empty>
         )}
         {groups.map((g) => (
@@ -121,7 +121,7 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
                 <button
                   key={n.id}
                   className={`note-row ${n.id === noteId ? 'on' : ''}`}
-                  onClick={() => nav({ noteId: n.id, pane: 'editor', ...(view === 'search' ? { folderId: n.folderId } : {}) })}
+                  onClick={() => nav({ noteId: n.id, pane: 'editor', focusPanel: null, ...(view === 'search' ? { folderId: n.folderId } : {}) })}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     setMenu({ note: n, el: e.currentTarget });
@@ -129,7 +129,8 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
                 >
                   <div className="note-title">
                     {n.kind === 'lecture' && <IMic size={14} className="note-kind" />}
-                    {n.title || 'New Note'}
+                    {n.kind === 'ink' && <IHandwriting size={14} className="note-kind" />}
+                    {n.title || (n.kind === 'ink' ? 'Handwritten note' : 'New Note')}
                   </div>
                   <div className="note-meta">
                     <span className="note-date">{shortDate(view === 'deleted' ? n.deletedAt! : n.updatedAt)}</span>
@@ -149,7 +150,7 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
           items={HANDWRITING_TEMPLATES.map((t) => ({
             label: t.label,
             hint: t.description,
-            icon: <IPencil size={17} />,
+            icon: <IHandwriting size={17} />,
             onClick: () => createHandwrittenNote(folderId, t.paper),
           }))}
         />

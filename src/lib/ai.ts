@@ -412,3 +412,32 @@ export async function handwritingToText(png: Blob): Promise<string> {
     temperature: 0,
   });
 }
+
+export type TranscribeStyle = 'formatted' | 'plain';
+
+/**
+ * Transcribes handwritten pages (in order). "formatted" keeps the writer's
+ * structure as Markdown — headings, lists, checkboxes, tables, Cornell sections;
+ * "plain" returns just the words in paragraphs.
+ */
+export async function transcribeHandwriting(pages: Blob[], style: TranscribeStyle, paper: string, signal?: AbortSignal): Promise<string> {
+  const parts = await Promise.all(pages.map((p, i) => blobPart(p, 'image/png', `page-${i + 1}.png`)));
+  const cornell =
+    paper === 'cornell'
+      ? `\n- These are Cornell notes. Each page has a TOPIC/DATE header, a narrow left CUES column, a wide right NOTES column and a SUMMARY band at the bottom. For each page output "## Cues", "## Notes" and "## Summary" sections (omit any that are empty), and put the topic as a "# " heading when one is written.`
+      : '';
+  const prompt =
+    style === 'formatted'
+      ? `Transcribe the handwriting in these ${pages.length} page image(s), in order, into clean Markdown that keeps the writer's structure:
+- Titles and underlined or larger headings become "#", "##" or "###" headings.
+- Bullets, dashes and numbered items become Markdown lists, keeping their nesting.
+- Ticked or empty boxes become "- [x]" / "- [ ]" checklists.
+- Words that are underlined, circled or boxed for emphasis become **bold**.
+- Ruled grids or columns become Markdown tables.
+- Arrows become →. Write equations in plain text.
+- Describe drawings or diagrams briefly in [square brackets].${cornell}
+- Separate pages with a line containing only "---".
+Never summarise, correct or add content — transcribe exactly. Return only the Markdown.`
+      : `Transcribe all the handwriting in these ${pages.length} page image(s), in reading order, as plain text. Keep paragraph breaks, but use no Markdown or other formatting symbols. Never summarise, correct or add content. Return only the text.`;
+  return generate({ parts, prompt, temperature: 0, maxOutputTokens: 32000, signal });
+}

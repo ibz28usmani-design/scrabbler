@@ -1,36 +1,20 @@
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import { TaskList } from '@tiptap/extension-task-list';
-import { TaskItem } from '@tiptap/extension-task-item';
-import { TableKit } from '@tiptap/extension-table';
 import { Placeholder } from '@tiptap/extension-placeholder';
-import { Highlight } from '@tiptap/extension-highlight';
-import { Image } from '@tiptap/extension-image';
-import { TextAlign } from '@tiptap/extension-text-align';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { editorExtensions } from './editorExtensions';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { db, type Note } from '../db';
-import { Drawing } from './DrawingNode';
-import { CORNELL_DEFAULT_HEIGHT } from '../lib/paper';
 import { LecturePanel } from './LecturePanel';
 import { AIToolsButton } from './AITools';
 import { nav, toggleSidebar, openModal, useNav } from '../lib/nav';
 import { Menu, useMenu, confirmDialog } from './ui';
-import { IAa, IBook, IChecklist, IChevL, ICompose, IImage, IMic, IMore, IPencil, IPin, ISidebar, ITable, ITrash, ICards, IDownload, IFolder } from './Icons';
-import { download } from '../lib/backup';
+import { IAa, IBook, IChecklist, IChevL, ICompose, IImage, IMic, IMore, IPencil, IPin, IRuled, ISidebar, ITable, ITrash, ICards, IDownload, IFolder } from './Icons';
+import { ExportDialog } from './ExportDialog';
+import { FocusButton } from './FocusMode';
 import { toast } from '../lib/events';
 import { createNote } from '../lib/notes';
 
-export const editorExtensions = [
-  StarterKit.configure({ heading: { levels: [1, 2, 3] }, link: { openOnClick: false, autolink: true } }),
-  TaskList,
-  TaskItem.configure({ nested: true }),
-  TableKit.configure({ table: { resizable: false } }),
-  Highlight.configure({ multicolor: true }),
-  Image.configure({ allowBase64: true }),
-  TextAlign.configure({ types: ['heading', 'paragraph'] }),
-  Drawing,
-];
+export { editorExtensions };
 
 function summarize(editor: Editor) {
   const text = editor.getText({ blockSeparator: '\n' });
@@ -56,7 +40,9 @@ async function downscaleImage(file: File, max = 1600): Promise<string> {
 export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean; wide: boolean }) {
   const saveTimer = useRef<number>(0);
   const noteId = note.id;
-  const { notebookOpen } = useNav();
+  const { notebookOpen, focus } = useNav();
+  const [exporting, setExporting] = useState(false);
+  const [words, setWords] = useState(() => countWords(note.text ?? ''));
   const imgInput = useRef<HTMLInputElement>(null);
   const [fmtAnchor, openFmt, closeFmt] = useMenu();
   const [moreAnchor, openMore, closeMore] = useMenu();
@@ -78,6 +64,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
         window.clearTimeout(saveTimer.current);
         saveTimer.current = window.setTimeout(() => {
           const s = summarize(editor);
+          setWords(countWords(s.text));
           db.notes.update(noteId, { content: editor.getJSON(), ...s, updatedAt: Date.now() });
         }, 400);
       },
@@ -128,11 +115,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
     nav({ noteId: null, pane: 'list' });
   };
 
-  const exportMd = () => {
-    const html = editor.getHTML();
-    const md = htmlToMarkdown(html);
-    download(new Blob([md], { type: 'text/markdown' }), `${(note.title || 'note').replace(/[^\w\- ]+/g, '')}.md`);
-  };
+  const setFont = (font: NonNullable<Note['font']>) => db.notes.update(note.id, { font });
 
   return (
     <div className="editor-pane">
@@ -170,7 +153,20 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
           <AIToolsButton editor={editor} note={note} />
         </div>
         <span className="spacer" />
-        <button className={`icon-btn ${notebookOpen ? 'on' : ''}`} onClick={() => nav({ notebookOpen: !notebookOpen })} aria-label="Notebook panel" title="Notebook: sources, chat & studio">
+        <button
+          className={`icon-btn ${note.lined ? 'on' : ''}`}
+          onClick={() => db.notes.update(note.id, { lined: !note.lined })}
+          aria-label="Ruled lines"
+          aria-pressed={!!note.lined}
+          title="Ruled lines"
+        >
+          <IRuled />
+        </button>
+        <button className="icon-btn" onClick={() => setExporting(true)} aria-label="Save to device" title="Save to device — PDF, Word, Markdown…">
+          <IDownload />
+        </button>
+        <FocusButton />
+        <button className={`icon-btn ${notebookOpen && !focus ? 'on' : ''}`} onClick={() => (focus ? nav({ focusPanel: 'notebook' }) : nav({ notebookOpen: !notebookOpen }))} aria-label="Notebook panel" title="Notebook: sources, chat & studio">
           <IBook />
           <span className="btn-label">Notebook</span>
         </button>
@@ -200,10 +196,16 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
 
       {note.kind === 'lecture' && <LecturePanel note={note} />}
 
-      <div className="editor-scroll">
-        <div className="editor-date">{new Date(note.updatedAt).toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' })}</div>
-        <EditorContent editor={editor} />
+      <div className={`editor-scroll doc font-${note.font ?? 'serif'}${note.lined ? ' lined' : ''}`}>
+        <div className="doc-page">
+          <div className="editor-date">{new Date(note.updatedAt).toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' })}</div>
+          <EditorContent editor={editor} />
+        </div>
       </div>
+      <div className="doc-status" aria-live="polite">
+        {words.toLocaleString()} {words === 1 ? 'word' : 'words'} · {Math.max(1, Math.round(words / 200))} min read
+      </div>
+      {exporting && <ExportDialog note={note} onClose={() => setExporting(false)} />}
 
       {fmtAnchor && (
         <FormatPanel anchor={fmtAnchor} onClose={closeFmt}>
@@ -212,7 +214,13 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
             {fmt('Heading', () => editor.chain().focus().toggleHeading({ level: 2 }).run(), editor.isActive('heading', { level: 2 }), 'heading')}
             {fmt('Subheading', () => editor.chain().focus().toggleHeading({ level: 3 }).run(), editor.isActive('heading', { level: 3 }), 'sub')}
             {fmt('Body', () => editor.chain().focus().setParagraph().run(), editor.isActive('paragraph'))}
-            {fmt('Mono', () => editor.chain().focus().toggleCodeBlock().run(), editor.isActive('codeBlock'), 'mono')}
+            {fmt('Code', () => editor.chain().focus().toggleCodeBlock().run(), editor.isActive('codeBlock'), 'mono')}
+          </div>
+          <div className="fmt-row">
+            {fmt('Serif', () => setFont('serif'), (note.font ?? 'serif') === 'serif', 'face-serif')}
+            {fmt('Sans', () => setFont('sans'), note.font === 'sans', 'face-sans')}
+            {fmt('Mono', () => setFont('mono'), note.font === 'mono', 'face-mono')}
+            {fmt(note.lined ? 'Lines on' : 'Lines off', () => db.notes.update(note.id, { lined: !note.lined }), !!note.lined)}
           </div>
           <div className="fmt-row">
             {fmt('B', () => editor.chain().focus().toggleBold().run(), editor.isActive('bold'), 'b')}
@@ -242,11 +250,6 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
               {fmt('Delete table', () => editor.chain().focus().deleteTable().run(), false)}
             </div>
           )}
-          <div className="fmt-row">
-            {fmt('✎ Lined drawing', () => editor.chain().focus().insertDrawing({ paper: 'lines', height: 900 }).run(), false)}
-            {fmt('Grid drawing', () => editor.chain().focus().insertDrawing({ paper: 'grid', height: 700 }).run(), false)}
-            {fmt('Cornell drawing', () => editor.chain().focus().insertDrawing({ paper: 'cornell', height: CORNELL_DEFAULT_HEIGHT }).run(), false)}
-          </div>
         </FormatPanel>
       )}
 
@@ -260,7 +263,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
             { label: 'Move to folder…', icon: <IFolder size={18} />, onClick: () => setTimeout(() => openMove(moreAnchor), 0) },
             { label: 'Make flashcards', icon: <ICards size={18} />, onClick: () => openModal({ type: 'generateDeck', from: { kind: 'note', noteId: note.id } }) },
             { label: 'Make a quiz', icon: <ICards size={18} />, onClick: () => openModal({ type: 'generateDeck', from: { kind: 'note', noteId: note.id }, quiz: true }) },
-            { label: 'Export as Markdown', icon: <IDownload size={18} />, onClick: exportMd },
+            { label: 'Save to device…', icon: <IDownload size={18} />, onClick: () => setExporting(true) },
             { divider: true, label: '' },
             { label: 'Delete note', icon: <ITrash size={18} />, danger: true, onClick: deleteNote },
           ]}
@@ -305,74 +308,7 @@ function FormatPanel({ anchor, onClose, children }: { anchor: HTMLElement; onClo
   );
 }
 
-/** Lightweight HTML → Markdown for exports. */
-export function htmlToMarkdown(html: string): string {
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  const walk = (node: globalThis.Node, depth = 0): string => {
-    if (node.nodeType === 3) return node.textContent ?? '';
-    if (node.nodeType !== 1) return '';
-    const el = node as HTMLElement;
-    const kids = () => Array.from(el.childNodes).map((c) => walk(c, depth)).join('');
-    switch (el.tagName) {
-      case 'H1':
-        return `# ${kids()}\n\n`;
-      case 'H2':
-        return `## ${kids()}\n\n`;
-      case 'H3':
-        return `### ${kids()}\n\n`;
-      case 'P':
-        return el.closest('li') ? kids() : `${kids()}\n\n`;
-      case 'STRONG':
-      case 'B':
-        return `**${kids()}**`;
-      case 'EM':
-      case 'I':
-        return `*${kids()}*`;
-      case 'S':
-        return `~~${kids()}~~`;
-      case 'CODE':
-        return el.closest('pre') ? kids() : `\`${kids()}\``;
-      case 'PRE':
-        return `\`\`\`\n${el.textContent}\n\`\`\`\n\n`;
-      case 'BLOCKQUOTE':
-        return kids().trim().split('\n').map((l) => `> ${l}`).join('\n') + '\n\n';
-      case 'A':
-        return `[${kids()}](${el.getAttribute('href')})`;
-      case 'BR':
-        return '\n';
-      case 'HR':
-        return '---\n\n';
-      case 'IMG':
-        return `![image](${(el.getAttribute('src') ?? '').startsWith('data:') ? 'embedded-image' : el.getAttribute('src')})`;
-      case 'UL':
-      case 'OL': {
-        const task = el.getAttribute('data-type') === 'taskList';
-        const items = Array.from(el.children).map((li, i) => {
-          const checked = li.getAttribute('data-checked') === 'true';
-          const marker = task ? `- [${checked ? 'x' : ' '}] ` : el.tagName === 'OL' ? `${i + 1}. ` : '- ';
-          const inner = Array.from(li.childNodes)
-            .map((c) => ((c as HTMLElement).tagName === 'UL' || (c as HTMLElement).tagName === 'OL' ? '\n' + walk(c, depth + 1) : walk(c, depth + 1)))
-            .join('')
-            .trimEnd();
-          return '  '.repeat(depth) + marker + inner;
-        });
-        return items.join('\n') + (depth ? '' : '\n\n');
-      }
-      case 'TABLE': {
-        const rows = Array.from(el.querySelectorAll('tr')).map((tr) => Array.from(tr.children).map((td) => (td.textContent ?? '').trim().replace(/\|/g, '\\|')));
-        if (!rows.length) return '';
-        const head = `| ${rows[0].join(' | ')} |\n| ${rows[0].map(() => '---').join(' | ')} |\n`;
-        return head + rows.slice(1).map((r) => `| ${r.join(' | ')} |`).join('\n') + '\n\n';
-      }
-      case 'DIV':
-        if (el.hasAttribute('data-drawing')) return '*[drawing]*\n\n';
-        return kids();
-      case 'LABEL':
-      case 'INPUT':
-        return '';
-      default:
-        return kids();
-    }
-  };
-  return walk(doc.body).replace(/\n{3,}/g, '\n\n').trim() + '\n';
+function countWords(text: string) {
+  const m = text.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu);
+  return m ? m.length : 0;
 }

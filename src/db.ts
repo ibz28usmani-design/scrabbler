@@ -19,6 +19,15 @@ export interface TranscriptSegment {
   text: string;
 }
 
+/** A handwritten page: an endless canvas on one of the paper templates. */
+export interface InkDoc {
+  paper: 'blank' | 'lines' | 'grid' | 'cornell' | 'dots';
+  /** Strokes in the 1000-unit-wide logical space (see lib/ink.ts). */
+  strokes: { t: 'pen' | 'pencil' | 'marker'; c: string; s: number; p: number[] }[];
+  /** Canvas height in logical units — grows as you write. */
+  height: number;
+}
+
 export interface Note {
   id: ID;
   folderId: ID;
@@ -31,7 +40,13 @@ export interface Note {
   createdAt: number;
   updatedAt: number;
   deletedAt?: number;
-  kind: 'note' | 'lecture';
+  kind: 'note' | 'lecture' | 'ink';
+  /** Present when kind === 'ink'. */
+  ink?: InkDoc;
+  /** Typed notes: ruled lines behind the text. */
+  lined?: boolean;
+  /** Typed notes: document typeface. */
+  font?: 'serif' | 'sans' | 'mono';
   audioBlobId?: ID;
   transcript?: TranscriptSegment[];
   status?: 'recording' | 'transcribing' | 'writing' | 'ready' | 'error';
@@ -236,6 +251,30 @@ export async function initDb() {
   }
   const old = await db.notes.where('deletedAt').below(Date.now() - THIRTY_DAYS).toArray();
   if (old.length) await deleteNotesForever(old.map((n) => n.id));
+  await migrateHandwrittenNotes();
+}
+
+/**
+ * Handwritten notes used to be typed notes holding a single drawing block.
+ * They become real handwritten notes (endless canvas) the first time we see them.
+ */
+export async function migrateHandwrittenNotes() {
+  const candidates = await db.notes.filter((n) => n.kind === 'note' && !!n.content && typeof n.content === 'object').toArray();
+  for (const n of candidates) {
+    const ink = legacyInk(n.content);
+    if (ink) await db.notes.update(n.id, { kind: 'ink', ink, content: '', snippet: n.snippet === 'Drawing' ? '' : n.snippet });
+  }
+}
+
+/** Matches [heading?] + one drawing + [empty paragraph] — the old handwritten-note shape. */
+export function legacyInk(content: unknown): InkDoc | null {
+  const blocks = ((content as { content?: any[] })?.content ?? []).filter((b) => !(b.type === 'paragraph' && !b.content?.length));
+  const drawings = blocks.filter((b) => b.type === 'drawing');
+  const others = blocks.filter((b) => b.type !== 'drawing');
+  if (drawings.length !== 1 || others.length > 1) return null;
+  if (others.length === 1 && others[0].type !== 'heading') return null;
+  const a = drawings[0].attrs ?? {};
+  return { paper: a.paper ?? 'blank', strokes: Array.isArray(a.strokes) ? a.strokes : [], height: Number(a.height) || 1414 };
 }
 
 export async function deleteNotesForever(ids: ID[]) {

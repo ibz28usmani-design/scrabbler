@@ -22,6 +22,6 @@ export function useApplyTheme() {
     const root = document.documentElement;
     if (theme === 'system') root.removeAttribute('data-theme');
     else root.setAttribute('data-theme', theme);
-    document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', dark ? '#1c1c1e' : '#fbfaf7'));
+    document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', dark ? '#161615' : '#f5f2ea'));
   }, [theme, dark]);
 }

@@ -29,7 +29,7 @@ export function NotebookPanel({ folderId, overlay }: { folderId: string; overlay
           {folder?.emoji} {folder?.name} <span className="muted">· Notebook</span>
         </div>
         <span className="spacer" />
-        <button className="icon-btn" onClick={() => nav({ notebookOpen: false })} aria-label="Close notebook">
+        <button className="icon-btn" onClick={() => nav({ notebookOpen: false, focusPanel: null })} aria-label="Close notebook">
           <IX />
         </button>
       </div>
