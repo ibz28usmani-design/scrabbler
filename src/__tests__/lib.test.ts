@@ -136,17 +136,41 @@ describe('misc', () => {
   });
 });
 
-describe('bytez json salvage', () => {
+describe('openai-compatible provider', () => {
   it('parses plain, fenced and prose-wrapped JSON', async () => {
-    const { extractJson } = await import('../lib/bytez');
+    const { extractJson } = await import('../lib/openaiCompat');
     expect(extractJson('{"a":1}')).toEqual({ a: 1 });
     expect(extractJson('```json\n{"a":2}\n```')).toEqual({ a: 2 });
     expect(extractJson('Sure! Here you go:\n{"cards":[{"front":"q"}]}\nHope that helps.')).toEqual({ cards: [{ front: 'q' }] });
     expect(extractJson('Here is the list: [1,2,3]')).toEqual([1, 2, 3]);
   });
 
+  it('strips reasoning spans before parsing', async () => {
+    const { extractJson } = await import('../lib/openaiCompat');
+    expect(extractJson('<think>Let me plan this out.</think>{"ok":true}')).toEqual({ ok: true });
+  });
+
   it('throws a useful error on unparseable output', async () => {
-    const { extractJson } = await import('../lib/bytez');
+    const { extractJson } = await import('../lib/openaiCompat');
     expect(() => extractJson('I cannot do that.')).toThrow(/malformed JSON/i);
+  });
+
+  it('picks the closest model to the preset suggestion', async () => {
+    const { pickModel } = await import('../lib/openaiCompat');
+    const models = ['meta/llama-3.1-8b', 'zai/glm-5.3-flash', 'qwen/qwen3-4b'];
+    expect(pickModel(models, 'zai/glm-5.3-flash')).toBe('zai/glm-5.3-flash');
+    // Exact id missing: fall back to the same name under another org prefix.
+    expect(pickModel(['other/glm-5.3-flash', 'meta/llama-3.1-8b'], 'zai/glm-5.3-flash')).toBe('other/glm-5.3-flash');
+    // Then to the same family.
+    expect(pickModel(['zai/glm-4.7', 'meta/llama-3.1-8b'], 'zai/glm-5.3-flash')).toBe('zai/glm-4.7');
+    // Nothing similar: first available, never an unusable empty string.
+    expect(pickModel(['meta/llama-3.1-8b'], 'zai/glm-5.3-flash')).toBe('meta/llama-3.1-8b');
+    expect(pickModel([], 'zai/glm-5.3-flash')).toBe('zai/glm-5.3-flash');
+  });
+
+  it('treats a same-origin base URL as a proxy that needs no key', async () => {
+    const { isProxyBase } = await import('../lib/openaiCompat');
+    expect(isProxyBase('/.netlify/functions/llm')).toBe(true);
+    expect(isProxyBase('https://integrate.api.nvidia.com/v1')).toBe(false);
   });
 });

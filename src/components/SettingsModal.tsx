@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { closeModal } from '../lib/nav';
 import { GEMINI_VOICES, updateSettings, useSettings } from '../lib/settings';
-import { listModels as listBytezModels } from '../lib/bytez';
+import { listModels as listCompatModels, pickModel, PRESETS, presetById, isProxyBase } from '../lib/openaiCompat';
 import { listModels, type ModelInfo } from '../lib/gemini';
 import { download, eraseEverything, exportBackup, importBackup } from '../lib/backup';
 import { toast, toastError } from '../lib/events';
@@ -22,23 +22,11 @@ export function SettingsModal() {
   const [checking, setChecking] = useState(false);
   const [usage, setUsage] = useState<string>('');
   const [persisted, setPersisted] = useState<boolean | null>(null);
-  const [bytezKey, setBytezKey] = useState(s.bytezKey);
-  const [bytezModels, setBytezModels] = useState<string[] | null>(null);
-  const [bytezBusy, setBytezBusy] = useState(false);
-
-  const verifyBytez = async () => {
-    setBytezBusy(true);
-    try {
-      const list = await listBytezModels(bytezKey.trim());
-      setBytezModels(list.map((m) => m.id));
-      updateSettings({ bytezKey: bytezKey.trim() });
-      toast(`Bytez key works ✓ (${list.length} models)`, 'success');
-    } catch (e) {
-      toastError(e);
-    } finally {
-      setBytezBusy(false);
-    }
-  };
+  const [compatKey, setCompatKey] = useState(s.compatKey);
+  const [compatModels, setCompatModels] = useState<string[] | null>(null);
+  const [compatBusy, setCompatBusy] = useState(false);
+  const preset = presetById(s.compatPreset);
+  const proxied = isProxyBase(s.compatBaseUrl);
 
   useEffect(() => {
     navigator.storage?.estimate?.().then((e) => setUsage(`${((e.usage ?? 0) / 1048576).toFixed(1)} MB used`));
@@ -46,6 +34,28 @@ export function SettingsModal() {
     if (s.apiKey) listModels(s.apiKey).then(setModels).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const choosePreset = (id: string) => {
+    const p = presetById(id);
+    setCompatModels(null);
+    setCompatKey('');
+    updateSettings({ compatPreset: id, compatBaseUrl: p.baseUrl, compatKey: '', compatModel: p.model });
+  };
+
+  const verifyCompat = async () => {
+    setCompatBusy(true);
+    try {
+      const list = await listCompatModels({ baseUrl: s.compatBaseUrl, key: compatKey.trim() });
+      setCompatModels(list);
+      const model = pickModel(list, s.compatModel || preset.model);
+      updateSettings({ compatKey: compatKey.trim(), compatModel: model });
+      toast(`Connected ✓ — ${list.length} models, using ${model}`, 'success');
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setCompatBusy(false);
+    }
+  };
 
   const verify = async () => {
     setChecking(true);
@@ -84,40 +94,88 @@ export function SettingsModal() {
           onChange={(textProvider) => updateSettings({ textProvider })}
           options={[
             { value: 'gemini', label: 'Gemini' },
-            { value: 'bytez', label: 'Bytez' },
+            { value: 'compat', label: 'Another provider' },
           ]}
         />
-        {s.textProvider === 'bytez' && (
+        {s.textProvider === 'compat' && (
           <>
-            <p className="muted small">
-              Bytez serves open-source models (Qwen, Llama, DeepSeek…). Get a key at{' '}
-              <a href="https://bytez.com/api" target="_blank" rel="noreferrer">
-                bytez.com/api
-              </a>
-              . Billing is per second of inference, not free, and open models have shorter context — very large notebooks may need Gemini.
-            </p>
-            <div className="key-row">
-              <input className="input mono" type="password" autoComplete="off" placeholder="Bytez API key" value={bytezKey} onChange={(e) => setBytezKey(e.target.value)} />
-              <button className="btn primary" onClick={verifyBytez} disabled={!bytezKey.trim() || bytezBusy}>
-                {bytezBusy ? <Spinner size={14} /> : s.bytezKey && s.bytezKey === bytezKey.trim() ? <ICheck size={16} /> : null}{' '}
-                {s.bytezKey === bytezKey.trim() && s.bytezKey ? 'Saved' : 'Save & test'}
+            <label className="field">
+              <span>Provider</span>
+              <select className="input" value={s.compatPreset} onChange={(e) => choosePreset(e.target.value)}>
+                {PRESETS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {preset.note && <p className="muted small">{preset.note}</p>}
+            <label className="field">
+              <span>API base URL</span>
+              <input
+                className="input mono"
+                value={s.compatBaseUrl}
+                onChange={(e) => updateSettings({ compatBaseUrl: e.target.value, compatPreset: 'custom' })}
+                placeholder="https://integrate.api.nvidia.com/v1"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+            {!proxied && (
+              <>
+                {preset.keyUrl && (
+                  <p className="muted small">
+                    Get a key at{' '}
+                    <a href={preset.keyUrl} target="_blank" rel="noreferrer">
+                      {preset.keyUrl.replace(/^https:\/\//, '')}
+                    </a>
+                    . It is stored only on this device.
+                  </p>
+                )}
+                <div className="key-row">
+                  <input
+                    className="input mono"
+                    type="password"
+                    autoComplete="off"
+                    placeholder={preset.keyHint}
+                    value={compatKey}
+                    onChange={(e) => setCompatKey(e.target.value)}
+                  />
+                  <button className="btn primary" onClick={verifyCompat} disabled={compatBusy || !compatKey.trim()}>
+                    {compatBusy ? <Spinner size={14} /> : s.compatKey && s.compatKey === compatKey.trim() ? <ICheck size={16} /> : null}{' '}
+                    {s.compatKey === compatKey.trim() && s.compatKey ? 'Saved' : 'Save & test'}
+                  </button>
+                </div>
+              </>
+            )}
+            {proxied && (
+              <button className="btn" onClick={verifyCompat} disabled={compatBusy}>
+                {compatBusy ? <Spinner size={14} /> : null} Test connection
               </button>
-            </div>
+            )}
             <label className="field">
               <span>Model</span>
-              {bytezModels?.length ? (
-                <select className="input" value={s.bytezModel} onChange={(e) => updateSettings({ bytezModel: e.target.value })}>
-                  {!bytezModels.includes(s.bytezModel) && <option value={s.bytezModel}>{s.bytezModel}</option>}
-                  {bytezModels.map((m) => (
+              {compatModels?.length ? (
+                <select className="input" value={s.compatModel} onChange={(e) => updateSettings({ compatModel: e.target.value })}>
+                  {!compatModels.includes(s.compatModel) && s.compatModel && <option value={s.compatModel}>{s.compatModel}</option>}
+                  {compatModels.map((m) => (
                     <option key={m} value={m}>
                       {m}
                     </option>
                   ))}
                 </select>
               ) : (
-                <input className="input mono" value={s.bytezModel} onChange={(e) => updateSettings({ bytezModel: e.target.value })} placeholder="Qwen/Qwen3-4B" />
+                <input
+                  className="input mono"
+                  value={s.compatModel}
+                  onChange={(e) => updateSettings({ compatModel: e.target.value })}
+                  placeholder={preset.model || 'model name'}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
               )}
             </label>
+            <p className="muted small">Test the connection to load the provider’s real model list.</p>
           </>
         )}
       </section>

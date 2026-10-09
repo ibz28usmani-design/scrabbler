@@ -3,9 +3,12 @@ import { useSyncExternalStore } from 'react';
 export interface Settings {
   apiKey: string;
   /** Which engine runs plain-text generation. Gemini still handles media and web tools. */
-  textProvider: 'gemini' | 'bytez';
-  bytezKey: string;
-  bytezModel: string;
+  textProvider: 'gemini' | 'compat';
+  /** Which preset the compat endpoint came from (nim, bytez, openrouter, groq, proxy, custom). */
+  compatPreset: string;
+  compatBaseUrl: string;
+  compatKey: string;
+  compatModel: string;
   textModel: string;
   proModel: string;
   ttsModel: string;
@@ -24,8 +27,10 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   apiKey: '',
   textProvider: 'gemini',
-  bytezKey: '',
-  bytezModel: 'Qwen/Qwen3-4B',
+  compatPreset: 'nim',
+  compatBaseUrl: 'https://integrate.api.nvidia.com/v1',
+  compatKey: '',
+  compatModel: '',
   textModel: 'gemini-2.5-flash',
   proModel: 'gemini-2.5-pro',
   ttsModel: 'gemini-2.5-flash-preview-tts',
@@ -48,11 +53,23 @@ const listeners = new Set<() => void>();
 function load(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    if (raw) return migrate({ ...DEFAULT_SETTINGS, ...JSON.parse(raw) });
   } catch {
     /* storage unavailable */
   }
   return { ...DEFAULT_SETTINGS };
+}
+
+/** Carries the old Bytez-only fields onto the generic OpenAI-compatible ones. */
+function migrate(s: Settings & { bytezKey?: string; bytezModel?: string }): Settings {
+  if ((s.textProvider as string) === 'bytez') {
+    s.textProvider = 'compat';
+    s.compatPreset = 'bytez';
+    s.compatBaseUrl = s.compatBaseUrl || 'https://api.bytez.com/models/v2/openai/v1';
+  }
+  if (s.bytezKey && !s.compatKey) s.compatKey = s.bytezKey;
+  if (s.bytezModel && !s.compatModel) s.compatModel = s.bytezModel;
+  return s;
 }
 
 export function getSettings(): Settings {

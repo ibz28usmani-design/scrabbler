@@ -8,18 +8,18 @@
  * lecture write-ups and the writing tools.
  */
 import * as gemini from './gemini';
-import * as bytez from './bytez';
+import * as compat from './openaiCompat';
 import { getSettings } from './settings';
 
-export type TextProvider = 'gemini' | 'bytez';
+export type TextProvider = 'gemini' | 'compat';
 
 export function textProvider(): TextProvider {
-  return getSettings().textProvider === 'bytez' ? 'bytez' : 'gemini';
+  return getSettings().textProvider === 'compat' ? 'compat' : 'gemini';
 }
 
 /** True when the selected text engine is usable. */
 export function hasTextKey(): boolean {
-  return textProvider() === 'bytez' ? bytez.hasBytezKey() : gemini.hasKey();
+  return textProvider() === 'compat' ? compat.hasCompatConfig() : gemini.hasKey();
 }
 
 /** Gemini-only capabilities (vision, audio, files, Google tools). */
@@ -43,8 +43,8 @@ function requireGemini(): void {
 }
 
 /** Flattens Gemini-shaped options into OpenAI-style chat messages. */
-function toMessages(o: gemini.GenerateOptions): bytez.ChatMessage[] {
-  const msgs: bytez.ChatMessage[] = [];
+function toMessages(o: gemini.GenerateOptions): compat.ChatMessage[] {
+  const msgs: compat.ChatMessage[] = [];
   if (o.system) msgs.push({ role: 'system', content: o.system });
   for (const c of o.contents ?? []) {
     const text = c.parts.map((p) => ('text' in p ? p.text : '')).join('').trim();
@@ -62,12 +62,12 @@ export async function generate(o: gemini.GenerateOptions): Promise<string> {
     return gemini.generate(o);
   }
   if (textProvider() === 'gemini') return gemini.generate(o);
-  return bytez.chat({ messages: toMessages(o), temperature: o.temperature, maxTokens: o.maxOutputTokens, signal: o.signal });
+  return compat.chat({ messages: toMessages(o), temperature: o.temperature, maxTokens: o.maxOutputTokens, signal: o.signal });
 }
 
 /**
- * Bytez documents no schema-constrained output, so the schema is described in
- * the prompt and the reply is parsed defensively.
+ * Not every OpenAI-compatible provider supports schema-constrained output, so the
+ * schema is described in the prompt and the reply is parsed defensively.
  */
 export async function generateJSON<T>(o: gemini.GenerateOptions & { schema: object }): Promise<T> {
   if (needsGemini(o) || textProvider() === 'gemini') {
@@ -79,8 +79,8 @@ export async function generateJSON<T>(o: gemini.GenerateOptions & { schema: obje
     role: 'system',
     content: `You reply with a single JSON value and nothing else — no prose, no code fences. It must validate against this JSON schema:\n${JSON.stringify(o.schema)}`,
   });
-  const text = await bytez.chat({ messages, temperature: o.temperature, maxTokens: o.maxOutputTokens, signal: o.signal });
-  return bytez.extractJson(text) as T;
+  const text = await compat.chat({ messages, temperature: o.temperature, maxTokens: o.maxOutputTokens, signal: o.signal });
+  return compat.extractJson(text) as T;
 }
 
 export async function* stream(o: gemini.GenerateOptions): AsyncGenerator<string> {
@@ -93,5 +93,5 @@ export async function* stream(o: gemini.GenerateOptions): AsyncGenerator<string>
     yield* gemini.stream(o);
     return;
   }
-  yield* bytez.chatStream({ messages: toMessages(o), temperature: o.temperature, maxTokens: o.maxOutputTokens, signal: o.signal });
+  yield* compat.chatStream({ messages: toMessages(o), temperature: o.temperature, maxTokens: o.maxOutputTokens, signal: o.signal });
 }
