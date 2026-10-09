@@ -29,7 +29,7 @@ export const PRESETS: Preset[] = [
     keyUrl: 'https://build.nvidia.com',
     keyHint: 'nvapi-…',
     model: 'zai/glm-5.3-flash',
-    note: 'Free tier, rate limited. NVIDIA may not allow browser calls — if requests fail, use the proxy below.',
+    note: 'Free tier, rate limited. NVIDIA may refuse calls made from a browser (CORS) — if so, pick OpenRouter or Groq, or use Gemini.',
   },
   {
     id: 'bytez',
@@ -57,15 +57,6 @@ export const PRESETS: Preset[] = [
     keyHint: 'gsk_…',
     model: 'llama-3.3-70b-versatile',
     note: 'Very fast, generous free tier.',
-  },
-  {
-    id: 'proxy',
-    label: 'My own proxy',
-    baseUrl: '/.netlify/functions/llm',
-    keyUrl: '',
-    keyHint: 'not needed — the proxy holds the key',
-    model: '',
-    note: 'Same-origin, so no CORS and the key never reaches the browser. See netlify/functions/llm.ts.',
   },
   { id: 'custom', label: 'Custom…', baseUrl: '', keyUrl: '', keyHint: 'API key', model: '' },
 ];
@@ -135,8 +126,8 @@ async function call(path: string, init: RequestInit, overrides?: { baseUrl?: str
         // from the network being down — so say both are possible.
         throw new CompatError(
           isProxyBase(baseUrl)
-            ? 'Could not reach your proxy. Is the site deployed with the function enabled?'
-            : 'Could not reach the API. Either you are offline, or this provider blocks calls from browsers (CORS) and needs a proxy.',
+            ? 'Could not reach your proxy. Check that its address is right and that it is running.'
+            : 'Could not reach the API. Either you are offline, or this provider blocks calls from browsers (CORS) — try OpenRouter, Groq or Gemini instead.',
           0,
         );
       }

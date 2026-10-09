@@ -170,7 +170,7 @@ describe('openai-compatible provider', () => {
 
   it('treats a same-origin base URL as a proxy that needs no key', async () => {
     const { isProxyBase } = await import('../lib/openaiCompat');
-    expect(isProxyBase('/.netlify/functions/llm')).toBe(true);
+    expect(isProxyBase('/llm')).toBe(true);
     expect(isProxyBase('https://integrate.api.nvidia.com/v1')).toBe(false);
   });
 });
