@@ -1,11 +1,10 @@
 /**
- * Routes text generation to the chosen provider.
+ * Routes generation to the chosen provider.
  *
- * Gemini is the default and remains mandatory for anything multimodal or
- * tool-backed — YouTube ingestion, website fetching, Search grounding, audio
- * transcription, PDF/handwriting OCR and speech. Bytez (open-source models) can
- * take over the plain-text work: chat answers, studio documents, flashcards,
- * lecture write-ups and the writing tools.
+ * Gemini is the default and stays mandatory for audio, PDFs, files it has
+ * already uploaded, and anything tool-backed — YouTube ingestion, website
+ * fetching, Search grounding, speech. An OpenAI-compatible provider can take
+ * the plain-text work, and, when its model reads images, handwriting too.
  */
 import * as gemini from './gemini';
 import * as compat from './openaiCompat';
@@ -22,43 +21,104 @@ export function hasTextKey(): boolean {
   return textProvider() === 'compat' ? compat.hasCompatConfig() : gemini.hasKey();
 }
 
-/** Gemini-only capabilities (vision, audio, files, Google tools). */
+/** Gemini-only capabilities (audio, PDFs, uploaded files, Google tools). */
 export function hasGeminiKey(): boolean {
   return gemini.hasKey();
 }
 
+/** The active provider is a compat endpoint whose model reads images. */
+function compatSeesImages(): boolean {
+  return textProvider() === 'compat' && compat.supportsVision();
+}
+
+/** Whether anything here can read an image — Gemini, or a compat model with vision on. */
+export function canReadImages(): boolean {
+  return gemini.hasKey() || compatSeesImages();
+}
+
 export class ProviderError extends Error {}
 
-/** A call needs Gemini when it carries tools or any non-text part. */
+const isImage = (p: gemini.Part): p is { inlineData: { mimeType: string; data: string } } =>
+  'inlineData' in p && p.inlineData.mimeType.startsWith('image/');
+
+function allParts(o: gemini.GenerateOptions): gemini.Part[] {
+  return [...(o.parts ?? []), ...(o.contents ?? []).flatMap((c) => c.parts)];
+}
+
+/**
+ * A call needs Gemini when it carries tools, or media no OpenAI-compatible
+ * endpoint can take: audio, PDFs, and fileData, which is a URI inside Gemini's
+ * own File API and meaningless anywhere else. Images are the exception — they
+ * travel as data URLs, so a vision-capable compat model can have them.
+ */
 function needsGemini(o: gemini.GenerateOptions): boolean {
   if (o.tools?.length) return true;
-  const parts = [...(o.parts ?? []), ...(o.contents ?? []).flatMap((c) => c.parts)];
-  return parts.some((p) => !('text' in p));
+  const parts = allParts(o);
+  if (parts.some((p) => !('text' in p) && !isImage(p))) return true;
+  return parts.some(isImage) && !compatSeesImages();
 }
 
-function requireGemini(): void {
-  if (!gemini.hasKey()) {
-    throw new ProviderError('This feature reads files, audio or the web, which only Gemini can do here. Add a Gemini key in Settings.');
+function requireGemini(o?: gemini.GenerateOptions): void {
+  if (gemini.hasKey()) return;
+  const imagesOnly = !!o && !o.tools?.length && allParts(o).every((p) => 'text' in p || isImage(p));
+  throw new ProviderError(
+    imagesOnly
+      ? 'Reading images needs either a Gemini key, or a text provider whose model reads images — turn on "This model can read images" in Settings.'
+      : 'This feature reads files, audio or the web, which only Gemini can do here. Add a Gemini key in Settings.',
+  );
+}
+
+/**
+ * A part for an image, shaped for whichever provider will receive it. Gemini
+ * may hand a large file to its File API; a compat provider has no such thing,
+ * so the bytes always travel inline.
+ */
+export async function imagePart(blob: Blob, mimeType: string, name: string, signal?: AbortSignal): Promise<gemini.Part> {
+  if (compatSeesImages()) return { inlineData: { mimeType, data: await gemini.blobToBase64(blob) } };
+  return gemini.blobPart(blob, mimeType, name, signal);
+}
+
+/**
+ * Turns Gemini-shaped parts into OpenAI message content, keeping the original
+ * order so an instruction still follows the pages it refers to. Plain text
+ * stays a plain string, which every endpoint accepts; only a message carrying
+ * an image needs the array form.
+ */
+function toContent(parts: gemini.Part[], trailingText = ''): string | compat.ContentPart[] {
+  const out: compat.ContentPart[] = [];
+  const pushText = (text: string) => {
+    if (!text.trim()) return;
+    const last = out[out.length - 1];
+    if (last?.type === 'text') last.text += `\n\n${text}`;
+    else out.push({ type: 'text', text });
+  };
+  for (const p of parts) {
+    if ('text' in p) pushText(p.text);
+    else if (isImage(p)) out.push({ type: 'image_url', image_url: { url: `data:${p.inlineData.mimeType};base64,${p.inlineData.data}` } });
   }
+  pushText(trailingText);
+  if (out.every((c) => c.type === 'text')) return out.map((c) => (c as { text: string }).text).join('\n\n');
+  return out;
 }
 
-/** Flattens Gemini-shaped options into OpenAI-style chat messages. */
+const isEmpty = (c: string | compat.ContentPart[]) => (typeof c === 'string' ? !c.trim() : !c.length);
+
 function toMessages(o: gemini.GenerateOptions): compat.ChatMessage[] {
   const msgs: compat.ChatMessage[] = [];
   if (o.system) msgs.push({ role: 'system', content: o.system });
   for (const c of o.contents ?? []) {
-    const text = c.parts.map((p) => ('text' in p ? p.text : '')).join('').trim();
-    if (text) msgs.push({ role: c.role === 'model' ? 'assistant' : 'user', content: text });
+    const content = toContent(c.parts);
+    if (!isEmpty(content)) msgs.push({ role: c.role === 'model' ? 'assistant' : 'user', content });
   }
-  const tail = [...(o.parts ?? []).map((p) => ('text' in p ? p.text : '')), o.prompt ?? ''].filter(Boolean).join('\n\n');
-  if (tail) msgs.push({ role: 'user', content: tail });
-  if (!msgs.some((m) => m.role === 'user')) msgs.push({ role: 'user', content: tail || '…' });
+  const tail = toContent(o.parts ?? [], o.prompt ?? '');
+  if (!isEmpty(tail)) msgs.push({ role: 'user', content: tail });
+  if (!msgs.some((m) => m.role === 'user')) msgs.push({ role: 'user', content: '…' });
   return msgs;
 }
 
 export async function generate(o: gemini.GenerateOptions): Promise<string> {
   if (needsGemini(o)) {
-    requireGemini();
+    requireGemini(o);
     return gemini.generate(o);
   }
   if (textProvider() === 'gemini') return gemini.generate(o);
@@ -71,7 +131,7 @@ export async function generate(o: gemini.GenerateOptions): Promise<string> {
  */
 export async function generateJSON<T>(o: gemini.GenerateOptions & { schema: object }): Promise<T> {
   if (needsGemini(o) || textProvider() === 'gemini') {
-    if (needsGemini(o)) requireGemini();
+    if (needsGemini(o)) requireGemini(o);
     return gemini.generateJSON<T>(o);
   }
   const messages = toMessages(o);
@@ -85,7 +145,7 @@ export async function generateJSON<T>(o: gemini.GenerateOptions & { schema: obje
 
 export async function* stream(o: gemini.GenerateOptions): AsyncGenerator<string> {
   if (needsGemini(o)) {
-    requireGemini();
+    requireGemini(o);
     yield* gemini.stream(o);
     return;
   }

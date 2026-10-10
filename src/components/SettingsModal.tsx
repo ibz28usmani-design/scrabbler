@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { closeModal } from '../lib/nav';
 import { GEMINI_VOICES, updateSettings, useSettings } from '../lib/settings';
-import { listModels as listCompatModels, pickModel, PRESETS, presetById, isProxyBase } from '../lib/openaiCompat';
+import { listModels as listCompatModels, looksMultimodal, pickModel, PRESETS, presetById, isProxyBase } from '../lib/openaiCompat';
 import { listModels, type ModelInfo } from '../lib/gemini';
 import { download, eraseEverything, exportBackup, importBackup } from '../lib/backup';
 import { toast, toastError } from '../lib/events';
@@ -35,11 +35,14 @@ export function SettingsModal() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The capability belongs to the model, so a new model re-guesses it.
+  const chooseModel = (compatModel: string) => updateSettings({ compatModel, compatVision: looksMultimodal(compatModel) });
+
   const choosePreset = (id: string) => {
     const p = presetById(id);
     setCompatModels(null);
     setCompatKey('');
-    updateSettings({ compatPreset: id, compatBaseUrl: p.baseUrl, compatKey: '', compatModel: p.model });
+    updateSettings({ compatPreset: id, compatBaseUrl: p.baseUrl, compatKey: '', compatModel: p.model, compatVision: looksMultimodal(p.model) });
   };
 
   const verifyCompat = async () => {
@@ -48,7 +51,7 @@ export function SettingsModal() {
       const list = await listCompatModels({ baseUrl: s.compatBaseUrl, key: compatKey.trim() });
       setCompatModels(list);
       const model = pickModel(list, s.compatModel || preset.model);
-      updateSettings({ compatKey: compatKey.trim(), compatModel: model });
+      updateSettings({ compatKey: compatKey.trim(), compatModel: model, compatVision: looksMultimodal(model) });
       toast(`Connected ✓ — ${list.length} models, using ${model}`, 'success');
     } catch (e) {
       toastError(e);
@@ -86,8 +89,8 @@ export function SettingsModal() {
       <section className="set-section">
         <h3>Text engine</h3>
         <p className="muted">
-          Which model writes your chat answers, study documents, flashcards and lecture notes. Everything else — transcription, PDF and
-          handwriting reading, YouTube, websites, web research and Audio Overview voices — always runs on Gemini.
+          Which model writes your chat answers, study documents, flashcards and lecture notes — and, if it reads images, your handwriting too.
+          Audio transcription, PDFs, YouTube, websites, web research and Audio Overview voices always run on Gemini.
         </p>
         <Segmented
           value={s.textProvider}
@@ -156,7 +159,7 @@ export function SettingsModal() {
             <label className="field">
               <span>Model</span>
               {compatModels?.length ? (
-                <select className="input" value={s.compatModel} onChange={(e) => updateSettings({ compatModel: e.target.value })}>
+                <select className="input" value={s.compatModel} onChange={(e) => chooseModel(e.target.value)}>
                   {!compatModels.includes(s.compatModel) && s.compatModel && <option value={s.compatModel}>{s.compatModel}</option>}
                   {compatModels.map((m) => (
                     <option key={m} value={m}>
@@ -168,7 +171,7 @@ export function SettingsModal() {
                 <input
                   className="input mono"
                   value={s.compatModel}
-                  onChange={(e) => updateSettings({ compatModel: e.target.value })}
+                  onChange={(e) => chooseModel(e.target.value)}
                   placeholder={preset.model || 'model name'}
                   autoComplete="off"
                   spellCheck={false}
@@ -176,6 +179,14 @@ export function SettingsModal() {
               )}
             </label>
             <p className="muted small">Test the connection to load the provider’s real model list.</p>
+            <label className="check">
+              <input type="checkbox" checked={s.compatVision} onChange={(e) => updateSettings({ compatVision: e.target.checked })} />
+              This model can read images — use it to transcribe handwriting
+            </label>
+            <p className="muted small">
+              Ticked automatically when the model’s name suggests it, which is only a guess. If transcribing fails with an error about images, untick
+              it and Gemini takes over. Audio, PDFs and web research always stay on Gemini.
+            </p>
           </>
         )}
       </section>

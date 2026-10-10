@@ -9,6 +9,8 @@ export interface Settings {
   compatBaseUrl: string;
   compatKey: string;
   compatModel: string;
+  /** The compat model can read images (handwriting, PDFs rendered to pages). */
+  compatVision: boolean;
   textModel: string;
   proModel: string;
   ttsModel: string;
@@ -31,6 +33,7 @@ export const DEFAULT_SETTINGS: Settings = {
   compatBaseUrl: 'https://integrate.api.nvidia.com/v1',
   compatKey: '',
   compatModel: '',
+  compatVision: false,
   textModel: 'gemini-2.5-flash',
   proModel: 'gemini-2.5-pro',
   ttsModel: 'gemini-2.5-flash-preview-tts',

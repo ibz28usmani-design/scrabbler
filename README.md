@@ -2,7 +2,7 @@
 
 An AI notes app for iPad, iPhone and Mac that combines **Apple Notes** (folders, rich text, checklists, tables, Apple Pencil drawing), **NotebookLM** (sources, chat with citations, Studio outputs, Audio Overviews) and **Turbo.ai / Gizmo** (lecture recording → transcript → notes, flashcards, quizzes, spaced repetition, streaks, XP and lives).
 
-It is an installable web app (PWA): no Mac, no App Store, no server, no subscription. Everything is stored on your device. AI runs on **Google Gemini's free tier** using your own API key.
+It is an installable web app (PWA): no Mac, no App Store, no server, no subscription. Everything is stored on your device. AI runs on **Google Gemini's free tier** using your own API key, or on any OpenAI-compatible provider you point it at (NVIDIA NIM, OpenRouter, Groq, a local server).
 
 ## Features
 
@@ -35,6 +35,7 @@ Stack: React 19, TypeScript, Vite, TipTap, Dexie (IndexedDB), perfect-freehand, 
 
 ## Limits worth knowing
 
+- **Choosing a provider.** Gemini is the default and is required for audio transcription, PDFs, YouTube, websites and web research. Any OpenAI-compatible endpoint can write the prose instead, and if its model reads images (GLM-5.3-Flash, Qwen-VL, GPT-4o and the like) it can transcribe handwriting too — tick *This model can read images* in Settings. The browser calls the provider directly, so a provider that sends no CORS headers will not work from the app.
 - **Free-tier limits.** Gemini's free tier caps requests per minute and per day. Scrabbler retries automatically, and Google may use free-tier prompts to improve its products.
 - **No sync.** Notes stay on the device you made them on. Use **Settings → Export backup** regularly.
 - **Some Pencil gestures aren't available.** Safari doesn't expose the Pencil double-tap or squeeze to web apps; switch tools from the toolbar instead.

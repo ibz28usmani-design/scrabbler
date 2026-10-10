@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { db, type Note } from '../db';
 import { transcribeHandwriting, type TranscribeStyle } from '../lib/ai';
 import { renderInkPages } from '../lib/inkRender';
-import { hasGeminiKey } from '../lib/llm';
+import { canReadImages } from '../lib/llm';
 import { escapeHtml, mdToEditorHtml, mdToHtml } from '../lib/markdown';
 import { createNote } from '../lib/notes';
 import { openModal } from '../lib/nav';
@@ -111,9 +111,9 @@ export function TranscribeDialog({ note, onClose }: { note: Note; onClose: () =>
         ) : undefined
       }
     >
-      {!hasGeminiKey() ? (
+      {!canReadImages() ? (
         <div className="warn">
-          Reading handwriting needs a Gemini key (it is an image task).{' '}
+          Reading handwriting needs a model that can see images: add a Gemini key, or tick “This model can read images” for your text provider.{' '}
           <button className="link-btn" onClick={() => openModal({ type: 'settings' })}>
             Open Settings
           </button>

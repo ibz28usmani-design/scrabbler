@@ -1,7 +1,7 @@
 /** High-level AI features built on the Gemini client. */
 import { db, type CardType, type Citation, type ChatMessage, type MindNode, type PodcastLine, type StudioKind, type TranscriptSegment } from '../db';
 import { blobPart, S, tts, type Content } from './gemini';
-import { generate, generateJSON, stream } from './llm';
+import { generate, generateJSON, imagePart, stream } from './llm';
 import { citedNumbers, chunkText, sampleChunks, selectChunks } from './retrieval';
 import { getSettings } from './settings';
 import { parseClock } from './dates';
@@ -406,7 +406,7 @@ export async function runWritingTool(tool: WritingTool | 'custom', text: string,
 
 export async function handwritingToText(png: Blob): Promise<string> {
   return generate({
-    parts: [await blobPart(png, 'image/png', 'handwriting.png')],
+    parts: [await imagePart(png, 'image/png', 'handwriting.png')],
     prompt:
       'Transcribe the handwriting in this image into clean Markdown text, preserving structure (headings, bullets, numbered lists). Write math in plain text. Describe any diagrams briefly in [brackets]. Return only the transcription.',
     temperature: 0,
@@ -421,7 +421,7 @@ export type TranscribeStyle = 'formatted' | 'plain';
  * "plain" returns just the words in paragraphs.
  */
 export async function transcribeHandwriting(pages: Blob[], style: TranscribeStyle, paper: string, signal?: AbortSignal): Promise<string> {
-  const parts = await Promise.all(pages.map((p, i) => blobPart(p, 'image/png', `page-${i + 1}.png`)));
+  const parts = await Promise.all(pages.map((p, i) => imagePart(p, 'image/png', `page-${i + 1}.png`)));
   const cornell =
     paper === 'cornell'
       ? `\n- These are Cornell notes. Each page has a TOPIC/DATE header, a narrow left CUES column, a wide right NOTES column and a SUMMARY band at the bottom. For each page output "## Cues", "## Notes" and "## Summary" sections (omit any that are empty), and put the topic as a "# " heading when one is written.`

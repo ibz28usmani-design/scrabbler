@@ -155,10 +155,36 @@ async function call(path: string, init: RequestInit, overrides?: { baseUrl?: str
   throw new CompatError('Request failed.', 0);
 }
 
+/** A piece of a multimodal message. Images travel inline as data URLs. */
+export type ContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: string | ContentPart[];
 }
+
+/**
+ * Whether the chosen model is expected to read images. This can only ever be a
+ * guess — an OpenAI-compatible /models list says nothing about modalities — so
+ * it seeds a checkbox in Settings rather than deciding on the user's behalf.
+ */
+export function looksMultimodal(model: string): boolean {
+  const m = model.toLowerCase();
+  if (/\b(embed|embedding|tts|whisper|rerank|guard)\b/.test(m)) return false;
+  return /v(l|ision)|multimodal|glm-[5-9]|gpt-4o|gpt-5|gemma-3|llava|pixtral|internvl|molmo|idefics|janus|kosmos/.test(m);
+}
+
+/** True when the user has confirmed the compat model can read images. */
+export function supportsVision(): boolean {
+  return hasCompatConfig() && getSettings().compatVision;
+}
+
+/**
+ * Images ride inside the JSON body as base64, so a few pages add up fast and a
+ * provider that rejects an oversized body usually does it with an opaque error.
+ * Refuse early with something the user can act on instead.
+ */
+const MAX_BODY = 20 * 1024 * 1024;
 
 export interface ChatOptions {
   messages: ChatMessage[];
@@ -171,13 +197,17 @@ export interface ChatOptions {
 function body(o: ChatOptions, stream: boolean) {
   const model = o.model || getSettings().compatModel;
   if (!model) throw new CompatError('Pick a model in Settings.', 400);
-  return JSON.stringify({
+  const json = JSON.stringify({
     model,
     messages: o.messages,
     ...(o.temperature !== undefined ? { temperature: o.temperature } : {}),
     max_tokens: o.maxTokens ?? 4096,
     ...(stream ? { stream: true } : {}),
   });
+  if (json.length > MAX_BODY) {
+    throw new CompatError(`That is too much for one request (${Math.round(json.length / 1048576)} MB of images). Transcribe fewer pages at a time, or switch the text engine to Gemini.`, 413);
+  }
+  return json;
 }
 
 /** Some models emit chain-of-thought in a separate field or in <think> tags. */
