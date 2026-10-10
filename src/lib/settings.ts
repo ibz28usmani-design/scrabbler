@@ -20,8 +20,12 @@ export interface Settings {
   voiceB: string;
   theme: 'system' | 'light' | 'dark';
   fingerDrawing: boolean;
-  /** The handwriting tool palette is expanded (false = collapsed to a pill). */
+  /** The handwriting tool palette is expanded (false = collapsed to a circle). */
   inkToolbarOpen: boolean;
+  /** Which edge of the page the palette is docked to. */
+  inkToolbarEdge: 'top' | 'bottom' | 'left' | 'right';
+  /** Where along that edge it sits, 0–1. */
+  inkToolbarOffset: number;
   dailyGoal: number;
   newPerDay: number;
   liveCaptions: boolean;
@@ -46,6 +50,8 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   fingerDrawing: false,
   inkToolbarOpen: true,
+  inkToolbarEdge: 'bottom',
+  inkToolbarOffset: 0.5,
   dailyGoal: 20,
   newPerDay: 20,
   liveCaptions: true,

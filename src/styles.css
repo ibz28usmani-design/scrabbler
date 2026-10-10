@@ -3361,41 +3361,132 @@ select.input {
 
 .ink-dock.floating {
   position: absolute;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
   z-index: 6;
   margin: 0;
-  max-width: calc(100% - 20px);
   display: flex;
   flex-direction: column;
   align-items: center;
+  max-width: calc(100% - 24px);
+  max-height: calc(100% - 24px);
+  /* The palette is dragged, so a touch on it must never scroll the page. */
+  touch-action: none;
+  transition:
+    left 0.3s var(--spring),
+    top 0.3s var(--spring),
+    right 0.3s var(--spring),
+    bottom 0.3s var(--spring);
+}
+.ink-dock.floating.dragging {
+  transition: none;
+  cursor: grabbing;
+}
+/* A nudge that letting go here will tuck it into the circle. */
+.ink-dock.floating.will-tuck .ink-toolbar,
+.ink-dock.floating.will-tuck .ink-mini {
+  transform: scale(0.8);
+  opacity: 0.6;
 }
 .ink-dock.floating .ink-toolbar {
+  position: relative;
   max-width: 100%;
   flex-wrap: nowrap;
   overflow-x: auto;
   scrollbar-width: none;
   border-radius: 18px;
   gap: 6px;
-  padding: 5px 8px;
+  padding: 13px 8px 6px;
+  cursor: grab;
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease;
 }
 .ink-dock.floating .ink-toolbar::-webkit-scrollbar {
   display: none;
 }
+.ink-grab {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 30px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line-2);
+  pointer-events: none;
+}
+
+/* Down the sides the palette becomes a column, so it never covers the line
+   you are writing on. */
+.ink-dock.floating[data-edge='left'] .ink-toolbar,
+.ink-dock.floating[data-edge='right'] .ink-toolbar {
+  flex-direction: column;
+  overflow-x: visible;
+  overflow-y: auto;
+  max-height: 100%;
+  padding: 13px 6px 8px;
+}
+.ink-dock.floating[data-edge='left'] .ink-tools,
+.ink-dock.floating[data-edge='right'] .ink-tools,
+.ink-dock.floating[data-edge='left'] .ink-actions,
+.ink-dock.floating[data-edge='right'] .ink-actions {
+  flex-direction: column;
+}
+.ink-dock.floating[data-edge='left'] .ink-sep,
+.ink-dock.floating[data-edge='right'] .ink-sep {
+  width: 24px;
+  height: 1px;
+}
+.ink-dock.floating[data-edge='left'] .ink-chip,
+.ink-dock.floating[data-edge='right'] .ink-chip {
+  flex-direction: column;
+  gap: 0;
+  height: auto;
+  padding: 3px 4px;
+}
+
+/* The options sheet opens away from whichever edge the palette is on. */
+.ink-dock.floating[data-edge='bottom'] .ink-options {
+  order: -1;
+  margin: 0 0 8px;
+}
+.ink-dock.floating[data-edge='left'] .ink-options,
+.ink-dock.floating[data-edge='right'] .ink-options {
+  position: absolute;
+  top: 0;
+  margin: 0;
+}
+.ink-dock.floating[data-edge='left'] .ink-options {
+  left: calc(100% + 8px);
+}
+.ink-dock.floating[data-edge='right'] .ink-options {
+  right: calc(100% + 8px);
+}
+
+/* Tucked away: a circle showing the tool in hand, draggable like the palette. */
+.ink-mini {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  position: relative;
+  color: var(--text);
+  cursor: grab;
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease;
+}
+.ink-mini:active {
+  transform: scale(0.94);
+}
+.ink-mini .tool-ink {
+  bottom: 11px;
+  width: 17px;
+}
+
 .ink-toolbar .ink-tool.on {
   background: var(--accent-fill);
   color: var(--on-accent);
-}
-
-/* Collapsed: a pill holding the current tool and undo, nothing more. */
-.ink-dock.collapsed .ink-toolbar {
-  gap: 2px;
-  padding: 4px 6px;
-}
-.ink-dock.collapsed .ink-tool.on {
-  background: transparent;
-  color: var(--text);
 }
 
 /* A dot of the current ink colour under the active tool. */
@@ -3816,4 +3907,16 @@ select.input {
   .back-label {
     display: none;
   }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }

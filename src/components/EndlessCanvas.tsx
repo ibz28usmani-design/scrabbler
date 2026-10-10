@@ -473,7 +473,7 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
   return (
     <div className={`endless ${dark ? 'dark' : ''}`}>
       <InkToolbar
-        className="floating"
+        floating
         onUndo={doUndo}
         onRedo={doRedo}
         canUndo={undo.current.length > 0}
