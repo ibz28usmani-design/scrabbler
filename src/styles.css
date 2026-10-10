@@ -3372,8 +3372,13 @@ select.input {
   align-items: center;
   max-width: calc(100% - 24px);
   max-height: calc(100% - 24px);
-  /* The palette is dragged, so a touch on it must never scroll the page. */
+  /* The palette is dragged, so a touch on it must never scroll the page, and
+     the browser must not start a text or image drag of its own — that cancels
+     the pointer stream and leaves the drag abandoned mid-air. */
   touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
   /* Only transform animates: the resting places below are plain layout, and
      transitioning layout would relayout the page on every frame. */
   transition: transform 0.34s cubic-bezier(0.22, 1, 0.3, 1);
@@ -3409,25 +3414,41 @@ select.input {
   right: 12px;
 }
 .ink-dock.floating.collapsed {
-  inset: auto;
-  margin: 0;
   width: auto;
   height: auto;
 }
-.ink-dock.floating.collapsed[data-corner='tl'],
-.ink-dock.floating.collapsed[data-corner='tr'] {
+/* The circle rests wherever it is put down — the middle of a side as happily
+   as a corner — so it has all eight places, not just the four corners. */
+.ink-dock.floating.collapsed[data-spot='top'],
+.ink-dock.floating.collapsed[data-spot='bottom'] {
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+}
+.ink-dock.floating.collapsed[data-spot='left'],
+.ink-dock.floating.collapsed[data-spot='right'] {
+  top: 0;
+  bottom: 0;
+  margin: auto 0;
+}
+.ink-dock.floating.collapsed[data-spot='top'],
+.ink-dock.floating.collapsed[data-spot='tl'],
+.ink-dock.floating.collapsed[data-spot='tr'] {
   top: 12px;
 }
-.ink-dock.floating.collapsed[data-corner='bl'],
-.ink-dock.floating.collapsed[data-corner='br'] {
+.ink-dock.floating.collapsed[data-spot='bottom'],
+.ink-dock.floating.collapsed[data-spot='bl'],
+.ink-dock.floating.collapsed[data-spot='br'] {
   bottom: 12px;
 }
-.ink-dock.floating.collapsed[data-corner='tl'],
-.ink-dock.floating.collapsed[data-corner='bl'] {
+.ink-dock.floating.collapsed[data-spot='left'],
+.ink-dock.floating.collapsed[data-spot='tl'],
+.ink-dock.floating.collapsed[data-spot='bl'] {
   left: 12px;
 }
-.ink-dock.floating.collapsed[data-corner='tr'],
-.ink-dock.floating.collapsed[data-corner='br'] {
+.ink-dock.floating.collapsed[data-spot='right'],
+.ink-dock.floating.collapsed[data-spot='tr'],
+.ink-dock.floating.collapsed[data-spot='br'] {
   right: 12px;
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { displayColor, HIGHLIGHTS, INK_PALETTE, setTool, setToolColor, setToolSize, useTool, type Tool } from '../lib/ink';
 import { updateSettings, useSettings, type Settings } from '../lib/settings';
@@ -6,7 +6,8 @@ import { useDark } from '../lib/theme';
 import { IChevD, IEraser, IHighlighter, ILasso, IMarker, IPencil, IRedo, ITrash, IUndo } from './Icons';
 
 type Edge = Settings['inkToolbarEdge'];
-type Corner = Settings['inkToolbarCorner'];
+type Spot = Settings['inkToolbarSpot'];
+type Corner = Extract<Spot, 'tl' | 'tr' | 'bl' | 'br'>;
 
 const TOOLS: [Tool, ReactNode, string][] = [
   ['pen', <IPencil key="p" />, 'Pen'],
@@ -73,7 +74,7 @@ export function InkToolbar({
   children?: ReactNode;
 }) {
   const tool = useTool();
-  const { fingerDrawing, inkToolbarOpen: open, inkToolbarEdge: edge, inkToolbarCorner: corner } = useSettings();
+  const { fingerDrawing, inkToolbarOpen: open, inkToolbarEdge: edge, inkToolbarSpot: spot } = useSettings();
   const dark = useDark();
   const [options, setOptions] = useState(false);
   const dock = useRef<HTMLDivElement>(null);
@@ -83,6 +84,9 @@ export function InkToolbar({
    * lag behind the Pencil; a move is now one compositor-only transform write.
    */
   const drag = useRef<{ id: number; sx: number; sy: number; moved: boolean } | null>(null);
+  /** Tears down the window listeners for the drag in flight, if any. */
+  const stopDrag = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopDrag.current?.(), []);
   const palette = tool.ink === 'marker' ? HIGHLIGHTS : INK_PALETTE;
   const swatch = displayColor(tool.color, dark);
   const vertical = floating && open && (edge === 'left' || edge === 'right');
@@ -118,71 +122,102 @@ export function InkToolbar({
     if (!el) return;
     drag.current = { id: e.pointerId, sx: e.clientX, sy: e.clientY, moved: false };
     el.classList.add('dragging');
-    // No preventDefault here: on touch that also cancels the click that follows,
-    // so a tap on the circle would never reopen the palette. Scrolling is held
-    // off by touch-action: none on the dock instead.
-    try {
-      el.setPointerCapture(e.pointerId);
-    } catch {
-      /* synthetic events have no capture */
-    }
+
+    const onMove = (ev: PointerEvent) => {
+      const d = drag.current;
+      if (!d || ev.pointerId !== d.id) return;
+      const dx = ev.clientX - d.sx;
+      const dy = ev.clientY - d.sy;
+      if (!d.moved && Math.abs(dx) + Math.abs(dy) > 5) d.moved = true;
+      el.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+      const box = el.offsetParent?.getBoundingClientRect();
+      if (box) el.classList.toggle('will-tuck', open && placeAt(ev.clientX - box.left, ev.clientY - box.top, box.width, box.height).inCorner);
+    };
+
+    const onUp = (ev: PointerEvent) => {
+      const d = drag.current;
+      if (!d || ev.pointerId !== d.id) return;
+      stop();
+      drag.current = null;
+      el.classList.remove('dragging', 'will-tuck');
+
+      // A tap, not a drag.
+      if (!d.moved) {
+        el.style.transform = '';
+        if (!open) setOpen(true);
+        return;
+      }
+      const box = el.offsetParent?.getBoundingClientRect();
+      if (!box) {
+        el.style.transform = '';
+        return;
+      }
+      const p = placeAt(ev.clientX - box.left, ev.clientY - box.top, box.width, box.height);
+      // FLIP: note where it is, let the new resting place apply synchronously,
+      // then animate the difference away on the compositor. Cheaper than
+      // transitioning layout, which would relayout the page every frame.
+      const first = el.getBoundingClientRect();
+      el.style.transform = '';
+      flushSync(() =>
+        updateSettings(
+          open
+            ? p.inCorner
+              ? { inkToolbarOpen: false, inkToolbarSpot: p.corner }
+              : { inkToolbarEdge: p.edge }
+            : // Tucked away it rests wherever it is put down: the middle of a
+              // side just as happily as a corner.
+              { inkToolbarSpot: p.inCorner ? p.corner : p.edge },
+        ),
+      );
+      const last = el.getBoundingClientRect();
+      const dx = first.left - last.left;
+      const dy = first.top - last.top;
+      if (dx || dy) {
+        el.style.transition = 'none';
+        el.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+        void el.offsetWidth; // commit the jump before animating it away
+        el.style.transition = '';
+        el.style.transform = '';
+      }
+    };
+
+    // Listen on the window rather than capturing the pointer. Capture retargets
+    // every event to the dock, which cost us the circle's own click and, on
+    // WebKit, made the drag lag the Pencil.
+    /**
+     * A cancelled pointer is an abandoned drag, not a drop. It carries no
+     * useful coordinates — Chromium reports (0, 0) — so treating it as a
+     * release flung the palette into the top-left corner and tucked it away.
+     * Put it back where it was and commit nothing.
+     */
+    const onCancel = (ev: PointerEvent) => {
+      const d = drag.current;
+      if (!d || ev.pointerId !== d.id) return;
+      stop();
+      drag.current = null;
+      el.classList.remove('dragging', 'will-tuck');
+      el.style.transform = '';
+    };
+
+    const stop = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      stopDrag.current = null;
+    };
+    stopDrag.current = stop;
+    window.addEventListener('pointermove', onMove, { passive: true });
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
     if (options) setOptions(false);
   };
 
-  const moveDrag = (e: ReactPointerEvent) => {
-    const d = drag.current;
-    const el = dock.current;
-    if (!d || !el || e.pointerId !== d.id) return;
-    const dx = e.clientX - d.sx;
-    const dy = e.clientY - d.sy;
-    if (!d.moved && Math.abs(dx) + Math.abs(dy) > 5) d.moved = true;
-    el.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
-    const box = el.offsetParent?.getBoundingClientRect();
-    if (box) el.classList.toggle('will-tuck', open && placeAt(e.clientX - box.left, e.clientY - box.top, box.width, box.height).inCorner);
-  };
-
-  const endDrag = (e: ReactPointerEvent) => {
-    const d = drag.current;
-    const el = dock.current;
-    if (!d || !el || e.pointerId !== d.id) return;
-    drag.current = null;
-    el.classList.remove('dragging', 'will-tuck');
-
-    // A tap, not a drag. Pointer capture retargets the event to the dock, so the
-    // circle never gets a click of its own; recognise the tap here instead.
-    if (!d.moved) {
-      el.style.transform = '';
-      if (!open) setOpen(true);
-      return;
-    }
-    const box = el.offsetParent?.getBoundingClientRect();
-    if (!box) {
-      el.style.transform = '';
-      return;
-    }
-    const p = placeAt(e.clientX - box.left, e.clientY - box.top, box.width, box.height);
-    // FLIP: note where it is, let the new resting place apply synchronously,
-    // then animate the difference away. Smoother than transitioning the layout,
-    // which would relayout the page on every frame of the settle.
-    const first = el.getBoundingClientRect();
-    el.style.transform = '';
-    flushSync(() => updateSettings(open && !p.inCorner ? { inkToolbarEdge: p.edge } : { inkToolbarOpen: false, inkToolbarCorner: p.corner }));
-    const last = el.getBoundingClientRect();
-    const dx = first.left - last.left;
-    const dy = first.top - last.top;
-    if (dx || dy) {
-      el.style.transition = 'none';
-      el.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
-      void el.offsetWidth; // commit the jump before animating it away
-      el.style.transition = '';
-      el.style.transform = '';
-    }
-  };
-
-  const dragProps = floating ? { onPointerDown: startDrag, onPointerMove: moveDrag, onPointerUp: endDrag, onPointerCancel: endDrag } : {};
+  // Without this the browser starts its own text/image drag part-way through,
+  // which cancels the pointer stream and abandons the drag mid-flight.
+  const dragProps = floating ? { onPointerDown: startDrag, onDragStart: (e: ReactDragEvent) => e.preventDefault(), draggable: false } : {};
   const cls = ['ink-dock', floating && 'floating', !open && 'collapsed', className].filter(Boolean).join(' ');
   // Resting places live in CSS, so the inline transform belongs to the drag alone.
-  const place = { 'data-edge': edge, 'data-corner': corner };
+  const place = { 'data-edge': edge, 'data-spot': spot };
 
   if (!open) {
     return (

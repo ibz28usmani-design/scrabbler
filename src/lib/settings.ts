@@ -24,8 +24,8 @@ export interface Settings {
   inkToolbarOpen: boolean;
   /** Which edge of the page the open palette is docked to; it centres there. */
   inkToolbarEdge: 'top' | 'bottom' | 'left' | 'right';
-  /** Which corner the tucked-away circle sits in. */
-  inkToolbarCorner: 'tl' | 'tr' | 'bl' | 'br';
+  /** Where the tucked-away circle rests: the middle of a side, or a corner. */
+  inkToolbarSpot: 'top' | 'bottom' | 'left' | 'right' | 'tl' | 'tr' | 'bl' | 'br';
   dailyGoal: number;
   newPerDay: number;
   liveCaptions: boolean;
@@ -51,7 +51,7 @@ export const DEFAULT_SETTINGS: Settings = {
   fingerDrawing: false,
   inkToolbarOpen: true,
   inkToolbarEdge: 'bottom',
-  inkToolbarCorner: 'tr',
+  inkToolbarSpot: 'right',
   dailyGoal: 20,
   newPerDay: 20,
   liveCaptions: true,
