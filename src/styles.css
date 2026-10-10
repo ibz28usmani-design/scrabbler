@@ -3363,6 +3363,10 @@ select.input {
   position: absolute;
   z-index: 6;
   margin: 0;
+  /* The docked-sketch rule pins top: 0. Left in place, a top AND a bottom
+     stretch an absolutely positioned box between them, which turned the dock
+     into a full-height invisible sheet over the page that swallowed the Pencil. */
+  inset: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3370,19 +3374,84 @@ select.input {
   max-height: calc(100% - 24px);
   /* The palette is dragged, so a touch on it must never scroll the page. */
   touch-action: none;
-  transition:
-    left 0.3s var(--spring),
-    top 0.3s var(--spring),
-    right 0.3s var(--spring),
-    bottom 0.3s var(--spring);
+  /* Only transform animates: the resting places below are plain layout, and
+     transitioning layout would relayout the page on every frame. */
+  transition: transform 0.34s cubic-bezier(0.22, 1, 0.3, 1);
 }
+
+/* Eight resting places, so it never has to be aimed: the middle of each edge
+   when open, and the corners when tucked away. `inset: 0` on the cross axis
+   with `margin: auto` is what centres it, leaving transform free for the drag. */
+.ink-dock.floating[data-edge='top'],
+.ink-dock.floating[data-edge='bottom'] {
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: fit-content;
+}
+.ink-dock.floating[data-edge='top'] {
+  top: 12px;
+}
+.ink-dock.floating[data-edge='bottom'] {
+  bottom: 12px;
+}
+.ink-dock.floating[data-edge='left'],
+.ink-dock.floating[data-edge='right'] {
+  top: 0;
+  bottom: 0;
+  margin: auto 0;
+  height: fit-content;
+}
+.ink-dock.floating[data-edge='left'] {
+  left: 12px;
+}
+.ink-dock.floating[data-edge='right'] {
+  right: 12px;
+}
+.ink-dock.floating.collapsed {
+  inset: auto;
+  margin: 0;
+  width: auto;
+  height: auto;
+}
+.ink-dock.floating.collapsed[data-corner='tl'],
+.ink-dock.floating.collapsed[data-corner='tr'] {
+  top: 12px;
+}
+.ink-dock.floating.collapsed[data-corner='bl'],
+.ink-dock.floating.collapsed[data-corner='br'] {
+  bottom: 12px;
+}
+.ink-dock.floating.collapsed[data-corner='tl'],
+.ink-dock.floating.collapsed[data-corner='bl'] {
+  left: 12px;
+}
+.ink-dock.floating.collapsed[data-corner='tr'],
+.ink-dock.floating.collapsed[data-corner='br'] {
+  right: 12px;
+}
+
+/*
+  While dragging: no transition fighting the pointer, and — the thing that
+  actually made this lag on an iPad — no backdrop blur. Safari recomputes a
+  backdrop-filter against everything behind it on every frame the element
+  moves, which a scrolling page of ink makes expensive. A solid panel for the
+  duration of the drag costs nothing and the blur returns on release.
+*/
 .ink-dock.floating.dragging {
   transition: none;
   cursor: grabbing;
+  will-change: transform;
+}
+.ink-dock.floating.dragging .ink-toolbar,
+.ink-dock.floating.dragging .ink-mini {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: var(--raised);
+  box-shadow: 0 16px 36px rgba(26, 24, 20, 0.22);
 }
 /* A nudge that letting go here will tuck it into the circle. */
-.ink-dock.floating.will-tuck .ink-toolbar,
-.ink-dock.floating.will-tuck .ink-mini {
+.ink-dock.floating.will-tuck .ink-toolbar {
   transform: scale(0.8);
   opacity: 0.6;
 }

@@ -22,10 +22,10 @@ export interface Settings {
   fingerDrawing: boolean;
   /** The handwriting tool palette is expanded (false = collapsed to a circle). */
   inkToolbarOpen: boolean;
-  /** Which edge of the page the palette is docked to. */
+  /** Which edge of the page the open palette is docked to; it centres there. */
   inkToolbarEdge: 'top' | 'bottom' | 'left' | 'right';
-  /** Where along that edge it sits, 0–1. */
-  inkToolbarOffset: number;
+  /** Which corner the tucked-away circle sits in. */
+  inkToolbarCorner: 'tl' | 'tr' | 'bl' | 'br';
   dailyGoal: number;
   newPerDay: number;
   liveCaptions: boolean;
@@ -51,7 +51,7 @@ export const DEFAULT_SETTINGS: Settings = {
   fingerDrawing: false,
   inkToolbarOpen: true,
   inkToolbarEdge: 'bottom',
-  inkToolbarOffset: 0.5,
+  inkToolbarCorner: 'tr',
   dailyGoal: 20,
   newPerDay: 20,
   liveCaptions: true,

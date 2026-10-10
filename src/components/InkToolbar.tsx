@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
 import { displayColor, HIGHLIGHTS, INK_PALETTE, setTool, setToolColor, setToolSize, useTool, type Tool } from '../lib/ink';
 import { updateSettings, useSettings, type Settings } from '../lib/settings';
 import { useDark } from '../lib/theme';
 import { IChevD, IEraser, IHighlighter, ILasso, IMarker, IPencil, IRedo, ITrash, IUndo } from './Icons';
 
 type Edge = Settings['inkToolbarEdge'];
+type Corner = Settings['inkToolbarCorner'];
 
 const TOOLS: [Tool, ReactNode, string][] = [
   ['pen', <IPencil key="p" />, 'Pen'],
@@ -22,30 +24,30 @@ const SIZES: Record<'pen' | 'pencil' | 'marker', number[]> = {
 
 const iconFor = (t: Tool) => TOOLS.find(([k]) => k === t)![1];
 const labelFor = (t: Tool) => TOOLS.find(([k]) => k === t)![2];
-const MARGIN = 12;
-/** Drop it this close to a corner and it tucks away, as PencilKit does. */
-const CORNER = 96;
 
-/** Which edge a point is nearest, and whether it is cornered. */
-function placeAt(x: number, y: number, w: number, h: number): { edge: Edge; offset: number; corner: boolean } {
+/** Let go this near a corner and the palette tucks into the circle. */
+const CORNER = 120;
+
+/** Where a release lands: an edge to centre on, a corner, and whether it tucked. */
+function placeAt(x: number, y: number, w: number, h: number): { edge: Edge; corner: Corner; inCorner: boolean } {
   const d = { left: x, right: w - x, top: y, bottom: h - y };
   const edge = (Object.keys(d) as Edge[]).reduce((a, b) => (d[a] <= d[b] ? a : b));
-  const vertical = edge === 'left' || edge === 'right';
-  const offset = Math.min(1, Math.max(0, vertical ? y / Math.max(1, h) : x / Math.max(1, w)));
-  const corner = (x < CORNER || x > w - CORNER) && (y < CORNER || y > h - CORNER);
-  return { edge, offset, corner };
+  const corner = `${y < h / 2 ? 't' : 'b'}${x < w / 2 ? 'l' : 'r'}` as Corner;
+  const inCorner = (x < CORNER || x > w - CORNER) && (y < CORNER || y > h - CORNER);
+  return { edge, corner, inCorner };
 }
 
 /**
  * PencilKit-style tool palette, shared by handwritten notes and inline sketches.
  *
- * On a handwriting page it floats and behaves like Apple's: drag it to any of
- * the four edges and it snaps there, turning into a column down the left or
- * right so it never sits in front of the line you are writing; drop it in a
- * corner, or tap the chevron, and it tucks into a circle showing the current
- * tool. Where it sits is remembered.
+ * On a handwriting page it floats and behaves like Apple's: drag it and it
+ * settles in the middle of whichever edge you let go nearest, becoming a column
+ * down the left or right so it is never in front of the line you are writing.
+ * Let go near a corner, or tap the chevron, and it tucks into a circle showing
+ * the tool in hand. There are only eight resting places — four edge centres and
+ * four corners — so it never has to be aimed.
  *
- * Only the controls you reach for mid-stroke live on the bar — the five tools,
+ * Only the controls you reach for mid-stroke live on the bar: the five tools,
  * the current colour, undo and redo. Colours, widths and the finger switch are
  * behind the colour chip, or by tapping the tool you are already using, because
  * a single row holding all of them is wider than an iPad.
@@ -71,18 +73,19 @@ export function InkToolbar({
   children?: ReactNode;
 }) {
   const tool = useTool();
-  const { fingerDrawing, inkToolbarOpen: open, inkToolbarEdge: edge, inkToolbarOffset: offset } = useSettings();
+  const { fingerDrawing, inkToolbarOpen: open, inkToolbarEdge: edge, inkToolbarCorner: corner } = useSettings();
   const dark = useDark();
   const [options, setOptions] = useState(false);
-  const [drag, setDrag] = useState<{ x: number; y: number; dx: number; dy: number; corner: boolean } | null>(null);
   const dock = useRef<HTMLDivElement>(null);
-  /** When a drag last travelled far enough to be a move rather than a tap. A
-      timestamp, not a flag: the click that ends a drag does not always fire,
-      and a flag left set would swallow the next genuine tap. */
-  const movedAt = useRef(0);
+  /**
+   * The drag runs entirely outside React. A pointermove that re-rendered five
+   * tool buttons, seven swatches and a blurred glass panel is what made this
+   * lag behind the Pencil; a move is now one compositor-only transform write.
+   */
+  const drag = useRef<{ id: number; sx: number; sy: number; moved: boolean } | null>(null);
   const palette = tool.ink === 'marker' ? HIGHLIGHTS : INK_PALETTE;
   const swatch = displayColor(tool.color, dark);
-  const vertical = floating && (edge === 'left' || edge === 'right');
+  const vertical = floating && open && (edge === 'left' || edge === 'right');
 
   // The popover is a menu: a tap outside or Escape puts it away.
   useEffect(() => {
@@ -107,86 +110,84 @@ export function InkToolbar({
   // ---------------------------------------------------------------- dragging
 
   const startDrag = (e: ReactPointerEvent) => {
-    if (!floating) return;
-    // Let the controls be controls; drag from the palette's own body.
-    // When open, the controls are controls and you drag from the palette body.
-    // Tucked away there is only the circle, so the whole thing drags.
+    if (!floating || drag.current) return;
+    // While open the controls are controls, so you drag from the palette's own
+    // body. Tucked away there is only the circle, so all of it drags.
     if (open && (e.target as HTMLElement).closest('button, input, label, select')) return;
     const el = dock.current;
-    const box = el?.offsetParent?.getBoundingClientRect();
-    if (!el || !box) return;
-    const r = el.getBoundingClientRect();
-    setOptions(false);
+    if (!el) return;
+    drag.current = { id: e.pointerId, sx: e.clientX, sy: e.clientY, moved: false };
+    el.classList.add('dragging');
     // No preventDefault here: on touch that also cancels the click that follows,
-    // so a tap on the tucked circle would never reopen the palette. Scrolling is
-    // already held off by touch-action: none on the dock.
+    // so a tap on the circle would never reopen the palette. Scrolling is held
+    // off by touch-action: none on the dock instead.
     try {
       el.setPointerCapture(e.pointerId);
     } catch {
       /* synthetic events have no capture */
     }
-    setDrag({ x: e.clientX - box.left, y: e.clientY - box.top, dx: e.clientX - r.left, dy: e.clientY - r.top, corner: false });
+    if (options) setOptions(false);
   };
 
   const moveDrag = (e: ReactPointerEvent) => {
-    if (!drag) return;
-    const box = dock.current?.offsetParent?.getBoundingClientRect();
-    if (!box) return;
-    const x = e.clientX - box.left;
-    const y = e.clientY - box.top;
-    if (Math.abs(x - drag.x) > 5 || Math.abs(y - drag.y) > 5) movedAt.current = Date.now();
-    setDrag({ ...drag, x, y, corner: placeAt(x, y, box.width, box.height).corner });
+    const d = drag.current;
+    const el = dock.current;
+    if (!d || !el || e.pointerId !== d.id) return;
+    const dx = e.clientX - d.sx;
+    const dy = e.clientY - d.sy;
+    if (!d.moved && Math.abs(dx) + Math.abs(dy) > 5) d.moved = true;
+    el.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+    const box = el.offsetParent?.getBoundingClientRect();
+    if (box) el.classList.toggle('will-tuck', open && placeAt(e.clientX - box.left, e.clientY - box.top, box.width, box.height).inCorner);
   };
 
   const endDrag = (e: ReactPointerEvent) => {
-    if (!drag) return;
-    const box = dock.current?.offsetParent?.getBoundingClientRect();
-    const tapped = Date.now() - movedAt.current > 250;
-    setDrag(null);
-    // Pointer capture retargets the event to the dock, so a tap on the tucked
-    // circle never produces a click of its own. Recognise it here instead.
-    if (tapped && !open) {
-      setOpen(true);
+    const d = drag.current;
+    const el = dock.current;
+    if (!d || !el || e.pointerId !== d.id) return;
+    drag.current = null;
+    el.classList.remove('dragging', 'will-tuck');
+
+    // A tap, not a drag. Pointer capture retargets the event to the dock, so the
+    // circle never gets a click of its own; recognise the tap here instead.
+    if (!d.moved) {
+      el.style.transform = '';
+      if (!open) setOpen(true);
       return;
     }
-    if (!box) return;
+    const box = el.offsetParent?.getBoundingClientRect();
+    if (!box) {
+      el.style.transform = '';
+      return;
+    }
     const p = placeAt(e.clientX - box.left, e.clientY - box.top, box.width, box.height);
-    // Keep it wholly on the page: it is centred on its offset, so the offset
-    // cannot come closer to either end than half the palette.
-    const r = dock.current!.getBoundingClientRect();
-    const vert = p.edge === 'left' || p.edge === 'right';
-    const half = (vert ? r.height / box.height : r.width / box.width) / 2;
-    const offset = Math.min(1 - half, Math.max(half, p.offset));
-    updateSettings({ inkToolbarEdge: p.edge, inkToolbarOffset: offset, ...(p.corner ? { inkToolbarOpen: false } : {}) });
+    // FLIP: note where it is, let the new resting place apply synchronously,
+    // then animate the difference away. Smoother than transitioning the layout,
+    // which would relayout the page on every frame of the settle.
+    const first = el.getBoundingClientRect();
+    el.style.transform = '';
+    flushSync(() => updateSettings(open && !p.inCorner ? { inkToolbarEdge: p.edge } : { inkToolbarOpen: false, inkToolbarCorner: p.corner }));
+    const last = el.getBoundingClientRect();
+    const dx = first.left - last.left;
+    const dy = first.top - last.top;
+    if (dx || dy) {
+      el.style.transition = 'none';
+      el.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+      void el.offsetWidth; // commit the jump before animating it away
+      el.style.transition = '';
+      el.style.transform = '';
+    }
   };
 
-  /**
-   * Snapped to its edge, or following the pointer mid-drag. Every offset is
-   * written, including the unused ones: the docked-sketch rule pins top: 0, and
-   * a stray top beats a bottom on an absolutely positioned box.
-   */
-  const loose: CSSProperties = { left: 'auto', right: 'auto', top: 'auto', bottom: 'auto', transform: 'none' };
-  const style: CSSProperties | undefined = !floating
-    ? undefined
-    : drag
-      ? { ...loose, left: drag.x - drag.dx, top: drag.y - drag.dy }
-      : edge === 'top' || edge === 'bottom'
-        ? { ...loose, left: `${offset * 100}%`, [edge]: MARGIN, transform: 'translateX(-50%)' }
-        : { ...loose, top: `${offset * 100}%`, [edge]: MARGIN, transform: 'translateY(-50%)' };
-
   const dragProps = floating ? { onPointerDown: startDrag, onPointerMove: moveDrag, onPointerUp: endDrag, onPointerCancel: endDrag } : {};
-  const cls = ['ink-dock', floating && 'floating', !open && 'collapsed', drag && 'dragging', drag?.corner && 'will-tuck', className].filter(Boolean).join(' ');
+  const cls = ['ink-dock', floating && 'floating', !open && 'collapsed', className].filter(Boolean).join(' ');
+  // Resting places live in CSS, so the inline transform belongs to the drag alone.
+  const place = { 'data-edge': edge, 'data-corner': corner };
 
   if (!open) {
     return (
-      <div className={cls} data-edge={edge} style={style} ref={dock} {...dragProps}>
-        <button
-          className="ink-mini glass"
-          // A drag that ends on the circle must not also re-open it.
-          onClick={() => Date.now() - movedAt.current > 250 && setOpen(true)}
-          aria-label={`${labelFor(tool.tool)} — show drawing tools`}
-          title="Show drawing tools (drag to move)"
-        >
+      <div className={cls} {...place} ref={dock} {...dragProps}>
+        <button className="ink-mini glass" aria-label={`${labelFor(tool.tool)} — show drawing tools`} title="Show drawing tools (drag to move)">
           {iconFor(tool.tool)}
           {tool.tool !== 'eraser' && tool.tool !== 'lasso' && <span className="tool-ink" style={{ ['--sw' as string]: swatch }} />}
         </button>
@@ -195,7 +196,7 @@ export function InkToolbar({
   }
 
   return (
-    <div className={cls} data-edge={edge} style={style} ref={dock} {...dragProps}>
+    <div className={cls} {...place} ref={dock} {...dragProps}>
       <div className="ink-toolbar glass" role="toolbar" aria-label="Drawing tools">
         {floating && <span className="ink-grab" aria-hidden="true" />}
         <div className="ink-tools">
@@ -289,7 +290,10 @@ export function InkToolbar({
           </label>
         </div>
       )}
-      {vertical && <span className="sr-only">Palette docked to the {edge}</span>}
+      <span className="sr-only">
+        Palette docked to the {edge}
+        {vertical ? ' as a column' : ''}
+      </span>
     </div>
   );
 }
