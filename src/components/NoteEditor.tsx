@@ -7,10 +7,10 @@ import { db, type Note } from '../db';
 import { LecturePanel } from './LecturePanel';
 import { AIToolsButton } from './AITools';
 import { nav, toggleSidebar, openModal, useNav } from '../lib/nav';
-import { Menu, useMenu, confirmDialog } from './ui';
-import { IAa, IBook, IChecklist, IChevL, ICompose, IImage, IMic, IMore, IPencil, IPin, IRuled, ISidebar, ITable, ITrash, ICards, IDownload, IFolder } from './Icons';
+import { Menu, useMediaQuery, useMenu, confirmDialog } from './ui';
+import { IAa, IBook, IChecklist, IChevL, ICompose, IExpand, IImage, IMic, IMore, IPencil, IPin, IRuled, ISidebar, ITable, ITrash, ICards, IDownload, IFolder } from './Icons';
 import { ExportDialog } from './ExportDialog';
-import { FocusButton } from './FocusMode';
+import { FocusButton, setFocus } from './FocusMode';
 import { toast } from '../lib/events';
 import { createNote } from '../lib/notes';
 
@@ -43,6 +43,8 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
   const { notebookOpen, focus } = useNav();
   const [exporting, setExporting] = useState(false);
   const [words, setWords] = useState(() => countWords(note.text ?? ''));
+  // Below this the row cannot hold every action without pushing some off-screen.
+  const compact = useMediaQuery('(max-width: 820px)');
   const imgInput = useRef<HTMLInputElement>(null);
   const [fmtAnchor, openFmt, closeFmt] = useMenu();
   const [moreAnchor, openMore, closeMore] = useMenu();
@@ -138,38 +140,51 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
           <button className="icon-btn" onClick={() => editor.chain().focus().toggleTaskList().run()} aria-label="Checklist">
             <IChecklist />
           </button>
-          <button className="icon-btn" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} aria-label="Table">
-            <ITable />
-          </button>
           <button className="icon-btn" onClick={() => editor.chain().focus().insertDrawing({ paper: 'blank' }).run()} aria-label="Draw">
             <IPencil />
           </button>
-          <button className="icon-btn" onClick={() => imgInput.current?.click()} aria-label="Insert image">
-            <IImage />
-          </button>
-          <button className="icon-btn rec" onClick={() => openModal({ type: 'recorder', folderId: note.folderId })} aria-label="Record lecture">
-            <IMic />
-          </button>
+          {!compact && (
+            <>
+              <button className="icon-btn" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} aria-label="Table">
+                <ITable />
+              </button>
+              <button className="icon-btn" onClick={() => imgInput.current?.click()} aria-label="Insert image">
+                <IImage />
+              </button>
+              <button className="icon-btn rec" onClick={() => openModal({ type: 'recorder', folderId: note.folderId })} aria-label="Record lecture">
+                <IMic />
+              </button>
+            </>
+          )}
           <AIToolsButton editor={editor} note={note} />
         </div>
         <span className="spacer" />
-        <button
-          className={`icon-btn ${note.lined ? 'on' : ''}`}
-          onClick={() => db.notes.update(note.id, { lined: !note.lined })}
-          aria-label="Ruled lines"
-          aria-pressed={!!note.lined}
-          title="Ruled lines"
-        >
-          <IRuled />
-        </button>
-        <button className="icon-btn" onClick={() => setExporting(true)} aria-label="Save to device" title="Save to device — PDF, Word, Markdown…">
-          <IDownload />
-        </button>
-        <FocusButton />
-        <button className={`icon-btn ${notebookOpen && !focus ? 'on' : ''}`} onClick={() => (focus ? nav({ focusPanel: 'notebook' }) : nav({ notebookOpen: !notebookOpen }))} aria-label="Notebook panel" title="Notebook: sources, chat & studio">
-          <IBook />
-          <span className="btn-label">Notebook</span>
-        </button>
+        {!compact && (
+          <>
+            <button
+              className={`icon-btn ${note.lined ? 'on' : ''}`}
+              onClick={() => db.notes.update(note.id, { lined: !note.lined })}
+              aria-label="Ruled lines"
+              aria-pressed={!!note.lined}
+              title="Ruled lines"
+            >
+              <IRuled />
+            </button>
+            <button className="icon-btn" onClick={() => setExporting(true)} aria-label="Save to device" title="Save to device — PDF, Word, Markdown…">
+              <IDownload />
+            </button>
+            <FocusButton />
+            <button
+              className={`icon-btn ${notebookOpen && !focus ? 'on' : ''}`}
+              onClick={() => (focus ? nav({ focusPanel: 'notebook' }) : nav({ notebookOpen: !notebookOpen }))}
+              aria-label="Notebook panel"
+              title="Notebook: sources, chat & studio"
+            >
+              <IBook />
+              <span className="btn-label">Notebook</span>
+            </button>
+          </>
+        )}
         <button className="icon-btn" onClick={(e) => openMore(e.currentTarget)} aria-label="More">
           <IMore />
         </button>
@@ -259,6 +274,17 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
           align="right"
           onClose={closeMore}
           items={[
+            ...(compact
+              ? [
+                  { label: 'Insert table', icon: <ITable size={18} />, onClick: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+                  { label: 'Insert image', icon: <IImage size={18} />, onClick: () => imgInput.current?.click() },
+                  { label: 'Record lecture', icon: <IMic size={18} />, onClick: () => openModal({ type: 'recorder', folderId: note.folderId }) },
+                  { label: note.lined ? 'Hide ruled lines' : 'Show ruled lines', icon: <IRuled size={18} />, onClick: () => db.notes.update(note.id, { lined: !note.lined }) },
+                  { label: 'Notebook', icon: <IBook size={18} />, onClick: () => (focus ? nav({ focusPanel: 'notebook' }) : nav({ notebookOpen: !notebookOpen })) },
+                  { label: focus ? 'Exit full screen' : 'Full screen', icon: <IExpand size={18} />, onClick: () => setFocus(!focus) },
+                  { divider: true, label: '' },
+                ]
+              : []),
             { label: note.pinned ? 'Unpin note' : 'Pin note', icon: <IPin size={18} />, onClick: () => db.notes.update(note.id, { pinned: !note.pinned }) },
             { label: 'Move to folder…', icon: <IFolder size={18} />, onClick: () => setTimeout(() => openMove(moreAnchor), 0) },
             { label: 'Make flashcards', icon: <ICards size={18} />, onClick: () => openModal({ type: 'generateDeck', from: { kind: 'note', noteId: note.id } }) },

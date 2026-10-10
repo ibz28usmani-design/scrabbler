@@ -7,9 +7,9 @@ import { HANDWRITING_TEMPLATES, PAGE_H, paperLabel, type Paper } from '../lib/pa
 import { contentBottom, type Stroke } from '../lib/ink';
 import { nav, toggleSidebar, useNav } from '../lib/nav';
 import { useDark } from '../lib/theme';
-import { confirmDialog, Menu, useMenu } from './ui';
-import { FocusButton } from './FocusMode';
-import { IBook, IChevL, IDownload, IFolder, IMore, IPin, ISidebar, ISparkle, ITrash } from './Icons';
+import { confirmDialog, Menu, useMediaQuery, useMenu } from './ui';
+import { FocusButton, setFocus } from './FocusMode';
+import { IBook, IChevL, IDownload, IExpand, IFolder, IMore, IPin, ISidebar, ISparkle, ITrash } from './Icons';
 import { toast } from '../lib/events';
 
 /** Editor for handwritten notes: a title above an endless canvas. */
@@ -23,6 +23,8 @@ export function InkEditor({ note, narrow, wide }: { note: Note; narrow: boolean;
   const [transcribe, setTranscribe] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [moreAnchor, openMore, closeMore] = useMenu();
+  // Below this the row cannot hold every action without pushing some off-screen.
+  const compact = useMediaQuery('(max-width: 820px)');
   const [moveAnchor, openMove, closeMove] = useMenu();
   const latest = useRef({ strokes: ink.strokes as Stroke[], height: ink.height, paper: ink.paper as Paper });
   const timer = useRef(0);
@@ -112,33 +114,42 @@ export function InkEditor({ note, narrow, wide }: { note: Note; narrow: boolean;
             +
           </button>
         </div>
-        <button
-          className="icon-btn ai"
-          onClick={() => {
-            flush();
-            setTranscribe(true);
-          }}
-          aria-label="Transcribe handwriting"
-          title="Transcribe handwriting to text"
-        >
-          <ISparkle />
-          <span className="btn-label">Transcribe</span>
-        </button>
-        <button
-          className="icon-btn"
-          onClick={() => {
-            flush();
-            setExporting(true);
-          }}
-          aria-label="Export"
-          title="Save to device"
-        >
-          <IDownload />
-        </button>
-        <button className={`icon-btn ${notebookOpen && !focus ? 'on' : ''}`} onClick={() => (focus ? nav({ focusPanel: 'notebook' }) : nav({ notebookOpen: !notebookOpen }))} aria-label="Notebook panel" title="Notebook">
-          <IBook />
-        </button>
-        <FocusButton />
+        {!compact && (
+          <>
+            <button
+              className="icon-btn ai"
+              onClick={() => {
+                flush();
+                setTranscribe(true);
+              }}
+              aria-label="Transcribe handwriting"
+              title="Transcribe handwriting to text"
+            >
+              <ISparkle />
+              <span className="btn-label">Transcribe</span>
+            </button>
+            <button
+              className="icon-btn"
+              onClick={() => {
+                flush();
+                setExporting(true);
+              }}
+              aria-label="Export"
+              title="Save to device"
+            >
+              <IDownload />
+            </button>
+            <button
+              className={`icon-btn ${notebookOpen && !focus ? 'on' : ''}`}
+              onClick={() => (focus ? nav({ focusPanel: 'notebook' }) : nav({ notebookOpen: !notebookOpen }))}
+              aria-label="Notebook panel"
+              title="Notebook"
+            >
+              <IBook />
+            </button>
+            <FocusButton />
+          </>
+        )}
         <button className="icon-btn" onClick={(e) => openMore(e.currentTarget)} aria-label="More">
           <IMore />
         </button>
@@ -167,6 +178,29 @@ export function InkEditor({ note, narrow, wide }: { note: Note; narrow: boolean;
           align="right"
           onClose={closeMore}
           items={[
+            ...(compact
+              ? [
+                  {
+                    label: 'Transcribe handwriting',
+                    icon: <ISparkle size={18} />,
+                    onClick: () => {
+                      flush();
+                      setTranscribe(true);
+                    },
+                  },
+                  {
+                    label: 'Save to device…',
+                    icon: <IDownload size={18} />,
+                    onClick: () => {
+                      flush();
+                      setExporting(true);
+                    },
+                  },
+                  { label: 'Notebook', icon: <IBook size={18} />, onClick: () => (focus ? nav({ focusPanel: 'notebook' }) : nav({ notebookOpen: !notebookOpen })) },
+                  { label: focus ? 'Exit full screen' : 'Full screen', icon: <IExpand size={18} />, onClick: () => setFocus(!focus) },
+                  { divider: true, label: '' },
+                ]
+              : []),
             { label: note.pinned ? 'Unpin note' : 'Pin note', icon: <IPin size={18} />, onClick: () => db.notes.update(note.id, { pinned: !note.pinned }) },
             { label: 'Move to folder…', icon: <IFolder size={18} />, onClick: () => setTimeout(() => openMove(moreAnchor), 0) },
             { divider: true, label: '' },

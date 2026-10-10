@@ -20,6 +20,8 @@ export interface Settings {
   voiceB: string;
   theme: 'system' | 'light' | 'dark';
   fingerDrawing: boolean;
+  /** The handwriting tool palette is expanded (false = collapsed to a pill). */
+  inkToolbarOpen: boolean;
   dailyGoal: number;
   newPerDay: number;
   liveCaptions: boolean;
@@ -43,6 +45,7 @@ export const DEFAULT_SETTINGS: Settings = {
   voiceB: 'Kore',
   theme: 'system',
   fingerDrawing: false,
+  inkToolbarOpen: true,
   dailyGoal: 20,
   newPerDay: 20,
   liveCaptions: true,
