@@ -94,9 +94,14 @@ export function FocusChrome({ folderId }: { folderId: string | null }) {
   const open = (p: 'library' | 'notebook') => nav({ focusPanel: focusPanel === p ? null : p });
   return (
     <>
-      {/* Hover the screen edge with a mouse, trackpad or Pencil to peek a panel. */}
-      <div className="edge-zone left" onPointerEnter={(e) => e.pointerType !== 'touch' && !focusPanel && nav({ focusPanel: 'library' })} />
-      <div className="edge-zone right" onPointerEnter={(e) => e.pointerType !== 'touch' && !focusPanel && folderId && nav({ focusPanel: 'notebook' })} />
+      {/*
+        Move a mouse, trackpad or Pencil pointer into the screen edge to peek a panel.
+        This listens for movement, not pointerenter: the zones appear the instant focus
+        mode does, and an enter fires for a pointer that merely happens to be resting
+        there — which would throw a panel open the moment you went full screen.
+      */}
+      <div className="edge-zone left" onPointerMove={(e) => e.pointerType !== 'touch' && !focusPanel && nav({ focusPanel: 'library' })} />
+      <div className="edge-zone right" onPointerMove={(e) => e.pointerType !== 'touch' && !focusPanel && folderId && nav({ focusPanel: 'notebook' })} />
 
       <button className={`edge-handle glass left ${focusPanel === 'library' ? 'hidden' : ''}`} onClick={() => open('library')} aria-label="Show folders and notes">
         <ISidebar size={18} />
