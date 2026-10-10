@@ -3537,7 +3537,7 @@ select.input {
   left: 0;
   right: 0;
 }
-.app.focus .ink-pane .ink-toolbar.floating {
+.app.focus .ink-pane .ink-dock.floating {
   top: 74px;
 }
 .app.focus .ink-pane .endless-scroller {
@@ -3808,4 +3808,12 @@ select.input {
 .btn svg,
 .chip svg {
   flex-shrink: 0;
+}
+
+/* Phones: the "Notes" back label costs more room than it earns once the row
+   also carries Notebook and Full screen. The chevron still reads as back. */
+@media (max-width: 430px) {
+  .back-label {
+    display: none;
+  }
 }

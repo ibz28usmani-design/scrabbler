@@ -8,9 +8,9 @@ import { LecturePanel } from './LecturePanel';
 import { AIToolsButton } from './AITools';
 import { nav, toggleSidebar, openModal, useNav } from '../lib/nav';
 import { Menu, useElementWidth, useMenu, confirmDialog } from './ui';
-import { IAa, IBook, IChecklist, IChevL, ICompose, IExpand, IImage, IMic, IMore, IPencil, IPin, IRuled, ISidebar, ITable, ITrash, ICards, IDownload, IFolder } from './Icons';
+import { IAa, IBook, IChecklist, IChevL, ICompose, IImage, IMic, IMore, IPencil, IPin, IRuled, ISidebar, ITable, ITrash, ICards, IDownload, IFolder } from './Icons';
 import { ExportDialog } from './ExportDialog';
-import { FocusButton, setFocus } from './FocusMode';
+import { FocusButton } from './FocusMode';
 import { toast } from '../lib/events';
 import { createNote } from '../lib/notes';
 
@@ -142,9 +142,11 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
           <button className="icon-btn" onClick={(e) => openFmt(e.currentTarget)} aria-label="Formatting">
             <IAa />
           </button>
-          <button className="icon-btn" onClick={() => editor.chain().focus().toggleTaskList().run()} aria-label="Checklist">
-            <IChecklist />
-          </button>
+          {!tighter && (
+            <button className="icon-btn" onClick={() => editor.chain().focus().toggleTaskList().run()} aria-label="Checklist">
+              <IChecklist />
+            </button>
+          )}
           <button className="icon-btn" onClick={() => editor.chain().focus().insertDrawing({ paper: 'blank' }).run()} aria-label="Draw">
             <IPencil />
           </button>
@@ -169,29 +171,29 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
             <IDownload />
           </button>
         )}
+        {/* Notebook and Full screen always stay on the bar; only the word
+            "Notebook" gives way, then the ruled-lines toggle. */}
         {!tight && (
-          <>
-            <button
-              className={`icon-btn ${note.lined ? 'on' : ''}`}
-              onClick={() => db.notes.update(note.id, { lined: !note.lined })}
-              aria-label="Ruled lines"
-              aria-pressed={!!note.lined}
-              title="Ruled lines"
-            >
-              <IRuled />
-            </button>
-            <FocusButton />
-            <button
-              className={`icon-btn ${notebookOpen && !focus ? 'on' : ''}`}
-              onClick={() => (focus ? nav({ focusPanel: 'notebook' }) : nav({ notebookOpen: !notebookOpen }))}
-              aria-label="Notebook panel"
-              title="Notebook: sources, chat & studio"
-            >
-              <IBook />
-              <span className="btn-label">Notebook</span>
-            </button>
-          </>
+          <button
+            className={`icon-btn ${note.lined ? 'on' : ''}`}
+            onClick={() => db.notes.update(note.id, { lined: !note.lined })}
+            aria-label="Ruled lines"
+            aria-pressed={!!note.lined}
+            title="Ruled lines"
+          >
+            <IRuled />
+          </button>
         )}
+        <button
+          className={`icon-btn ${notebookOpen && !focus ? 'on' : ''}`}
+          onClick={() => (focus ? nav({ focusPanel: 'notebook' }) : nav({ notebookOpen: !notebookOpen }))}
+          aria-label="Notebook panel"
+          title={focus ? 'Notebook — or hover the right edge' : 'Notebook: sources, chat & studio'}
+        >
+          <IBook />
+          {!tight && <span className="btn-label">Notebook</span>}
+        </button>
+        <FocusButton />
         <button className="icon-btn" onClick={(e) => openMore(e.currentTarget)} aria-label="More">
           <IMore />
         </button>
@@ -292,8 +294,6 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
             ...(tight
               ? [
                   { label: note.lined ? 'Hide ruled lines' : 'Show ruled lines', icon: <IRuled size={18} />, onClick: () => db.notes.update(note.id, { lined: !note.lined }) },
-                  { label: 'Notebook', icon: <IBook size={18} />, onClick: () => (focus ? nav({ focusPanel: 'notebook' }) : nav({ notebookOpen: !notebookOpen })) },
-                  { label: focus ? 'Exit full screen' : 'Full screen', icon: <IExpand size={18} />, onClick: () => setFocus(!focus) },
                   { divider: true, label: '' },
                 ]
               : []),

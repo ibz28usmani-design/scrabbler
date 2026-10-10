@@ -8,8 +8,8 @@ import { contentBottom, type Stroke } from '../lib/ink';
 import { nav, toggleSidebar, useNav } from '../lib/nav';
 import { useDark } from '../lib/theme';
 import { confirmDialog, Menu, useElementWidth, useMenu } from './ui';
-import { FocusButton, setFocus } from './FocusMode';
-import { IBook, IChevL, IDownload, IExpand, IFolder, IMore, IPin, ISidebar, ISparkle, ITrash } from './Icons';
+import { FocusButton } from './FocusMode';
+import { IBook, IChevL, IDownload, IFolder, IMore, IPin, ISidebar, ISparkle, ITrash } from './Icons';
 import { toast } from '../lib/events';
 
 /** Editor for handwritten notes: a title above an endless canvas. */
@@ -30,8 +30,9 @@ export function InkEditor({ note, narrow, wide }: { note: Note; narrow: boolean;
   const paneW = useElementWidth(paneRef);
   const tight = paneW > 0 && paneW < 700;
   const tighter = paneW > 0 && paneW < 470;
-  // On a phone the back label alone eats 90px; pinch-to-zoom covers the canvas.
-  const hideZoom = paneW > 0 && paneW < 430;
+  // Pinch-to-zoom covers the canvas, so the zoom stepper is the first thing to
+  // go once the row is short of room.
+  const hideZoom = tighter;
   const [moveAnchor, openMove, closeMove] = useMenu();
   const latest = useRef({ strokes: ink.strokes as Stroke[], height: ink.height, paper: ink.paper as Paper });
   const timer = useRef(0);
@@ -123,8 +124,10 @@ export function InkEditor({ note, narrow, wide }: { note: Note; narrow: boolean;
           </button>
         </div>
         )}
-        {/* Transcribe keeps its word: an unlabelled sparkle says nothing. Export
-            goes to the menu first instead, being the rarer of the two. */}
+        {/* Notebook and Full screen always stay on the bar — they are how you
+            reach the notebook and the hover-in panels, so they are the last
+            things that should need a menu. Export yields first, then the
+            Transcribe label, then Transcribe itself. */}
         {!tighter && (
           <button
             className="icon-btn ai"
@@ -136,33 +139,31 @@ export function InkEditor({ note, narrow, wide }: { note: Note; narrow: boolean;
             title="Transcribe handwriting to text"
           >
             <ISparkle />
-            <span className="btn-label">Transcribe</span>
+            {!tight && <span className="btn-label">Transcribe</span>}
           </button>
         )}
         {!tight && (
-          <>
-            <button
-              className="icon-btn"
-              onClick={() => {
-                flush();
-                setExporting(true);
-              }}
-              aria-label="Export"
-              title="Save to device"
-            >
-              <IDownload />
-            </button>
-            <button
-              className={`icon-btn ${notebookOpen && !focus ? 'on' : ''}`}
-              onClick={() => (focus ? nav({ focusPanel: 'notebook' }) : nav({ notebookOpen: !notebookOpen }))}
-              aria-label="Notebook panel"
-              title="Notebook"
-            >
-              <IBook />
-            </button>
-            <FocusButton />
-          </>
+          <button
+            className="icon-btn"
+            onClick={() => {
+              flush();
+              setExporting(true);
+            }}
+            aria-label="Export"
+            title="Save to device"
+          >
+            <IDownload />
+          </button>
         )}
+        <button
+          className={`icon-btn ${notebookOpen && !focus ? 'on' : ''}`}
+          onClick={() => (focus ? nav({ focusPanel: 'notebook' }) : nav({ notebookOpen: !notebookOpen }))}
+          aria-label="Notebook panel"
+          title={focus ? 'Notebook — or hover the right edge' : 'Notebook'}
+        >
+          <IBook />
+        </button>
+        <FocusButton />
         <button className="icon-btn" onClick={(e) => openMore(e.currentTarget)} aria-label="More">
           <IMore />
         </button>
@@ -213,8 +214,6 @@ export function InkEditor({ note, narrow, wide }: { note: Note; narrow: boolean;
                       setExporting(true);
                     },
                   },
-                  { label: 'Notebook', icon: <IBook size={18} />, onClick: () => (focus ? nav({ focusPanel: 'notebook' }) : nav({ notebookOpen: !notebookOpen })) },
-                  { label: focus ? 'Exit full screen' : 'Full screen', icon: <IExpand size={18} />, onClick: () => setFocus(!focus) },
                   { divider: true, label: '' },
                 ]
               : []),
