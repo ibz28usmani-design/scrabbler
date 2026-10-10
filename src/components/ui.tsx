@@ -1,4 +1,4 @@
-import { Component, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { Component, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useToasts } from '../lib/events';
 import { IX } from './Icons';
@@ -238,6 +238,27 @@ export function useMediaQuery(q: string) {
     return () => mq.removeEventListener('change', on);
   }, [q]);
   return m;
+}
+
+/**
+ * Width of an element, tracked as it resizes.
+ *
+ * Toolbars live in a pane, not the window: with the sidebar and list open, an
+ * iPad's editor is under 600px wide even though the window is 1194. A media
+ * query would call that roomy and cram the row, so measure the pane itself.
+ */
+export function useElementWidth(ref: RefObject<HTMLElement | null>) {
+  const [w, setW] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => setW(el.clientWidth);
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    measure();
+    return () => ro.disconnect();
+  }, [ref]);
+  return w;
 }
 
 export function useObjectUrl(blob: Blob | undefined | null) {

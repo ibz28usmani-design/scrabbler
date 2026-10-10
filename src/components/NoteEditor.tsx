@@ -7,7 +7,7 @@ import { db, type Note } from '../db';
 import { LecturePanel } from './LecturePanel';
 import { AIToolsButton } from './AITools';
 import { nav, toggleSidebar, openModal, useNav } from '../lib/nav';
-import { Menu, useMediaQuery, useMenu, confirmDialog } from './ui';
+import { Menu, useElementWidth, useMenu, confirmDialog } from './ui';
 import { IAa, IBook, IChecklist, IChevL, ICompose, IExpand, IImage, IMic, IMore, IPencil, IPin, IRuled, ISidebar, ITable, ITrash, ICards, IDownload, IFolder } from './Icons';
 import { ExportDialog } from './ExportDialog';
 import { FocusButton, setFocus } from './FocusMode';
@@ -44,7 +44,12 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
   const [exporting, setExporting] = useState(false);
   const [words, setWords] = useState(() => countWords(note.text ?? ''));
   // Below this the row cannot hold every action without pushing some off-screen.
-  const compact = useMediaQuery('(max-width: 820px)');
+  const paneRef = useRef<HTMLDivElement>(null);
+  // Shed the secondary actions first; only hide the primary ones when the pane
+  // is genuinely too small, rather than emptying the row all at once.
+  const paneW = useElementWidth(paneRef);
+  const tight = paneW > 0 && paneW < 700;
+  const tighter = paneW > 0 && paneW < 470;
   const imgInput = useRef<HTMLInputElement>(null);
   const [fmtAnchor, openFmt, closeFmt] = useMenu();
   const [moreAnchor, openMore, closeMore] = useMenu();
@@ -120,7 +125,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
   const setFont = (font: NonNullable<Note['font']>) => db.notes.update(note.id, { font });
 
   return (
-    <div className="editor-pane">
+    <div className="editor-pane" ref={paneRef}>
       <div className="toolbar">
         {narrow ? (
           <button className="icon-btn accent" onClick={() => nav({ pane: 'list' })} aria-label="Back">
@@ -143,7 +148,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
           <button className="icon-btn" onClick={() => editor.chain().focus().insertDrawing({ paper: 'blank' }).run()} aria-label="Draw">
             <IPencil />
           </button>
-          {!compact && (
+          {!tighter && (
             <>
               <button className="icon-btn" onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} aria-label="Table">
                 <ITable />
@@ -159,7 +164,12 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
           <AIToolsButton editor={editor} note={note} />
         </div>
         <span className="spacer" />
-        {!compact && (
+        {!tighter && (
+          <button className="icon-btn" onClick={() => setExporting(true)} aria-label="Save to device" title="Save to device — PDF, Word, Markdown…">
+            <IDownload />
+          </button>
+        )}
+        {!tight && (
           <>
             <button
               className={`icon-btn ${note.lined ? 'on' : ''}`}
@@ -169,9 +179,6 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
               title="Ruled lines"
             >
               <IRuled />
-            </button>
-            <button className="icon-btn" onClick={() => setExporting(true)} aria-label="Save to device" title="Save to device — PDF, Word, Markdown…">
-              <IDownload />
             </button>
             <FocusButton />
             <button
@@ -274,11 +281,16 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
           align="right"
           onClose={closeMore}
           items={[
-            ...(compact
+            ...(tighter
               ? [
                   { label: 'Insert table', icon: <ITable size={18} />, onClick: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
                   { label: 'Insert image', icon: <IImage size={18} />, onClick: () => imgInput.current?.click() },
                   { label: 'Record lecture', icon: <IMic size={18} />, onClick: () => openModal({ type: 'recorder', folderId: note.folderId }) },
+                  { label: 'Save to device…', icon: <IDownload size={18} />, onClick: () => setExporting(true) },
+                ]
+              : []),
+            ...(tight
+              ? [
                   { label: note.lined ? 'Hide ruled lines' : 'Show ruled lines', icon: <IRuled size={18} />, onClick: () => db.notes.update(note.id, { lined: !note.lined }) },
                   { label: 'Notebook', icon: <IBook size={18} />, onClick: () => (focus ? nav({ focusPanel: 'notebook' }) : nav({ notebookOpen: !notebookOpen })) },
                   { label: focus ? 'Exit full screen' : 'Full screen', icon: <IExpand size={18} />, onClick: () => setFocus(!focus) },

@@ -7,7 +7,7 @@ import { HANDWRITING_TEMPLATES, PAGE_H, paperLabel, type Paper } from '../lib/pa
 import { contentBottom, type Stroke } from '../lib/ink';
 import { nav, toggleSidebar, useNav } from '../lib/nav';
 import { useDark } from '../lib/theme';
-import { confirmDialog, Menu, useMediaQuery, useMenu } from './ui';
+import { confirmDialog, Menu, useElementWidth, useMenu } from './ui';
 import { FocusButton, setFocus } from './FocusMode';
 import { IBook, IChevL, IDownload, IExpand, IFolder, IMore, IPin, ISidebar, ISparkle, ITrash } from './Icons';
 import { toast } from '../lib/events';
@@ -24,7 +24,14 @@ export function InkEditor({ note, narrow, wide }: { note: Note; narrow: boolean;
   const [exporting, setExporting] = useState(false);
   const [moreAnchor, openMore, closeMore] = useMenu();
   // Below this the row cannot hold every action without pushing some off-screen.
-  const compact = useMediaQuery('(max-width: 820px)');
+  const paneRef = useRef<HTMLDivElement>(null);
+  // Shed the secondary actions first; only hide the primary ones when the pane
+  // is genuinely too small, rather than emptying the row all at once.
+  const paneW = useElementWidth(paneRef);
+  const tight = paneW > 0 && paneW < 700;
+  const tighter = paneW > 0 && paneW < 470;
+  // On a phone the back label alone eats 90px; pinch-to-zoom covers the canvas.
+  const hideZoom = paneW > 0 && paneW < 430;
   const [moveAnchor, openMove, closeMove] = useMenu();
   const latest = useRef({ strokes: ink.strokes as Stroke[], height: ink.height, paper: ink.paper as Paper });
   const timer = useRef(0);
@@ -71,7 +78,7 @@ export function InkEditor({ note, narrow, wide }: { note: Note; narrow: boolean;
   };
 
   return (
-    <div className="editor-pane ink-pane">
+    <div className="editor-pane ink-pane" ref={paneRef}>
       <div className="toolbar">
         {narrow ? (
           <button className="icon-btn accent" onClick={() => nav({ pane: 'list' })} aria-label="Back">
@@ -103,6 +110,7 @@ export function InkEditor({ note, narrow, wide }: { note: Note; narrow: boolean;
           ))}
           {paper === 'dots' && <option value="dots">Dotted</option>}
         </select>
+        {!hideZoom && (
         <div className="zoom" role="group" aria-label="Zoom">
           <button className="icon-btn small" onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.25).toFixed(2)))} aria-label="Zoom out">
             −
@@ -114,20 +122,25 @@ export function InkEditor({ note, narrow, wide }: { note: Note; narrow: boolean;
             +
           </button>
         </div>
-        {!compact && (
+        )}
+        {/* Transcribe keeps its word: an unlabelled sparkle says nothing. Export
+            goes to the menu first instead, being the rarer of the two. */}
+        {!tighter && (
+          <button
+            className="icon-btn ai"
+            onClick={() => {
+              flush();
+              setTranscribe(true);
+            }}
+            aria-label="Transcribe handwriting"
+            title="Transcribe handwriting to text"
+          >
+            <ISparkle />
+            <span className="btn-label">Transcribe</span>
+          </button>
+        )}
+        {!tight && (
           <>
-            <button
-              className="icon-btn ai"
-              onClick={() => {
-                flush();
-                setTranscribe(true);
-              }}
-              aria-label="Transcribe handwriting"
-              title="Transcribe handwriting to text"
-            >
-              <ISparkle />
-              <span className="btn-label">Transcribe</span>
-            </button>
             <button
               className="icon-btn"
               onClick={() => {
@@ -178,7 +191,7 @@ export function InkEditor({ note, narrow, wide }: { note: Note; narrow: boolean;
           align="right"
           onClose={closeMore}
           items={[
-            ...(compact
+            ...(tighter
               ? [
                   {
                     label: 'Transcribe handwriting',
@@ -188,6 +201,10 @@ export function InkEditor({ note, narrow, wide }: { note: Note; narrow: boolean;
                       setTranscribe(true);
                     },
                   },
+                ]
+              : []),
+            ...(tight
+              ? [
                   {
                     label: 'Save to device…',
                     icon: <IDownload size={18} />,

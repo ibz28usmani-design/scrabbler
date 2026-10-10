@@ -667,9 +667,9 @@ select.input {
 .nb-head {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
   min-height: 52px;
-  padding: 6px 8px;
+  padding: 6px 12px;
 }
 .list-title {
   font-size: 28px;
@@ -788,8 +788,8 @@ select.input {
 }
 .toolbar-group {
   display: flex;
-  gap: 2px;
-  margin-left: 6px;
+  gap: 4px;
+  margin-left: 2px;
 }
 .editor-scroll {
   flex: 1;
@@ -3620,7 +3620,7 @@ select.input {
 }
 .glass-panel.left {
   left: 12px;
-  width: min(610px, calc(100vw - 24px));
+  width: min(600px, calc(100vw - 24px));
   transform: translateX(-40px) scale(0.94);
   transform-origin: left center;
 }
@@ -3633,24 +3633,36 @@ select.input {
 .glass-panel.open {
   transform: none;
 }
+/*
+  Inside the panel the panes keep the widths and the two tones they have when
+  docked, so the floating library reads as the same furniture lifted off the
+  page rather than a different component. min-width:0 is the important part:
+  a flex item will not shrink below its content by default, so without it the
+  note rows keep their natural width and the panel simply chops them mid-word.
+*/
 .glass-panel .sidebar,
 .glass-panel .list-pane,
 .glass-panel .notebook {
-  background: transparent;
   border-color: var(--line);
   padding-left: 0;
+  min-width: 0;
 }
 .glass-panel .sidebar {
-  width: 250px;
+  width: 268px;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--side) 88%, transparent);
+  border-right: 1px solid var(--line);
 }
 .glass-panel .list-pane {
-  flex: 1;
+  flex: 1 1 0;
   width: auto;
   border-right: 0;
+  background: color-mix(in srgb, var(--list) 82%, transparent);
 }
 .glass-panel .notebook {
   width: 100%;
   border-left: 0;
+  background: color-mix(in srgb, var(--list) 82%, transparent);
 }
 @media (max-width: 699px) {
   .glass-panel.left .sidebar {
@@ -3777,4 +3789,23 @@ select.input {
   .zoom-pct {
     min-width: 40px;
   }
+}
+
+/* Nothing in a toolbar gets squashed: icons and labelled buttons hold their
+   size, and the note title is the single elastic element that gives up room.
+   Without this, a full row shrinks an icon to zero width and the label spills
+   out of its own button. */
+.toolbar > *,
+.list-head > *,
+.nb-head > *,
+.study-head > * {
+  flex-shrink: 0;
+}
+.toolbar .ink-title {
+  flex-shrink: 1;
+}
+.icon-btn svg,
+.btn svg,
+.chip svg {
+  flex-shrink: 0;
 }
