@@ -201,11 +201,14 @@ export function SettingsModal() {
           .
         </p>
         <div className="key-row">
-          <input className="input mono" type="password" autoComplete="off" placeholder="AIza…" value={key} onChange={(e) => setKey(e.target.value)} />
+          <input className="input mono" type="password" autoComplete="off" placeholder="AQ.… or AIza…" value={key} onChange={(e) => setKey(e.target.value)} />
           <button className="btn primary" onClick={verify} disabled={!key.trim() || checking}>
             {checking ? <Spinner size={14} /> : s.apiKey && s.apiKey === key.trim() ? <ICheck size={16} /> : null} {s.apiKey === key.trim() && s.apiKey ? 'Saved' : 'Save & test'}
           </button>
         </div>
+        <p className="muted small">
+          Newer AI Studio keys start with <code>AQ.</code>; older ones start with <code>AIza</code>. Both work here.
+        </p>
         <p className="muted small">Free-tier note: Google may use free-tier prompts to improve its products, and there are per-minute and daily limits. Scrabbler retries automatically when you hit them.</p>
         <div className="grid2">
           <label className="field">
