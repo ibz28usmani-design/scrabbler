@@ -157,15 +157,15 @@ describe('openai-compatible provider', () => {
 
   it('picks the closest model to the preset suggestion', async () => {
     const { pickModel } = await import('../lib/openaiCompat');
-    const models = ['meta/llama-3.1-8b', 'zai/glm-5.3-flash', 'qwen/qwen3-4b'];
-    expect(pickModel(models, 'zai/glm-5.3-flash')).toBe('zai/glm-5.3-flash');
+    const models = ['meta/llama-3.1-8b', 'z-ai/glm-5.3-flash', 'qwen/qwen3-4b'];
+    expect(pickModel(models, 'z-ai/glm-5.3-flash')).toBe('z-ai/glm-5.3-flash');
     // Exact id missing: fall back to the same name under another org prefix.
-    expect(pickModel(['other/glm-5.3-flash', 'meta/llama-3.1-8b'], 'zai/glm-5.3-flash')).toBe('other/glm-5.3-flash');
+    expect(pickModel(['zai-org/glm-5.3-flash', 'meta/llama-3.1-8b'], 'z-ai/glm-5.3-flash')).toBe('zai-org/glm-5.3-flash');
     // Then to the same family.
-    expect(pickModel(['zai/glm-4.7', 'meta/llama-3.1-8b'], 'zai/glm-5.3-flash')).toBe('zai/glm-4.7');
+    expect(pickModel(['zai/glm-4.7', 'meta/llama-3.1-8b'], 'z-ai/glm-5.3-flash')).toBe('zai/glm-4.7');
     // Nothing similar: first available, never an unusable empty string.
-    expect(pickModel(['meta/llama-3.1-8b'], 'zai/glm-5.3-flash')).toBe('meta/llama-3.1-8b');
-    expect(pickModel([], 'zai/glm-5.3-flash')).toBe('zai/glm-5.3-flash');
+    expect(pickModel(['meta/llama-3.1-8b'], 'z-ai/glm-5.3-flash')).toBe('meta/llama-3.1-8b');
+    expect(pickModel([], 'z-ai/glm-5.3-flash')).toBe('z-ai/glm-5.3-flash');
   });
 
   it('treats a same-origin base URL as a proxy that needs no key', async () => {

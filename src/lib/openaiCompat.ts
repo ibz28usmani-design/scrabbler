@@ -28,7 +28,7 @@ export const PRESETS: Preset[] = [
     baseUrl: 'https://integrate.api.nvidia.com/v1',
     keyUrl: 'https://build.nvidia.com',
     keyHint: 'nvapi-…',
-    model: 'zai/glm-5.3-flash',
+    model: 'z-ai/glm-5.3-flash',
     note: 'Free tier, rate limited. NVIDIA may refuse calls made from a browser (CORS) — if so, pick OpenRouter or Groq, or use Gemini.',
   },
   {
@@ -46,7 +46,7 @@ export const PRESETS: Preset[] = [
     baseUrl: 'https://openrouter.ai/api/v1',
     keyUrl: 'https://openrouter.ai/keys',
     keyHint: 'sk-or-…',
-    model: 'z-ai/glm-4.6',
+    model: 'z-ai/glm-5.3',
     note: 'Many models, including free ones. Allows browser calls.',
   },
   {
