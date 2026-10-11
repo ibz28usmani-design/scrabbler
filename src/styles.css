@@ -3493,50 +3493,27 @@ select.input {
 /* Down the sides the palette is Apple's column, not the row stood on its end:
    undo and redo paired at the top, the tools lying on their side with their
    tips pointing into the page, the colours two abreast, and the custom colour
-   and the rest at the foot. It never covers the line you are writing on. */
-/* A short pane is the normal case, not the exception: browser chrome, the
-   title bar and the note's own dock all eat height, so on an iPad the pane
-   can be 580px where the desktop gives 780. The column has to give way in
-   that order — squeeze the tool cells first, then scroll — because when it
-   simply overflowed, the glass shrank to the height it was given and every
-   control below it painted out on the open canvas. */
+   and the rest at the foot. It never covers the line you are writing on.
+
+   Every size here is a multiple of --k, the fit factor the palette measures
+   for itself against the pane it is in. Guessing it from the viewport was
+   wrong twice: an iPad gives a web app whatever height its chrome leaves, and
+   full screen changes it again. Measured, the column always fits — a palette
+   you have to scroll to reach the eraser is not a palette. */
 .ink-dock.floating .ink-toolbar.column {
+  --k: 1;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  width: 104px;
-  padding: 15px 10px 13px;
-  border-radius: 34px;
+  gap: max(5px, calc(10px * var(--k)));
+  width: calc(90px + 14px * var(--k));
+  padding: max(9px, calc(15px * var(--k))) 10px max(8px, calc(13px * var(--k)));
+  border-radius: calc(26px + 8px * var(--k));
   max-height: 100%;
   min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: none;
+  overflow: hidden;
 }
-.ink-dock.floating .ink-toolbar.column::-webkit-scrollbar {
-  display: none;
-}
-/* Undo/redo, the colours and the foot keep their size; the pens take the
-   squeeze, down to a floor that is still a comfortable touch target. */
 .ink-dock.floating .ink-toolbar.column > * {
   flex: 0 0 auto;
-}
-/* The tray gives way down to its cells' own floor and no further. With
-   min-height 0 it kept shrinking past that, and the pens overlapped the
-   colours below them instead of handing the problem to the scroll. */
-.ink-dock.floating .ink-toolbar.column .ink-tools {
-  flex: 0 1 auto;
-  min-height: min-content;
-}
-.ink-dock.floating .ink-toolbar.column .ink-actions .icon-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--text) 8%, transparent);
-}
-.ink-dock.floating .ink-toolbar.column .ink-actions .icon-btn:disabled {
-  background: color-mix(in srgb, var(--text) 4%, transparent);
 }
 .ink-dock.floating .ink-toolbar.column .ink-actions {
   display: grid;
@@ -3545,6 +3522,17 @@ select.input {
   width: 100%;
   place-items: center;
 }
+.ink-dock.floating .ink-toolbar.column .ink-actions .icon-btn,
+.ink-dock.floating .ink-toolbar.column .ink-add,
+.ink-dock.floating .ink-toolbar.column .ink-more {
+  width: max(30px, calc(36px * var(--k)));
+  height: max(30px, calc(36px * var(--k)));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+.ink-dock.floating .ink-toolbar.column .ink-actions .icon-btn:disabled {
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
 .ink-dock.floating .ink-toolbar.column .ink-tools {
   flex-direction: column;
   gap: 2px;
@@ -3552,30 +3540,27 @@ select.input {
 }
 .ink-dock.floating .ink-toolbar.column .ink-tool {
   width: 100%;
-  height: 62px;
-  flex: 0 1 62px;
-  min-height: 46px;
-  border-radius: 18px;
+  height: max(38px, calc(62px * var(--k)));
+  border-radius: calc(18px * var(--k));
   transition:
-    transform 0.22s cubic-bezier(0.22, 1, 0.3, 1),
+    padding 0.22s cubic-bezier(0.22, 1, 0.3, 1),
     background 0.15s ease;
 }
 /* Apple's pens run almost the width of the palette; a 20px glyph adrift in a
    62px cell reads as an icon list, not a tray of pens. */
 .ink-dock.floating .ink-toolbar.column .ink-tool svg {
-  width: 32px;
-  height: 32px;
+  width: max(22px, calc(32px * var(--k)));
+  height: max(22px, calc(32px * var(--k)));
 }
 /* The pen in hand is shown by sliding out of the tray, as PencilKit does, so
-   the filled pill the row layout uses would be saying it twice — and a pill
-   under a pen lying on its side reads as a smudge. */
+   the filled pill the row layout uses would be saying it twice. */
 .ink-dock.floating .ink-toolbar.column .ink-tool.on {
   background: color-mix(in srgb, var(--text) 8%, transparent);
   color: var(--text);
 }
 .ink-dock.floating .ink-toolbar.column .ink-tool .tool-ink {
-  bottom: 7px;
-  width: 20px;
+  bottom: calc(7px * var(--k));
+  width: calc(20px * var(--k));
 }
 .ink-dock.floating .ink-toolbar.column .ink-sep {
   width: 58px;
@@ -3584,23 +3569,24 @@ select.input {
 .ink-dock.floating .ink-toolbar.column .ink-colors {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 9px;
+  gap: max(5px, calc(9px * var(--k)));
   place-items: center;
 }
 .ink-dock.floating .ink-toolbar.column .swatch {
-  width: 32px;
-  height: 32px;
+  width: max(26px, calc(32px * var(--k)));
+  height: max(26px, calc(32px * var(--k)));
 }
 .ink-foot {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: calc(4px * var(--k));
 }
 
 /* The tools lie on their side, tip towards the page, and the one in hand
    slides out of the palette towards it — PencilKit's own tell for which pen
-   you are holding. */
+   you are holding. Shifting the glyph with padding rather than the button
+   keeps the highlight behind it where it is. */
 .ink-dock.floating[data-edge='left'] .ink-toolbar.column .ink-tool svg {
   transform: rotate(-135deg);
 }
@@ -3611,27 +3597,17 @@ select.input {
 .ink-dock.floating .ink-toolbar.column .ink-tool[data-tool='lasso'] svg {
   transform: none;
 }
-/* The pens lie towards the page with their tails back in the tray, and the
-   one in hand reaches further out still. Shifting the glyph with padding
-   rather than the button keeps the cell — and so the highlight behind it —
-   where it is; translating the whole button slid the highlight too, which
-   reads as the tray moving rather than the pen. */
 .ink-dock.floating[data-edge='left'] .ink-toolbar.column .ink-tool {
-  padding-left: 14px;
+  padding-left: calc(14px * var(--k));
 }
 .ink-dock.floating[data-edge='right'] .ink-toolbar.column .ink-tool {
-  padding-right: 14px;
+  padding-right: calc(14px * var(--k));
 }
 .ink-dock.floating[data-edge='left'] .ink-toolbar.column .ink-tool.on {
-  padding-left: 30px;
+  padding-left: calc(30px * var(--k));
 }
 .ink-dock.floating[data-edge='right'] .ink-toolbar.column .ink-tool.on {
-  padding-right: 30px;
-}
-.ink-dock.floating .ink-toolbar.column .ink-tool {
-  transition:
-    padding 0.22s cubic-bezier(0.22, 1, 0.3, 1),
-    background 0.15s ease;
+  padding-right: calc(30px * var(--k));
 }
 
 /* The grabber runs down the inner edge, where Apple puts it. */
@@ -3649,84 +3625,6 @@ select.input {
 .ink-dock.floating[data-edge='right'] .ink-toolbar.column .ink-grab {
   left: 4px;
   right: auto;
-}
-
-/* A short viewport is the normal case on an iPad in Safari, where the tab bar
-   and the address bar take ~70px, and the note's own title bar takes more: the
-   pane runs about 53px under the viewport. Rather than leave the column to
-   scroll — a palette you have to scroll to reach the eraser is no palette —
-   it tightens by steps so every control stays in reach. Flex shrink alone
-   would not do it: the column is a scroll container, so it overflows before
-   its items give way. */
-@media (max-height: 745px) {
-  .ink-dock.floating .ink-toolbar.column {
-    gap: 8px;
-    padding: 13px 10px 11px;
-  }
-  .ink-dock.floating .ink-toolbar.column .ink-tool {
-    height: 50px;
-    flex-basis: 50px;
-  }
-  .ink-dock.floating .ink-toolbar.column .ink-tool svg {
-    width: 28px;
-    height: 28px;
-  }
-}
-@media (max-height: 665px) {
-  .ink-dock.floating .ink-toolbar.column {
-    gap: 6px;
-    width: 96px;
-  }
-  .ink-dock.floating .ink-toolbar.column .ink-tool {
-    height: 44px;
-    flex-basis: 44px;
-    min-height: 40px;
-  }
-  .ink-dock.floating .ink-toolbar.column .ink-colors {
-    gap: 7px;
-  }
-  .ink-dock.floating .ink-toolbar.column .swatch {
-    width: 28px;
-    height: 28px;
-  }
-  .ink-dock.floating .ink-toolbar.column .ink-actions .icon-btn,
-  .ink-dock.floating .ink-toolbar.column .ink-add,
-  .ink-dock.floating .ink-toolbar.column .ink-more {
-    width: 32px;
-    height: 32px;
-  }
-}
-@media (max-height: 585px) {
-  .ink-dock.floating .ink-toolbar.column {
-    gap: 4px;
-    padding: 8px 8px 6px;
-    width: 88px;
-  }
-  .ink-dock.floating .ink-toolbar.column .ink-tool {
-    height: 40px;
-    flex-basis: 40px;
-    min-height: 36px;
-  }
-  .ink-dock.floating .ink-toolbar.column .ink-tool svg {
-    width: 24px;
-    height: 24px;
-  }
-  .ink-dock.floating .ink-toolbar.column .ink-colors {
-    gap: 5px;
-  }
-  .ink-dock.floating .ink-toolbar.column .swatch {
-    width: 24px;
-    height: 24px;
-  }
-  .ink-dock.floating .ink-toolbar.column .ink-actions .icon-btn,
-  .ink-dock.floating .ink-toolbar.column .ink-add,
-  .ink-dock.floating .ink-toolbar.column .ink-more {
-    width: 28px;
-    height: 28px;
-  }
-  .ink-dock.floating .ink-toolbar.column .ink-foot {
-    gap: 1px;
-  }
 }
 
 /* Apple's "+" adds a colour of your own; it opens the system picker. */

@@ -261,6 +261,29 @@ export function useElementWidth(ref: RefObject<HTMLElement | null>) {
   return w;
 }
 
+/**
+ * The height of the box an absolutely positioned child is placed in, watched.
+ *
+ * Same lesson as the width above, learned the hard way: the ink palette's room
+ * is whatever its pane has, and on an iPad that is the viewport minus Safari's
+ * chrome minus the note's title bar — a number no media query knows. Measure
+ * it rather than guess it.
+ */
+export function useOffsetParentHeight(ref: RefObject<HTMLElement | null>, active: boolean) {
+  const [h, setH] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const parent = active ? (el?.offsetParent as HTMLElement | null) : null;
+    if (!parent) return;
+    const measure = () => setH(parent.clientHeight);
+    const ro = new ResizeObserver(measure);
+    ro.observe(parent);
+    measure();
+    return () => ro.disconnect();
+  }, [ref, active]);
+  return h;
+}
+
 export function useObjectUrl(blob: Blob | undefined | null) {
   const [url, setUrl] = useState<string>();
   useEffect(() => {

@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { displayColor, HIGHLIGHTS, INK_PALETTE, setTool, setToolColor, setToolSize, useTool, type Tool } from '../lib/ink';
 import { updateSettings, useSettings, type Settings } from '../lib/settings';
-import { useMediaQuery } from './ui';
+import { useMediaQuery, useOffsetParentHeight } from './ui';
 import { useDark } from '../lib/theme';
 import { IChevD, IEraser, IHighlighter, ILasso, IMarker, IMore, IPencil, IPlus, IRedo, ITrash, IUndo } from './Icons';
 
@@ -28,6 +28,10 @@ const labelFor = (t: Tool) => TOOLS.find(([k]) => k === t)![2];
 
 /** Let go this near a corner and the palette tucks into the circle. */
 const CORNER = 120;
+
+/** The squeeze stops here; the floors in the stylesheet guard the touch
+    targets long before it, so reaching this means the pane is hopeless. */
+const MIN_K = 0.5;
 
 /** Where a release lands: an edge to centre on, a corner, and whether it tucked. */
 export function placeAt(x: number, y: number, w: number, h: number): { edge: Edge; corner: Corner; inCorner: boolean } {
@@ -95,7 +99,57 @@ export function InkToolbar({
   useEffect(() => () => stopDrag.current?.(), []);
   const palette = tool.ink === 'marker' ? HIGHLIGHTS : INK_PALETTE;
   const swatch = displayColor(tool.color, dark);
-  const vertical = floating && open && (edge === 'left' || edge === 'right');
+  const sideways = floating && open && (edge === 'left' || edge === 'right');
+  /**
+   * How much of the column fits. Every size in it is a multiple of this, so
+   * the palette shrinks to the pane rather than scrolling inside it: twice
+   * now a guess from the viewport has been wrong, because an iPad gives a web
+   * app whatever height Safari's chrome leaves, and full screen changes it
+   * again. Below MIN_K the pane is hopeless and the circle is the answer.
+   */
+  const paneH = useOffsetParentHeight(dock, sideways);
+  const bar = useRef<HTMLDivElement>(null);
+  const [k, setK] = useState(1);
+  const [tooTight, setTooTight] = useState(false);
+  const measured = useRef(-1);
+  // A new pane is a fresh question: try full size again before shrinking.
+  useLayoutEffect(() => {
+    if (measured.current === paneH) return;
+    measured.current = paneH;
+    setK(1);
+    setTooTight(false);
+  }, [paneH]);
+  // Converge on the factor that fits. The column's height is very nearly
+  // linear in k, so one pass lands and a second confirms. Measuring beats the
+  // arithmetic: not every size in the column scales, and any of them may be
+  // changed in the stylesheet later without this ever being told.
+  useLayoutEffect(() => {
+    const el = bar.current;
+    if (!sideways || !paneH || !el) return;
+    // The box's own numbers, not the pane's: clientHeight is the room inside
+    // the border, scrollHeight what the controls need. Working from the pane
+    // instead left the palette two pixels over, every time — the toolbar's
+    // one-pixel border, top and bottom.
+    const room = el.clientHeight;
+    const need = el.scrollHeight;
+    if (!room || !need) return;
+    // Judge by the pixels, not by the size of the step: a four-pixel overflow
+    // is a change of 0.006 in k, and a threshold coarser than that declared
+    // the pane hopeless when it only needed a nudge.
+    if (need <= room) {
+      setTooTight(false);
+      return;
+    }
+    // Always take a real step down. Once the floors below bind, the column's
+    // height stops responding to k and a purely proportional step shrinks by
+    // less each time, stalling while there was still room to be found: it
+    // called a 548px pane hopeless when the floors fit in 454.
+    const next = Math.max(MIN_K, Math.min((k * room) / need, k - 0.04));
+    if (next < k) setK(next);
+    else setTooTight(true);
+  }, [sideways, paneH, k, tool.ink, options]);
+  // Only the full column or the circle — never a stub of one with a scroll.
+  const vertical = sideways && !tooTight;
 
   // The popover is a menu: a tap outside or Escape puts it away.
   useEffect(() => {
@@ -150,6 +204,7 @@ export function InkToolbar({
       if (!d.moved) {
         el.style.transform = '';
         if (!open) setOpen(true);
+        else if (asCircle) updateSettings({ inkToolbarEdge: { ...settings.inkToolbarEdge, [mode]: 'bottom' } });
         return;
       }
       const box = el.offsetParent?.getBoundingClientRect();
@@ -231,12 +286,16 @@ export function InkToolbar({
   // Without this the browser starts its own text/image drag part-way through,
   // which cancels the pointer stream and abandons the drag mid-flight.
   const dragProps = floating ? { onPointerDown: startDrag, onDragStart: (e: ReactDragEvent) => e.preventDefault(), draggable: false } : {};
-  const cls = ['ink-dock', floating && 'floating', !open && 'collapsed', className].filter(Boolean).join(' ');
+  // A pane too short for the column shows the circle, so it has to look and
+  // rest like the tucked circle too — same class, same corner, not the edge
+  // rules a column would bring with it.
+  const asCircle = !open || (sideways && !vertical);
+  const cls = ['ink-dock', floating && 'floating', asCircle && 'collapsed', className].filter(Boolean).join(' ');
   // Resting places live in CSS, so the inline transform belongs to the drag
   // alone. Only the state in force carries an attribute: with both present the
   // edge rules and the corner rules each set an opposing offset, which stretched
   // the dock into an invisible sheet and left the circle adrift in the middle.
-  const place = open ? { 'data-edge': edge } : { 'data-spot': spot };
+  const place = asCircle ? { 'data-spot': spot } : { 'data-edge': edge };
 
   // The same controls serve both layouts, so they are built once. Along an
   // edge they sit in a row; down a side they stack into Apple's column.
@@ -323,10 +382,18 @@ export function InkToolbar({
     </button>
   );
 
-  if (!open) {
+  if (asCircle) {
+    // When it is the pane that is too short rather than the user who tucked
+    // it away, `open` is already true, so a tap has to do something else:
+    // send the palette to the bottom, where the full bar does fit.
+    const shrunk = open;
     return (
       <div className={cls} {...place} ref={dock} {...dragProps}>
-        <button className="ink-mini glass" aria-label={`${labelFor(tool.tool)} — show drawing tools`} title="Show drawing tools (drag to move)">
+        <button
+          className="ink-mini glass"
+          aria-label={shrunk ? `${labelFor(tool.tool)} — not enough room here, tap to move the tools to the bottom` : `${labelFor(tool.tool)} — show drawing tools`}
+          title={shrunk ? 'Not enough room for the side palette — tap to move it to the bottom' : 'Show drawing tools (drag to move)'}
+        >
           {iconFor(tool.tool)}
           {tool.tool !== 'eraser' && tool.tool !== 'lasso' && <span className="tool-ink" style={{ ['--sw' as string]: swatch }} />}
         </button>
@@ -345,7 +412,7 @@ export function InkToolbar({
   if (vertical) {
     return (
       <div className={cls} {...place} ref={dock} {...dragProps}>
-        <div className="ink-toolbar glass column" role="toolbar" aria-label="Drawing tools">
+        <div className="ink-toolbar glass column" role="toolbar" aria-label="Drawing tools" ref={bar} style={{ ['--k' as string]: k.toFixed(3) }}>
           <span className="ink-grab" aria-hidden="true" />
           <div className="ink-actions">{actions}</div>
           <span className="ink-sep" />
