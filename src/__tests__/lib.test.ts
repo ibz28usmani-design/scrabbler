@@ -176,22 +176,36 @@ describe('openai-compatible provider', () => {
 });
 
 describe('settings migration', () => {
+  it('carries a single saved place into both orientations', async () => {
+    const { migrate, DEFAULT_SETTINGS } = await import('../lib/settings');
+    const m = migrate({ ...DEFAULT_SETTINGS, inkToolbarEdge: 'left' as never, inkToolbarSpot: 'bl' as never });
+    expect(m.inkToolbarEdge).toEqual({ portrait: 'left', landscape: 'left' });
+    expect(m.inkToolbarSpot).toEqual({ portrait: 'bl', landscape: 'bl' });
+  });
+
   it('moves a tucked circle off a side and into the nearest corner', async () => {
     const { migrate, DEFAULT_SETTINGS } = await import('../lib/settings');
-    const at = (spot: string) => migrate({ ...DEFAULT_SETTINGS, inkToolbarSpot: spot as never }).inkToolbarSpot;
+    const at = (spot: string) => migrate({ ...DEFAULT_SETTINGS, inkToolbarSpot: spot as never }).inkToolbarSpot.portrait;
     expect(at('left')).toBe('tl');
     expect(at('right')).toBe('tr');
     expect(at('top')).toBe('tr');
     expect(at('bottom')).toBe('br');
   });
 
-  it('leaves a corner, and the rest of the settings, alone', async () => {
+  it('keeps the two orientations apart, and falls back on nonsense', async () => {
     const { migrate, DEFAULT_SETTINGS } = await import('../lib/settings');
-    for (const c of ['tl', 'tr', 'bl', 'br'] as const) {
-      expect(migrate({ ...DEFAULT_SETTINGS, inkToolbarSpot: c }).inkToolbarSpot).toBe(c);
-    }
-    const kept = migrate({ ...DEFAULT_SETTINGS, apiKey: 'AIzaX', inkToolbarEdge: 'left' });
+    const m = migrate({
+      ...DEFAULT_SETTINGS,
+      inkToolbarEdge: { portrait: 'bottom', landscape: 'left' },
+      inkToolbarSpot: { portrait: 'bl', landscape: 'oops' as never },
+    });
+    expect(m.inkToolbarEdge).toEqual({ portrait: 'bottom', landscape: 'left' });
+    expect(m.inkToolbarSpot).toEqual({ portrait: 'bl', landscape: 'tr' });
+  });
+
+  it('leaves the rest of the settings alone', async () => {
+    const { migrate, DEFAULT_SETTINGS } = await import('../lib/settings');
+    const kept = migrate({ ...DEFAULT_SETTINGS, apiKey: 'AIzaX' });
     expect(kept.apiKey).toBe('AIzaX');
-    expect(kept.inkToolbarEdge).toBe('left');
   });
 });

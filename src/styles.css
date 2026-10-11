@@ -3416,6 +3416,8 @@ select.input {
 .ink-dock.floating.collapsed {
   width: auto;
   height: auto;
+  max-width: none;
+  max-height: none;
 }
 /* The circle lives in the corners. */
 .ink-dock.floating.collapsed[data-spot='tl'],
@@ -3537,8 +3539,14 @@ select.input {
 
 /* Tucked away: a circle showing the tool in hand, draggable like the palette. */
 .ink-mini {
+  /* Belt and braces: a flex parent that stretched this even slightly turned
+     the circle into an ellipse, which is unmistakable and ugly. */
+  flex: 0 0 auto;
   width: 52px;
   height: 52px;
+  min-width: 52px;
+  min-height: 52px;
+  aspect-ratio: 1;
   border-radius: 50%;
   display: grid;
   place-items: center;

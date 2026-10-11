@@ -1,5 +1,8 @@
 import { useSyncExternalStore } from 'react';
 
+export type Orientation = 'portrait' | 'landscape';
+export type ByOrientation<T> = Record<Orientation, T>;
+
 export interface Settings {
   apiKey: string;
   /** Which engine runs plain-text generation. Gemini still handles media and web tools. */
@@ -22,10 +25,11 @@ export interface Settings {
   fingerDrawing: boolean;
   /** The handwriting tool palette is expanded (false = collapsed to a circle). */
   inkToolbarOpen: boolean;
-  /** Which edge of the page the open palette is docked to; it centres there. */
-  inkToolbarEdge: 'top' | 'bottom' | 'left' | 'right';
-  /** Which corner the tucked-away circle rests in. */
-  inkToolbarSpot: 'tl' | 'tr' | 'bl' | 'br';
+  /** Which edge the open palette centres on — remembered per orientation, since
+      what is out of the way in portrait is in the way in landscape. */
+  inkToolbarEdge: ByOrientation<'top' | 'bottom' | 'left' | 'right'>;
+  /** Which corner the tucked-away circle rests in, per orientation. */
+  inkToolbarSpot: ByOrientation<'tl' | 'tr' | 'bl' | 'br'>;
   dailyGoal: number;
   newPerDay: number;
   liveCaptions: boolean;
@@ -50,8 +54,8 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   fingerDrawing: false,
   inkToolbarOpen: true,
-  inkToolbarEdge: 'bottom',
-  inkToolbarSpot: 'tr',
+  inkToolbarEdge: { portrait: 'bottom', landscape: 'bottom' },
+  inkToolbarSpot: { portrait: 'tr', landscape: 'tr' },
   dailyGoal: 20,
   newPerDay: 20,
   liveCaptions: true,
@@ -81,10 +85,19 @@ export function migrate(s: Settings & { bytezKey?: string; bytezModel?: string }
   }
   if (s.bytezKey && !s.compatKey) s.compatKey = s.bytezKey;
   if (s.bytezModel && !s.compatModel) s.compatModel = s.bytezModel;
-  // The tucked circle briefly rested on the sides too. A saved side would match
-  // no corner rule and leave it unplaced, so nudge it to the nearest corner.
-  const sides: Record<string, Settings['inkToolbarSpot']> = { top: 'tr', bottom: 'br', left: 'tl', right: 'tr' };
-  if (sides[s.inkToolbarSpot]) s.inkToolbarSpot = sides[s.inkToolbarSpot];
+  // The palette's place used to be one value for the whole app, and the tucked
+  // circle briefly rested on the sides as well as the corners. Carry either
+  // shape forward: a bare value becomes the same place in both orientations,
+  // and a side becomes the nearest corner, which the CSS can actually position.
+  const corners: Record<string, 'tl' | 'tr' | 'bl' | 'br'> = { top: 'tr', bottom: 'br', left: 'tl', right: 'tr' };
+  const pair = <T,>(v: unknown, fix: (x: unknown) => T): ByOrientation<T> =>
+    v && typeof v === 'object'
+      ? { portrait: fix((v as ByOrientation<T>).portrait), landscape: fix((v as ByOrientation<T>).landscape) }
+      : { portrait: fix(v), landscape: fix(v) };
+  const edge = (x: unknown) => (['top', 'bottom', 'left', 'right'].includes(x as string) ? (x as 'top') : 'bottom');
+  const spot = (x: unknown) => (corners[x as string] ?? (['tl', 'tr', 'bl', 'br'].includes(x as string) ? (x as 'tr') : 'tr'));
+  s.inkToolbarEdge = pair(s.inkToolbarEdge, edge);
+  s.inkToolbarSpot = pair(s.inkToolbarSpot, spot);
   return s;
 }
 

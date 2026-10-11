@@ -2,11 +2,12 @@ import { useEffect, useRef, useState, type DragEvent as ReactDragEvent, type Poi
 import { flushSync } from 'react-dom';
 import { displayColor, HIGHLIGHTS, INK_PALETTE, setTool, setToolColor, setToolSize, useTool, type Tool } from '../lib/ink';
 import { updateSettings, useSettings, type Settings } from '../lib/settings';
+import { useMediaQuery } from './ui';
 import { useDark } from '../lib/theme';
 import { IChevD, IEraser, IHighlighter, ILasso, IMarker, IPencil, IRedo, ITrash, IUndo } from './Icons';
 
-type Edge = Settings['inkToolbarEdge'];
-type Corner = Settings['inkToolbarSpot'];
+type Edge = Settings['inkToolbarEdge']['portrait'];
+type Corner = Settings['inkToolbarSpot']['portrait'];
 
 const TOOLS: [Tool, ReactNode, string][] = [
   ['pen', <IPencil key="p" />, 'Pen'],
@@ -73,7 +74,13 @@ export function InkToolbar({
   children?: ReactNode;
 }) {
   const tool = useTool();
-  const { fingerDrawing, inkToolbarOpen: open, inkToolbarEdge: edge, inkToolbarSpot: spot } = useSettings();
+  const settings = useSettings();
+  const { fingerDrawing, inkToolbarOpen: open } = settings;
+  // Where the palette belongs depends on which way the iPad is held: a bar
+  // along the bottom costs height that landscape has least of.
+  const mode = useMediaQuery('(orientation: portrait)') ? 'portrait' : 'landscape';
+  const edge = settings.inkToolbarEdge[mode];
+  const spot = settings.inkToolbarSpot[mode];
   const dark = useDark();
   const [options, setOptions] = useState(false);
   const dock = useRef<HTMLDivElement>(null);
@@ -157,17 +164,19 @@ export function InkToolbar({
       // transitioning layout, which would relayout the page every frame.
       const first = el.getBoundingClientRect();
       el.style.transform = '';
+      const atEdge = { inkToolbarEdge: { ...settings.inkToolbarEdge, [mode]: p.edge } };
+      const atCorner = { inkToolbarSpot: { ...settings.inkToolbarSpot, [mode]: p.corner } };
       flushSync(() =>
         updateSettings(
           open
             ? // Dropped in a corner it tucks away; anywhere else it centres on
               // the nearest edge.
               p.inCorner
-              ? { inkToolbarOpen: false, inkToolbarSpot: p.corner }
-              : { inkToolbarEdge: p.edge }
+              ? { inkToolbarOpen: false, ...atCorner }
+              : atEdge
             : // Tucked away it lives in the corners, so it goes to whichever is
               // nearest wherever it is let go.
-              { inkToolbarSpot: p.corner },
+              atCorner,
         ),
       );
       const last = el.getBoundingClientRect();
@@ -217,8 +226,11 @@ export function InkToolbar({
   // which cancels the pointer stream and abandons the drag mid-flight.
   const dragProps = floating ? { onPointerDown: startDrag, onDragStart: (e: ReactDragEvent) => e.preventDefault(), draggable: false } : {};
   const cls = ['ink-dock', floating && 'floating', !open && 'collapsed', className].filter(Boolean).join(' ');
-  // Resting places live in CSS, so the inline transform belongs to the drag alone.
-  const place = { 'data-edge': edge, 'data-spot': spot };
+  // Resting places live in CSS, so the inline transform belongs to the drag
+  // alone. Only the state in force carries an attribute: with both present the
+  // edge rules and the corner rules each set an opposing offset, which stretched
+  // the dock into an invisible sheet and left the circle adrift in the middle.
+  const place = open ? { 'data-edge': edge } : { 'data-spot': spot };
 
   if (!open) {
     return (
