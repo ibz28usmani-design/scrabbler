@@ -1,7 +1,10 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect } from 'react';
 import { db, deleteNotesForever } from './db';
-import { closeModal, nav, setSidebarInline, useNav } from './lib/nav';
+import { closeModal, nav, PAGE_VIEWS, setSidebarInline, useNav } from './lib/nav';
+import { usePushSync } from './lib/calendarData';
+import { CalendarView } from './components/CalendarView';
+import { RemindersView } from './components/RemindersView';
 import { useApplyTheme } from './lib/theme';
 import { restoreNote } from './lib/notes';
 import { hasTextKey } from './lib/llm';
@@ -29,6 +32,20 @@ export default function App() {
   const xwide = useMediaQuery('(min-width: 1440px)');
   const roomy = useMediaQuery('(min-width: 1250px)');
   const folders = useLiveQuery(() => db.folders.orderBy('order').toArray(), []);
+  usePushSync();
+
+  // A tapped notification opens the calendar or reminders (?open=… on launch, a message if already open).
+  useEffect(() => {
+    const open = (url: string) => {
+      const view = new URL(url, location.href).searchParams.get('open');
+      if (view === 'calendar' || view === 'reminders') nav({ view, pane: 'list', drawer: false });
+    };
+    open(location.href);
+    if (location.search.includes('open=')) history.replaceState(null, '', location.pathname + location.hash);
+    const onMsg = (e: MessageEvent) => e.data?.type === 'scrabbler-open' && open(e.data.url);
+    navigator.serviceWorker?.addEventListener('message', onMsg);
+    return () => navigator.serviceWorker?.removeEventListener('message', onMsg);
+  }, []);
   const note = useLiveQuery(() => (s.noteId ? db.notes.get(s.noteId) : undefined), [s.noteId]);
 
   // Keep the selected folder valid.
@@ -56,7 +73,8 @@ export default function App() {
 
   if (!folders) return null;
 
-  const isStudy = s.view === 'study';
+  // Study, Calendar and Reminders each fill the main area on their own.
+  const isStudy = PAGE_VIEWS.includes(s.view);
   const notebookFolder = note?.folderId ?? s.folderId;
   // Full-screen focus: only the page stays; panels float in on demand (FocusChrome).
   const focus = s.focus && !isStudy && !!note && !note.deletedAt;
@@ -126,8 +144,14 @@ export default function App() {
       )}
       {showStudy && (
         <main className="main study-main">
-          <ErrorBoundary label="Study">
-            <StudyView narrow={narrow} showSidebarToggle={!showSidebar} />
+          <ErrorBoundary label={s.view === 'calendar' ? 'Calendar' : s.view === 'reminders' ? 'Reminders' : 'Study'} key={s.view}>
+            {s.view === 'calendar' ? (
+              <CalendarView narrow={narrow} showSidebarToggle={!showSidebar} />
+            ) : s.view === 'reminders' ? (
+              <RemindersView narrow={narrow} showSidebarToggle={!showSidebar} />
+            ) : (
+              <StudyView narrow={narrow} showSidebarToggle={!showSidebar} />
+            )}
           </ErrorBoundary>
         </main>
       )}

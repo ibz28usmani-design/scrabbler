@@ -1,0 +1,13 @@
+# For deploying from a computer: `npx wrangler deploy` in this folder.
+# From an iPad, follow README.md instead (all in the Cloudflare dashboard).
+name = "scrabbler-push"
+main = "worker.js"
+compatibility_date = "2025-09-01"
+
+[[kv_namespaces]]
+binding = "SCRABBLER"
+# Create one with `npx wrangler kv namespace create SCRABBLER` and paste its id here.
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+[triggers]
+crons = ["* * * * *"]

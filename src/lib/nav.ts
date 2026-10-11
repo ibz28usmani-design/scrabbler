@@ -1,6 +1,9 @@
 import { useSyncExternalStore } from 'react';
 
-export type View = 'folder' | 'search' | 'deleted' | 'study';
+export type View = 'folder' | 'search' | 'deleted' | 'study' | 'calendar' | 'reminders';
+
+/** Views that fill the main area on their own, without the note list and editor. */
+export const PAGE_VIEWS: View[] = ['study', 'calendar', 'reminders'];
 export type NotebookTab = 'sources' | 'chat' | 'studio';
 export type Pane = 'sidebar' | 'list' | 'editor';
 
@@ -41,7 +44,7 @@ function initial(): NavState {
     /* ignore */
   }
   return {
-    view: saved.view === 'study' ? 'study' : 'folder',
+    view: saved.view && PAGE_VIEWS.includes(saved.view) ? saved.view : 'folder',
     folderId: saved.folderId ?? null,
     noteId: saved.noteId ?? null,
     query: '',

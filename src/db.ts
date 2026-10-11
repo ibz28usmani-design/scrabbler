@@ -1,4 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
+import type { Lesson, Subject, TermCalendar } from './lib/timetable';
+import type { Reminder, ReminderList } from './lib/reminders';
 
 export type ID = string;
 
@@ -204,6 +206,10 @@ export const db = new Dexie('scrabbler') as Dexie & {
   cards: EntityTable<Card, 'id'>;
   reviews: EntityTable<ReviewEntry, 'id'>;
   meta: EntityTable<Meta, 'key'>;
+  subjects: EntityTable<Subject, 'id'>;
+  lessons: EntityTable<Lesson, 'id'>;
+  reminderLists: EntityTable<ReminderList, 'id'>;
+  reminders: EntityTable<Reminder, 'id'>;
 };
 
 db.version(1).stores({
@@ -218,6 +224,14 @@ db.version(1).stores({
   cards: 'id, deckId, sched.due',
   reviews: 'id, cardId, deckId, day, at',
   meta: 'key',
+});
+
+// Calendar and reminders.
+db.version(2).stores({
+  subjects: 'id',
+  lessons: 'id, day',
+  reminderLists: 'id, order',
+  reminders: 'id, listId',
 });
 
 export function uid(): ID {
@@ -287,6 +301,27 @@ export async function initDb() {
   if (old.length) await deleteNotesForever(old.map((n) => n.id));
   await migrateHandwrittenNotes();
   await sweepAttachments();
+  await seedCalendar();
+}
+
+export const TERM_CALENDAR_KEY = 'termCalendar';
+
+/** The timetable, term dates and a first reminders list, the first time only. */
+export async function seedCalendar() {
+  const { SEED_CALENDAR, SEED_LESSONS, SEED_SUBJECTS } = await import('./lib/symonds');
+  if (!(await getMeta('timetableSeeded', false))) {
+    await db.transaction('rw', db.subjects, db.lessons, db.meta, async () => {
+      if (!(await db.subjects.count())) await db.subjects.bulkAdd(SEED_SUBJECTS);
+      if (!(await db.lessons.count())) await db.lessons.bulkAdd(SEED_LESSONS);
+      await setMeta('timetableSeeded', true);
+    });
+  }
+  if (!(await db.meta.get(TERM_CALENDAR_KEY))) await setMeta(TERM_CALENDAR_KEY, SEED_CALENDAR);
+  if (!(await db.reminderLists.count())) await db.reminderLists.add({ id: uid(), name: 'Reminders', color: '#007aff', order: 0, createdAt: Date.now() });
+}
+
+export async function getTermCalendar(): Promise<TermCalendar> {
+  return getMeta<TermCalendar>(TERM_CALENDAR_KEY, { terms: [], closures: [] });
 }
 
 /**

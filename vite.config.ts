@@ -29,6 +29,8 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,wasm,mjs,ttf}'],
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         navigateFallbackDenylist: [/^\/api/],
+        // Shows push notifications and opens the app when one is tapped.
+        importScripts: ['push-sw.js'],
       },
     }),
   ],

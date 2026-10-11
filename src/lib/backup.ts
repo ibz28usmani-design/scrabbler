@@ -1,7 +1,7 @@
 import { db } from '../db';
 import { blobToBase64 } from './gemini';
 
-const TABLES = ['folders', 'notes', 'sources', 'chunks', 'chats', 'studio', 'decks', 'cards', 'reviews', 'meta'] as const;
+const TABLES = ['folders', 'notes', 'sources', 'chunks', 'chats', 'studio', 'decks', 'cards', 'reviews', 'meta', 'subjects', 'lessons', 'reminderLists', 'reminders'] as const;
 
 export async function exportBackup(): Promise<Blob> {
   const data: Record<string, unknown> = { app: 'scrabbler', version: 1, exportedAt: Date.now() };

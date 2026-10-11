@@ -6,7 +6,10 @@ import { computeStreak, deckCounts } from '../lib/study';
 import { updateSettings, useSettings } from '../lib/settings';
 import { useDark } from '../lib/theme';
 import { confirmDialog, Menu, promptDialog } from './ui';
-import { ICards, IFlame, IFolder, IGear, IMoon, IMore, IPlus, ISearch, ISun, ITrash, IX } from './Icons';
+import { ICalendar, ICards, IChecklist, IFlame, IFolder, IGear, IMoon, IMore, IPlus, ISearch, ISun, ITrash, IX } from './Icons';
+import { NextClass } from './NextClass';
+import { inSmartList } from '../lib/reminders';
+import { dateIn } from '../lib/timetable';
 
 const EMOJIS = ['🗒️', '📚', '🧪', '🧠', '💼', '🎓', '🧬', '📐', '🌍', '💡', '🎨', '🩺', '⚖️', '💻', '🎵', '✈️', '🏠', '❤️'];
 
@@ -26,6 +29,10 @@ export function Sidebar() {
     return { map, deleted };
   }, []);
   const due = useLiveQuery(async () => deckCounts(await db.cards.toArray()), []);
+  const dueToday = useLiveQuery(async () => {
+    const today = dateIn(Date.now());
+    return (await db.reminders.toArray()).filter((r) => inSmartList(r, 'today', today)).length;
+  }, []);
   const streak = useLiveQuery(() => computeStreak(dailyGoal), [dailyGoal]);
   const [menuFor, setMenuFor] = useState<{ folder: Folder; el: HTMLElement } | null>(null);
   const [emojiFor, setEmojiFor] = useState<{ folder: Folder; el: HTMLElement } | null>(null);
@@ -88,6 +95,18 @@ export function Sidebar() {
             </span>
           )}
           {!!due?.due && <span className="badge">{due.due}</span>}
+        </button>
+
+        <div className="side-section">Planner</div>
+        <NextClass compact />
+        <button className={`side-row ${view === 'calendar' ? 'on' : ''}`} onClick={() => nav({ view: 'calendar', pane: 'list', drawer: false })}>
+          <ICalendar className="side-icon" />
+          <span className="side-name">Calendar</span>
+        </button>
+        <button className={`side-row ${view === 'reminders' ? 'on' : ''}`} onClick={() => nav({ view: 'reminders', pane: 'list', drawer: false })}>
+          <IChecklist className="side-icon" />
+          <span className="side-name">Reminders</span>
+          {!!dueToday && <span className="badge">{dueToday}</span>}
         </button>
 
         <div className="side-section">

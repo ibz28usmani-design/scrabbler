@@ -7,6 +7,7 @@ import { download, eraseEverything, exportBackup, importBackup } from '../lib/ba
 import { toast, toastError } from '../lib/events';
 import { confirmDialog, Modal, Segmented, Spinner } from './ui';
 import { ICheck, IDownload, IUpload } from './Icons';
+import { NotificationSettings } from './NotificationSettings';
 
 function pickDefault(models: ModelInfo[], kind: 'flash' | 'pro' | 'tts'): string | undefined {
   const names = models.map((m) => m.name);
@@ -303,6 +304,8 @@ export function SettingsModal() {
           </label>
         </div>
       </section>
+
+      <NotificationSettings />
 
       <section className="set-section">
         <h3>Your data</h3>

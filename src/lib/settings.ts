@@ -34,6 +34,17 @@ export interface Settings {
   newPerDay: number;
   liveCaptions: boolean;
   transcribeLanguage: string;
+  /** Your Cloudflare push server (see push-server/README.md). */
+  pushUrl: string;
+  pushPassword: string;
+  /** Its public key, fetched ahead so subscribing happens inside the tap. */
+  pushPublicKey: string;
+  /** This device's id on the push server. */
+  pushDeviceId: string;
+  pushEnabled: boolean;
+  notifyClasses: boolean;
+  classLeadMinutes: number;
+  notifyReminders: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -60,6 +71,14 @@ export const DEFAULT_SETTINGS: Settings = {
   newPerDay: 20,
   liveCaptions: true,
   transcribeLanguage: 'auto',
+  pushUrl: '',
+  pushPassword: '',
+  pushPublicKey: '',
+  pushDeviceId: '',
+  pushEnabled: false,
+  notifyClasses: true,
+  classLeadMinutes: 10,
+  notifyReminders: true,
 };
 
 const KEY = 'scrabbler.settings';
