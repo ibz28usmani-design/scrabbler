@@ -7,6 +7,8 @@ import { db, type Note } from '../db';
 import { LecturePanel } from './LecturePanel';
 import { AIToolsButton, OPEN_AI_TOOLS } from './AITools';
 import { menuExtensions } from './SlashMenu';
+import { FileDrop } from './NotionBlockViews';
+import { downscaleImage } from '../lib/attachments';
 import { BlockHandle } from './BlockHandle';
 import { setSlashHost } from '../lib/slashCommands';
 import { nav, toggleSidebar, openModal, useNav } from '../lib/nav';
@@ -28,16 +30,6 @@ function summarize(editor: Editor) {
     snippet: lines.slice(1, 3).join(' ').slice(0, 160) || (hasDrawing ? 'Drawing' : ''),
     text,
   };
-}
-
-async function downscaleImage(file: File, max = 1600): Promise<string> {
-  const bmp = await createImageBitmap(file);
-  const s = Math.min(1, max / Math.max(bmp.width, bmp.height));
-  const c = document.createElement('canvas');
-  c.width = Math.round(bmp.width * s);
-  c.height = Math.round(bmp.height * s);
-  c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
-  return c.toDataURL('image/jpeg', 0.86);
 }
 
 export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean; wide: boolean }) {
@@ -64,6 +56,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
       extensions: [
         ...editorExtensions,
         ...menuExtensions,
+        FileDrop,
         Placeholder.configure({
           placeholder: ({ node, pos }) =>
             pos === 0 && node.type.name !== 'drawing' ? 'Title' : node.type.name === 'detailsSummary' ? 'Toggle' : node.type.name === 'heading' ? `Heading ${node.attrs.level}` : 'Start writing, or tap ✎ to draw with Apple Pencil…',

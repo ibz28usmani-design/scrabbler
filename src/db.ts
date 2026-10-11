@@ -85,6 +85,8 @@ export interface StoredBlob {
   name: string;
   mime: string;
   createdAt: number;
+  /** Files dropped into a note's text; swept once no note refers to them. */
+  kind?: 'attachment';
 }
 
 export interface Citation {
@@ -223,10 +225,42 @@ export function uid(): ID {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-export async function putBlob(blob: Blob, name: string): Promise<ID> {
+export async function putBlob(blob: Blob, name: string, kind?: StoredBlob['kind']): Promise<ID> {
   const id = uid();
-  await db.blobs.add({ id, blob, name, mime: blob.type, createdAt: Date.now() });
+  await db.blobs.add({ id, blob, name, mime: blob.type, createdAt: Date.now(), ...(kind ? { kind } : {}) });
   return id;
+}
+
+/** Ids of the files attached inside a typed note's content (TipTap JSON, or HTML). */
+export function attachmentBlobIds(content: unknown): ID[] {
+  const out = new Set<ID>();
+  if (typeof content === 'string') {
+    for (const m of content.matchAll(/data-blob="([^"]+)"/g)) out.add(m[1]);
+  } else {
+    const walk = (n: any) => {
+      if (!n || typeof n !== 'object') return;
+      if (n.type === 'attachment' && typeof n.attrs?.blobId === 'string' && n.attrs.blobId) out.add(n.attrs.blobId);
+      if (Array.isArray(n.content)) n.content.forEach(walk);
+    };
+    walk(content);
+  }
+  return [...out];
+}
+
+const ONE_DAY = 24 * 3600 * 1000;
+
+/**
+ * Removes attached files no note (Recently Deleted included) refers to any more.
+ * Only files a day old or more, so one removed a moment ago can still be undone.
+ */
+export async function sweepAttachments(now = Date.now()) {
+  const candidates = await db.blobs.filter((b) => b.kind === 'attachment' && b.createdAt < now - ONE_DAY).primaryKeys();
+  if (!candidates.length) return 0;
+  const used = new Set<ID>();
+  await db.notes.each((n) => attachmentBlobIds(n.content).forEach((id) => used.add(id)));
+  const orphans = candidates.filter((id) => !used.has(id));
+  await db.blobs.bulkDelete(orphans);
+  return orphans.length;
 }
 
 export async function getMeta<T>(key: string, fallback: T): Promise<T> {
@@ -252,6 +286,7 @@ export async function initDb() {
   const old = await db.notes.where('deletedAt').below(Date.now() - THIRTY_DAYS).toArray();
   if (old.length) await deleteNotesForever(old.map((n) => n.id));
   await migrateHandwrittenNotes();
+  await sweepAttachments();
 }
 
 /**
@@ -279,7 +314,7 @@ export function legacyInk(content: unknown): InkDoc | null {
 
 export async function deleteNotesForever(ids: ID[]) {
   const notes = await db.notes.bulkGet(ids);
-  const blobIds = notes.flatMap((n) => (n?.audioBlobId ? [n.audioBlobId] : []));
+  const blobIds = notes.flatMap((n) => (n ? [...(n.audioBlobId ? [n.audioBlobId] : []), ...attachmentBlobIds(n.content)] : []));
   await db.transaction('rw', db.notes, db.blobs, async () => {
     await db.notes.bulkDelete(ids);
     await db.blobs.bulkDelete(blobIds);

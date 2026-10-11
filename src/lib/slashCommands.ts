@@ -13,21 +13,14 @@ import { createNote } from './notes';
 import { nav, openModal } from './nav';
 import { toast } from './events';
 import { cleanUrl, type EmbedKind } from './embeds';
+import { attachFromPicker } from './attachments';
 import { EMOJI } from './emoji';
 import { promptDialog } from '../components/ui';
 import { BLOCK_COLORS, colorBlock, currentBlock, deleteCurrentBlock, duplicateCurrentBlock, setAllToggles, turnInto, type BlockColor, type BlockKind } from '../components/notionBlocks';
 import { openNote } from '../components/NotionBlockViews';
 
-export interface SlashHost {
-  noteId: string;
-  folderId: string;
-  pickImage: () => void;
-  openAI: () => void;
-}
-
-const hosts = new WeakMap<Editor, SlashHost>();
-export const setSlashHost = (editor: Editor, host: SlashHost) => hosts.set(editor, host);
-export const getSlashHost = (editor: Editor) => hosts.get(editor);
+import { getSlashHost, type SlashHost } from './slashHost';
+export { getSlashHost, setSlashHost, type SlashHost } from './slashHost';
 
 export interface MenuItem {
   id: string;
@@ -95,12 +88,10 @@ const turn = (k: BlockKind) => ({ editor }: { editor: Editor }) => {
   turnInto(editor, k);
 };
 
-/** Inserts a block-level node, leaving a line to keep typing on after it. */
+/** Inserts a block-level node, with a line after it to keep typing on. */
 function insertBlock(editor: Editor, content: Record<string, unknown>) {
   freshLine(editor);
-  editor.chain().focus().insertContent(content).run();
-  const last = editor.state.doc.lastChild;
-  if (last && !last.isTextblock) editor.chain().insertContentAt(editor.state.doc.content.size, { type: 'paragraph' }).focus('end').run();
+  editor.chain().focus().insertContent([content, { type: 'paragraph' }]).run();
 }
 
 async function embed(editor: Editor, kind: EmbedKind, label: string) {
@@ -178,11 +169,14 @@ export const SLASH_ITEMS: SlashItem[] = [
       host?.pickImage();
       editor.commands.focus();
     } },
-  { id: 'video', title: 'Video', icon: '▶', group: 'Media', aliases: ['video', 'youtube', 'vimeo', 'loom'], hint: 'Embed from YouTube, Vimeo or a video link.', run: ({ editor }) => embed(editor, 'video', 'Video') },
-  { id: 'audio', title: 'Audio', icon: '♪', group: 'Media', aliases: ['audio', 'sound', 'mp3', 'podcast'], hint: 'Embed an audio file from a link.', run: ({ editor }) => embed(editor, 'audio', 'Audio') },
+  { id: 'pdf', title: 'PDF', icon: 'PDF', group: 'Media', aliases: ['pdf'], hint: 'Upload a PDF and see its first page.', run: ({ editor }) => attachFromPicker(editor, 'application/pdf,.pdf') },
+  { id: 'file', title: 'File', icon: '📎', group: 'Media', aliases: ['file', 'upload', 'attach', 'attachment'], hint: 'Upload any file to keep with the note.', run: ({ editor }) => attachFromPicker(editor, '') },
+  { id: 'video', title: 'Video', icon: '▶', group: 'Media', aliases: ['video', 'movie', 'clip'], hint: 'Upload a video from this device.', run: ({ editor }) => attachFromPicker(editor, 'video/*') },
+  { id: 'audio', title: 'Audio', icon: '♪', group: 'Media', aliases: ['audio', 'sound', 'mp3', 'voicememo'], hint: 'Upload an audio file from this device.', run: ({ editor }) => attachFromPicker(editor, 'audio/*') },
+  { id: 'videolink', title: 'Video link', icon: '▶', group: 'Media', aliases: ['videolink', 'youtube', 'vimeo', 'loom', 'embedvideo'], hint: 'Embed from YouTube, Vimeo or a video link.', run: ({ editor }) => embed(editor, 'video', 'Video') },
+  { id: 'audiolink', title: 'Audio link', icon: '♪', group: 'Media', aliases: ['audiolink', 'podcast', 'embedaudio'], hint: 'Play an audio file from a web link.', run: ({ editor }) => embed(editor, 'audio', 'Audio') },
   { id: 'embed', title: 'Embed', icon: '⧉', group: 'Media', aliases: ['embed', 'iframe', 'web'], hint: 'Show a web page inside the note.', run: ({ editor }) => embed(editor, 'embed', 'Embed') },
   { id: 'bookmark', title: 'Web bookmark', icon: '🔖', group: 'Media', aliases: ['bookmark', 'webbookmark', 'url'], hint: 'Save a link as a visual card.', run: ({ editor }) => embed(editor, 'bookmark', 'Bookmark') },
-  { id: 'pdf', title: 'PDF', icon: '📕', group: 'Media', aliases: ['pdf', 'file', 'upload'], hint: 'Add a PDF to this folder’s notebook sources.', run: () => nav({ notebookOpen: true, notebookTab: 'sources' }) },
 
   { id: 'mention', title: 'Mention a note', icon: '@', group: 'Inline', aliases: ['mention', 'mentionpage', 'mentionnote'], shortcut: '@', hint: 'Link to a note inside the sentence.', drill: 'mention ' },
   { id: 'date', title: 'Date', icon: '📅', group: 'Inline', aliases: ['date', 'today', 'now', 'remind', 'reminder'], hint: 'Insert today’s date.', run: ({ editor }) => editor.chain().focus().insertContent(longDate(new Date()) + ' ').run() },
@@ -204,7 +198,7 @@ export const SLASH_ITEMS: SlashItem[] = [
   { id: 'record', title: 'Record lecture', icon: '🎙', group: 'Scrabbler', aliases: ['record', 'lecture', 'mic', 'transcribe', 'voice'], hint: 'Record and transcribe into a new note.', run: ({ host }) => host && openModal({ type: 'recorder', folderId: host.folderId }) },
   { id: 'flashcards', title: 'Make flashcards', icon: '🗂', group: 'Scrabbler', aliases: ['flashcards', 'cards', 'deck', 'anki'], hint: 'Turn this note into a study deck.', run: ({ host }) => host && openModal({ type: 'generateDeck', from: { kind: 'note', noteId: host.noteId } }) },
   { id: 'quiz', title: 'Make a quiz', icon: '?', group: 'Scrabbler', aliases: ['quiz', 'test', 'exam'], hint: 'Quiz yourself on this note.', run: ({ host }) => host && openModal({ type: 'generateDeck', from: { kind: 'note', noteId: host.noteId }, quiz: true }) },
-  { id: 'notebook', title: 'Open notebook', icon: '📓', group: 'Scrabbler', aliases: ['notebook', 'sources', 'chat', 'studio'], hint: 'Sources, chat and Studio for this folder.', run: () => nav({ notebookOpen: true }) },
+  { id: 'notebook', title: 'Open notebook', icon: '📓', group: 'Scrabbler', aliases: ['notebook', 'sources', 'addsource', 'chat', 'studio'], hint: 'Sources, chat and Studio for this folder.', run: () => nav({ notebookOpen: true }) },
 
   { id: 'turn', title: 'Turn into', icon: '⇄', group: 'Actions', aliases: ['turn', 'turninto', 'convert'], hint: 'Change this block’s type.', drill: 'turn' },
   { id: 'color', title: 'Colour', icon: 'A', group: 'Actions', aliases: ['color', 'colour', 'textcolor', 'background'], hint: 'Colour the text or background.', drill: 'color ' },
@@ -237,7 +231,7 @@ const noteIcon = (n: Note) => (n.kind === 'ink' ? '✎' : n.kind === 'lecture' ?
 /** Everything the / menu can offer for a query, notes and folders included. */
 export async function slashItems(query: string, editor: Editor): Promise<SlashItem[]> {
   const q = norm(query);
-  const host = hosts.get(editor);
+  const host = getSlashHost(editor);
   let items = SLASH_ITEMS;
   if (q.startsWith('link') || q.startsWith('mention')) {
     const notes = (await recentNotes(host?.noteId)).slice(0, 200);
@@ -280,7 +274,7 @@ export async function slashItems(query: string, editor: Editor): Promise<SlashIt
 
 /** The @ menu: notes to mention, and Notion's @today / @tomorrow / @now dates. */
 export async function mentionItems(query: string, editor: Editor): Promise<SlashItem[]> {
-  const host = hosts.get(editor);
+  const host = getSlashHost(editor);
   const notes = await recentNotes(host?.noteId);
   const dates: SlashItem[] = [
     { id: 'today', title: 'Today', hint: longDate(new Date()), icon: '📅', group: 'Date', aliases: ['today'], run: ({ editor }) => editor.chain().focus().insertContent(longDate(new Date()) + ' ').run() },
@@ -302,7 +296,7 @@ export async function mentionItems(query: string, editor: Editor): Promise<Slash
 
 /** The [[ menu: link a note, or make a new one with the typed title. */
 export async function linkItems(query: string, editor: Editor): Promise<SlashItem[]> {
-  const host = hosts.get(editor);
+  const host = getSlashHost(editor);
   const notes = await recentNotes(host?.noteId);
   const items: SlashItem[] = notes.map((n) => ({
     id: `note-${n.id}`,

@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { getSchema } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -235,5 +236,68 @@ describe('leaving a block with Enter', () => {
     // A non-empty line, or the only line, stays put.
     const one = docOf({ type: 'callout', content: [p()] });
     expect(exitContainer(stateOf(one, 2).tr)).toBe(false);
+  });
+});
+
+describe('attached files', () => {
+  it('finds attached files in a note, nested or in HTML', async () => {
+    const { attachmentBlobIds } = await import('../db');
+    const doc = {
+      type: 'doc',
+      content: [
+        { type: 'attachment', attrs: { blobId: 'a', name: 'x.pdf' } },
+        { type: 'callout', content: [{ type: 'attachment', attrs: { blobId: 'b' } }, { type: 'attachment', attrs: { blobId: 'a' } }] },
+        { type: 'attachment', attrs: { blobId: '' } },
+      ],
+    };
+    expect(attachmentBlobIds(doc).sort()).toEqual(['a', 'b']);
+    expect(attachmentBlobIds('<div data-type="attachment" data-blob="c">c.mp3</div>')).toEqual(['c']);
+    expect(attachmentBlobIds('')).toEqual([]);
+  });
+
+  it('sweeps only old attachment files no note refers to', async () => {
+    const { db, sweepAttachments } = await import('../db');
+    const now = Date.now();
+    const old = now - 3 * 86400000;
+    const blob = new Blob(['x']);
+    await db.blobs.bulkPut([
+      { id: 'kept', blob, name: 'k', mime: '', createdAt: old, kind: 'attachment' },
+      { id: 'kept-deleted-note', blob, name: 'd', mime: '', createdAt: old, kind: 'attachment' },
+      { id: 'orphan', blob, name: 'o', mime: '', createdAt: old, kind: 'attachment' },
+      { id: 'fresh-orphan', blob, name: 'f', mime: '', createdAt: now, kind: 'attachment' },
+      { id: 'lecture-audio', blob, name: 'l', mime: '', createdAt: old },
+    ]);
+    const base = { folderId: 'f', title: '', snippet: '', text: '', pinned: false, createdAt: old, updatedAt: old, kind: 'note' as const };
+    await db.notes.bulkPut([
+      { ...base, id: 'n1', content: { type: 'doc', content: [{ type: 'attachment', attrs: { blobId: 'kept' } }] } },
+      { ...base, id: 'n2', deletedAt: now, content: { type: 'doc', content: [{ type: 'attachment', attrs: { blobId: 'kept-deleted-note' } }] } },
+    ]);
+    expect(await sweepAttachments(now)).toBe(1);
+    expect((await db.blobs.toCollection().primaryKeys()).sort()).toEqual(['fresh-orphan', 'kept', 'kept-deleted-note', 'lecture-audio']);
+  });
+
+  it('sorts files by kind and sizes them readably', async () => {
+    const { attachmentKind, formatBytes } = await import('../lib/attachments');
+    expect(attachmentKind('application/pdf')).toBe('pdf');
+    expect(attachmentKind('', 'Lecture.PDF')).toBe('pdf');
+    expect(attachmentKind('video/quicktime', 'a.mov')).toBe('video');
+    expect(attachmentKind('', 'memo.m4a')).toBe('audio');
+    expect(attachmentKind('application/zip', 'a.zip')).toBe('file');
+    expect(formatBytes(0)).toBe('');
+    expect(formatBytes(900)).toBe('900 B');
+    expect(formatBytes(1536)).toBe('1.5 KB');
+    expect(formatBytes(25 * 1024 * 1024)).toBe('25 MB');
+  });
+
+  it('finds the upload commands, and video links by site name', () => {
+    expect(rankItems(SLASH_ITEMS, 'pdf')[0].id).toBe('pdf');
+    expect(rankItems(SLASH_ITEMS, 'file')[0].id).toBe('file');
+    expect(rankItems(SLASH_ITEMS, 'video')[0].id).toBe('video');
+    expect(rankItems(SLASH_ITEMS, 'youtube')[0].id).toBe('videolink');
+  });
+
+  it('exports an attachment as its file name', () => {
+    const blocks = toBlocks({ type: 'doc', content: [{ type: 'attachment', attrs: { blobId: 'a', name: 'Syllabus.pdf' } }] });
+    expect(toMarkdown(blocks)).toContain('Syllabus.pdf');
   });
 });

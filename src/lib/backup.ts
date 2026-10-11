@@ -20,7 +20,7 @@ export async function importBackup(file: Blob) {
       const bin = atob(b.data);
       const bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      await db.blobs.put({ id: b.id, name: b.name, mime: b.mime, createdAt: b.createdAt, blob: new Blob([bytes], { type: b.mime }) });
+      await db.blobs.put({ id: b.id, name: b.name, mime: b.mime, createdAt: b.createdAt, ...(b.kind ? { kind: b.kind } : {}), blob: new Blob([bytes], { type: b.mime }) });
     }
   });
 }

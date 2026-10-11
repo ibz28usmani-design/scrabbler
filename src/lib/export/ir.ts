@@ -162,6 +162,9 @@ export function toBlocks(doc: JNode): Block[] {
         break;
       case 'tableOfContents':
         break;
+      case 'attachment':
+        if (n.attrs?.name) out.push({ type: 'paragraph', runs: [{ text: `Attached file: ${n.attrs.name}`, i: true }] });
+        break;
       case 'drawing':
         if (Array.isArray(n.attrs?.strokes) && n.attrs!.strokes.length) out.push({ type: 'drawing', strokes: n.attrs!.strokes, height: Number(n.attrs!.height) || 420 });
         break;
