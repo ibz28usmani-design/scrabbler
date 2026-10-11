@@ -49,13 +49,28 @@ look for the nearest equivalent.
 
 Do the last step on each device you want notified (iPad and iPhone).
 
+## Deploy from GitHub (optional)
+
+Instead of pasting the code after each change, Cloudflare can deploy the worker
+from this repository on every push. Do steps 1–8 first, then:
+
+1. In the worker open **Settings → Build** and connect the GitHub repository.
+2. Set **Path** (the root directory) to `push-server`. Leave the build command
+   empty; the deploy command is `npx wrangler deploy` and the non-production
+   branch command `npx wrangler versions upload` (Cloudflare's defaults).
+3. Set the production branch to the repository's main branch.
+
+Deploys keep the KV namespace already bound as `SCRABBLER`, so registered
+devices and the push keys survive; `wrangler.toml` deliberately has no
+namespace id. They also keep the `PASSWORD` secret and the cron trigger.
+
 ## From a computer instead
 
 ```bash
 cd push-server
-npx wrangler kv namespace create SCRABBLER   # paste the id into wrangler.toml
+npm install
 npx wrangler secret put PASSWORD
-npx wrangler deploy
+npx wrangler deploy   # the first deploy creates the KV namespace and binds it
 ```
 
 ## Notes
@@ -65,5 +80,6 @@ npx wrangler deploy
 - **Timing.** Cron runs once a minute, so an alert can land up to a minute late.
 - **Term dates.** Class alerts follow the term dates in Scrabbler's calendar.
   Fix them there and the worker picks up the change on the next sync.
-- **Updating.** If Scrabbler's server code changes, repeat step 3.
+- **Updating.** If Scrabbler's server code changes, repeat step 3, unless the
+  worker deploys from GitHub (above).
 - **Building.** `worker.js` is built from `src/` with `npm run build:push`.

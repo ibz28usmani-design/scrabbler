@@ -1,13 +1,17 @@
-# For deploying from a computer: `npx wrangler deploy` in this folder.
+# Cloudflare can deploy this from GitHub on every push (README.md, "Deploy from
+# GitHub"), or from a computer: `npm install && npx wrangler deploy` in this folder.
 # From an iPad, follow README.md instead (all in the Cloudflare dashboard).
 name = "scrabbler-push"
 main = "worker.js"
 compatibility_date = "2025-09-01"
+# Keep any variables set in the dashboard. Secrets such as PASSWORD are always kept.
+keep_vars = true
 
+# No id on purpose: a deploy keeps the KV namespace already bound to the worker as
+# SCRABBLER (it holds the registered devices and the push keys), and only creates
+# one if the worker has none yet.
 [[kv_namespaces]]
 binding = "SCRABBLER"
-# Create one with `npx wrangler kv namespace create SCRABBLER` and paste its id here.
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
 
 [triggers]
 crons = ["* * * * *"]
