@@ -1,10 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
-import { displayColor, HIGHLIGHTS, INK_PALETTE, setTool, setToolColor, setToolSize, useTool, type Tool } from '../lib/ink';
+import { displayColor, HIGHLIGHTS, INK_PALETTE, setTool, setToolColor, setToolSize, toggleRuler, useRuler, useTool, type Tool } from '../lib/ink';
 import { updateSettings, useSettings, type Settings } from '../lib/settings';
 import { useMediaQuery, useOffsetParentHeight } from './ui';
 import { useDark } from '../lib/theme';
-import { IChevD, IEraser, IHighlighter, ILasso, IMarker, IMore, IPencil, IPlus, IRedo, ITrash, IUndo } from './Icons';
+import { IChevD, IEraser, IHighlighter, ILasso, IMarker, IMore, IPencil, IPlus, IRedo, IRuler, ITrash, IUndo } from './Icons';
 
 type Edge = Settings['inkToolbarEdge']['portrait'];
 type Corner = Settings['inkToolbarSpot']['portrait'];
@@ -78,6 +78,7 @@ export function InkToolbar({
   children?: ReactNode;
 }) {
   const tool = useTool();
+  const ruler = useRuler();
   const settings = useSettings();
   const { fingerDrawing, inkToolbarOpen: open } = settings;
   // Where the palette belongs depends on which way the iPad is held: a bar
@@ -110,14 +111,12 @@ export function InkToolbar({
   const paneH = useOffsetParentHeight(dock, sideways);
   const bar = useRef<HTMLDivElement>(null);
   const [k, setK] = useState(1);
-  const [tooTight, setTooTight] = useState(false);
   const measured = useRef(-1);
   // A new pane is a fresh question: try full size again before shrinking.
   useLayoutEffect(() => {
     if (measured.current === paneH) return;
     measured.current = paneH;
     setK(1);
-    setTooTight(false);
   }, [paneH]);
   // Converge on the factor that fits. The column's height is very nearly
   // linear in k, so one pass lands and a second confirms. Measuring beats the
@@ -136,10 +135,7 @@ export function InkToolbar({
     // Judge by the pixels, not by the size of the step: a four-pixel overflow
     // is a change of 0.006 in k, and a threshold coarser than that declared
     // the pane hopeless when it only needed a nudge.
-    if (need <= room) {
-      setTooTight(false);
-      return;
-    }
+    if (need <= room) return;
     // Always take a real step down. Once the floors below bind, the column's
     // height stops responding to k and a purely proportional step shrinks by
     // less each time, stalling while there was still room to be found: it
@@ -150,11 +146,19 @@ export function InkToolbar({
     // way in — both fit, but the palette has no business being smaller than
     // it needs to be.
     const next = Math.max(MIN_K, Math.min((k * room) / need, k - 0.02));
-    if (next < k) setK(next);
-    else setTooTight(true);
+    if (next < k) {
+      setK(next);
+      return;
+    }
+    // Squeezed as far as it goes and still too tall. Showing the circle here
+    // was a dead end: a tap on it opened the column, which measured the same
+    // pane, gave up, and showed the circle again — stuck, with nothing to say
+    // why. Move the palette to the bottom instead, where the bar always fits.
+    // A real pane only, never a half-laid-out one, or a measurement taken
+    // mid-mount would quietly relocate a palette that was perfectly fine.
+    if (paneH > 160) updateSettings({ inkToolbarEdge: { ...settings.inkToolbarEdge, [mode]: 'bottom' } });
   }, [sideways, paneH, k, tool.ink, options]);
-  // Only the full column or the circle — never a stub of one with a scroll.
-  const vertical = sideways && !tooTight;
+  const vertical = sideways;
 
   // The popover is a menu: a tap outside or Escape puts it away.
   useEffect(() => {
@@ -209,7 +213,6 @@ export function InkToolbar({
       if (!d.moved) {
         el.style.transform = '';
         if (!open) setOpen(true);
-        else if (asCircle) updateSettings({ inkToolbarEdge: { ...settings.inkToolbarEdge, [mode]: 'bottom' } });
         return;
       }
       const box = el.offsetParent?.getBoundingClientRect();
@@ -291,10 +294,7 @@ export function InkToolbar({
   // Without this the browser starts its own text/image drag part-way through,
   // which cancels the pointer stream and abandons the drag mid-flight.
   const dragProps = floating ? { onPointerDown: startDrag, onDragStart: (e: ReactDragEvent) => e.preventDefault(), draggable: false } : {};
-  // A pane too short for the column shows the circle, so it has to look and
-  // rest like the tucked circle too — same class, same corner, not the edge
-  // rules a column would bring with it.
-  const asCircle = !open || (sideways && !vertical);
+  const asCircle = !open;
   const cls = ['ink-dock', floating && 'floating', asCircle && 'collapsed', className].filter(Boolean).join(' ');
   // Resting places live in CSS, so the inline transform belongs to the drag
   // alone. Only the state in force carries an attribute: with both present the
@@ -323,6 +323,19 @@ export function InkToolbar({
     >
       {icon}
       {tool.tool === t && t !== 'eraser' && t !== 'lasso' && <span className="tool-ink" style={{ ['--sw' as string]: swatch }} />}
+    </button>
+  );
+
+  const rulerBtn = (
+    <button
+      className={`ink-tool ${ruler.on ? 'on' : ''}`}
+      data-tool="ruler"
+      title={ruler.on ? 'Put the ruler away' : 'Lay a ruler on the page'}
+      aria-label="Ruler"
+      aria-pressed={ruler.on}
+      onClick={toggleRuler}
+    >
+      <IRuler />
     </button>
   );
 
@@ -388,17 +401,9 @@ export function InkToolbar({
   );
 
   if (asCircle) {
-    // When it is the pane that is too short rather than the user who tucked
-    // it away, `open` is already true, so a tap has to do something else:
-    // send the palette to the bottom, where the full bar does fit.
-    const shrunk = open;
     return (
       <div className={cls} {...place} ref={dock} {...dragProps}>
-        <button
-          className="ink-mini glass"
-          aria-label={shrunk ? `${labelFor(tool.tool)} — not enough room here, tap to move the tools to the bottom` : `${labelFor(tool.tool)} — show drawing tools`}
-          title={shrunk ? 'Not enough room for the side palette — tap to move it to the bottom' : 'Show drawing tools (drag to move)'}
-        >
+        <button className="ink-mini glass" aria-label={`${labelFor(tool.tool)} — show drawing tools`} title="Show drawing tools (drag to move)">
           {iconFor(tool.tool)}
           {tool.tool !== 'eraser' && tool.tool !== 'lasso' && <span className="tool-ink" style={{ ['--sw' as string]: swatch }} />}
         </button>
@@ -421,7 +426,10 @@ export function InkToolbar({
           <span className="ink-grab" aria-hidden="true" />
           <div className="ink-actions">{actions}</div>
           <span className="ink-sep" />
-          <div className="ink-tools">{TOOLS.map(toolBtn)}</div>
+          <div className="ink-tools">
+            {TOOLS.map(toolBtn)}
+            {rulerBtn}
+          </div>
           <span className="ink-sep" />
           <div className="ink-colors">{swatches}</div>
           <div className="ink-foot">
@@ -451,7 +459,10 @@ export function InkToolbar({
     <div className={cls} {...place} ref={dock} {...dragProps}>
       <div className="ink-toolbar glass" role="toolbar" aria-label="Drawing tools">
         {floating && <span className="ink-grab" aria-hidden="true" />}
-        <div className="ink-tools">{TOOLS.map(toolBtn)}</div>
+        <div className="ink-tools">
+          {TOOLS.map(toolBtn)}
+          {rulerBtn}
+        </div>
         <span className="ink-sep" />
         <button
           className={`ink-chip ${options ? 'on' : ''}`}

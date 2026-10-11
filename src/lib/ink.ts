@@ -94,6 +94,114 @@ export function useTool() {
   );
 }
 
+// ------------------------------------------------------------------ ruler
+
+/**
+ * The straightedge, as Apple Notes has it: a ruler you lay on the page and
+ * draw along. It is not a tool that replaces your pen — it sits over the
+ * page while you keep whichever pen you were holding, and a stroke that
+ * starts near it rides its edge instead of wobbling.
+ *
+ * Held in logical page units: (x, y) is the middle of the ruler and `angle`
+ * is degrees clockwise from flat.
+ */
+export interface Ruler {
+  on: boolean;
+  x: number;
+  y: number;
+  angle: number;
+}
+
+export const RULER_LEN = 640;
+/** Half the body's thickness. The drawn line rides this far off the middle. */
+export const RULER_HALF_W = 24;
+/** Start a stroke further than this from the middle line and it is freehand. */
+export const RULER_SNAP = 64;
+/** How close to an end counts as reaching for the rotate handle. */
+export const RULER_END_GRAB = 52;
+
+const rulerState: Ruler = { on: false, x: W / 2, y: 420, angle: 0 };
+let rulerSnapshot: Ruler = { ...rulerState };
+const rulerListeners = new Set<() => void>();
+
+export function setRuler(patch: Partial<Ruler>) {
+  Object.assign(rulerState, patch);
+  rulerSnapshot = { ...rulerState };
+  rulerListeners.forEach((l) => l());
+}
+
+export function toggleRuler() {
+  setRuler({ on: !rulerState.on });
+}
+
+export function useRuler() {
+  return useSyncExternalStore(
+    (cb) => {
+      rulerListeners.add(cb);
+      return () => rulerListeners.delete(cb);
+    },
+    () => rulerSnapshot,
+  );
+}
+
+/** Unit vector along the ruler. */
+export function rulerAxis(r: Pick<Ruler, 'angle'>) {
+  const a = (r.angle * Math.PI) / 180;
+  return { ux: Math.cos(a), uy: Math.sin(a) };
+}
+
+/** A point in the ruler's own frame: `t` along it, `n` across it (signed). */
+export function rulerFrame(r: Ruler, x: number, y: number) {
+  const { ux, uy } = rulerAxis(r);
+  const dx = x - r.x;
+  const dy = y - r.y;
+  return { t: dx * ux + dy * uy, n: -dx * uy + dy * ux };
+}
+
+export function rulerEnds(r: Ruler) {
+  const { ux, uy } = rulerAxis(r);
+  const h = RULER_LEN / 2;
+  return [
+    { x: r.x - ux * h, y: r.y - uy * h },
+    { x: r.x + ux * h, y: r.y + uy * h },
+  ];
+}
+
+/**
+ * Where a point lands once the ruler has hold of it: on the edge nearest the
+ * hand, not on the middle of the ruler, because that is where the nib of a
+ * real pen runs. Drawn over the body it takes the nearer edge.
+ */
+export function snapToRuler(r: Ruler, x: number, y: number) {
+  const { ux, uy } = rulerAxis(r);
+  const { t, n } = rulerFrame(r, x, y);
+  const off = (n >= 0 ? 1 : -1) * RULER_HALF_W;
+  return { x: r.x + ux * t - uy * off, y: r.y + uy * t + ux * off };
+}
+
+/** True when a stroke starting here should ride the ruler. */
+export function rulerCatches(r: Ruler, x: number, y: number) {
+  return r.on && Math.abs(rulerFrame(r, x, y).n) <= RULER_SNAP;
+}
+
+/**
+ * What a finger landing here takes hold of. Nothing, if it is away from the
+ * ruler: the page is still the page. The Pencil never grabs — it draws.
+ */
+export function rulerGrab(r: Ruler, x: number, y: number): 'move' | 'rotate' | null {
+  if (!r.on) return null;
+  for (const e of rulerEnds(r)) if (Math.hypot(x - e.x, y - e.y) <= RULER_END_GRAB) return 'rotate';
+  const { t, n } = rulerFrame(r, x, y);
+  return Math.abs(n) <= RULER_HALF_W && Math.abs(t) <= RULER_LEN / 2 ? 'move' : null;
+}
+
+/** Degrees, tidied to the useful angles when the hand is close to one. */
+export function tidyAngle(deg: number) {
+  const wrapped = ((deg % 180) + 180) % 180;
+  for (const a of [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180]) if (Math.abs(wrapped - a) <= 2.5) return a % 180;
+  return wrapped;
+}
+
 // ---------------------------------------------------------------- geometry
 
 function optionsFor(st: Stroke, last: boolean) {

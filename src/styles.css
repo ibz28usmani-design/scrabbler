@@ -3594,7 +3594,8 @@ select.input {
   transform: rotate(45deg);
 }
 /* The lasso is a shape, not a pen: standing it on its side reads as a mistake. */
-.ink-dock.floating .ink-toolbar.column .ink-tool[data-tool='lasso'] svg {
+.ink-dock.floating .ink-toolbar.column .ink-tool[data-tool='lasso'] svg,
+.ink-dock.floating .ink-toolbar.column .ink-tool[data-tool='ruler'] svg {
   transform: none;
 }
 .ink-dock.floating[data-edge='left'] .ink-toolbar.column .ink-tool {

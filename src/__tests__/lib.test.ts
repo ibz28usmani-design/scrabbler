@@ -250,3 +250,71 @@ describe('where the ink palette settles', () => {
     expect(placeAt(W / 2 - 1, H / 2 - 1, W, H).corner).toBe('tl');
   });
 });
+
+describe('the ruler', () => {
+  const flat = { on: true, x: 500, y: 400, angle: 0 };
+
+  it('measures across itself, signed, so each side keeps its own edge', async () => {
+    const { rulerFrame } = await import('../lib/ink');
+    expect(rulerFrame(flat, 600, 400)).toMatchObject({ t: 100, n: 0 });
+    expect(rulerFrame(flat, 500, 430).n).toBeCloseTo(30);
+    expect(rulerFrame(flat, 500, 370).n).toBeCloseTo(-30);
+    const upright = { ...flat, angle: 90 };
+    expect(rulerFrame(upright, 500, 500).t).toBeCloseTo(100);
+    expect(rulerFrame(upright, 540, 400).n).toBeCloseTo(-40);
+  });
+
+  it('lands a stroke on the edge nearest the hand, not down the middle', async () => {
+    const { snapToRuler, RULER_HALF_W } = await import('../lib/ink');
+    // Below it: the lower edge, however far off the line the hand wandered.
+    const below = snapToRuler(flat, 620, 455);
+    expect(below.x).toBeCloseTo(620);
+    expect(below.y).toBeCloseTo(400 + RULER_HALF_W);
+    // Above it: the upper edge.
+    expect(snapToRuler(flat, 620, 352).y).toBeCloseTo(400 - RULER_HALF_W);
+    // Drawn across the body, it still takes an edge rather than the centre.
+    expect(Math.abs(snapToRuler(flat, 500, 405).y - 400)).toBe(RULER_HALF_W);
+  });
+
+  it('turns a wobble into a straight line', async () => {
+    const { snapToRuler } = await import('../lib/ink');
+    const wobble = [
+      [300, 436],
+      [400, 441],
+      [500, 429],
+      [600, 438],
+    ];
+    const ys = wobble.map(([x, y]) => snapToRuler(flat, x, y).y);
+    expect(new Set(ys).size).toBe(1);
+  });
+
+  it('only catches strokes that start within reach, and never when put away', async () => {
+    const { rulerCatches, RULER_SNAP } = await import('../lib/ink');
+    expect(rulerCatches(flat, 500, 400 + RULER_SNAP - 1)).toBe(true);
+    expect(rulerCatches(flat, 500, 400 + RULER_SNAP + 1)).toBe(false);
+    expect(rulerCatches({ ...flat, on: false }, 500, 400)).toBe(false);
+  });
+
+  it('gives the ends to a turn and the body to a shove, and the page to neither', async () => {
+    const { rulerGrab, rulerEnds } = await import('../lib/ink');
+    const [a, b] = rulerEnds(flat);
+    expect(rulerGrab(flat, a.x, a.y)).toBe('rotate');
+    expect(rulerGrab(flat, b.x, b.y)).toBe('rotate');
+    expect(rulerGrab(flat, 500, 400)).toBe('move');
+    expect(rulerGrab(flat, 500, 600)).toBeNull();
+    // Past the end of the ruler is the page, not the ruler.
+    expect(rulerGrab(flat, b.x + 120, b.y)).toBeNull();
+    expect(rulerGrab({ ...flat, on: false }, 500, 400)).toBeNull();
+  });
+
+  it('settles on the angles a hand is aiming for, and leaves the rest alone', async () => {
+    const { tidyAngle } = await import('../lib/ink');
+    expect(tidyAngle(1.4)).toBe(0);
+    expect(tidyAngle(44)).toBe(45);
+    expect(tidyAngle(91.8)).toBe(90);
+    expect(tidyAngle(-1)).toBe(0);
+    expect(tidyAngle(179)).toBe(0);
+    expect(tidyAngle(37)).toBe(37);
+    expect(tidyAngle(200)).toBe(20);
+  });
+});

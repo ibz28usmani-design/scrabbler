@@ -1,5 +1,30 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { bbox, contentBottom, hitsStroke, intersects, lassoSelect, paintStroke, round, translateStrokes, unionBox, useTool, W, type Stroke, type Tool } from '../lib/ink';
+import {
+  bbox,
+  contentBottom,
+  hitsStroke,
+  intersects,
+  lassoSelect,
+  paintStroke,
+  round,
+  RULER_HALF_W,
+  RULER_LEN,
+  rulerAxis,
+  rulerCatches,
+  rulerFrame,
+  rulerGrab,
+  setRuler,
+  snapToRuler,
+  tidyAngle,
+  translateStrokes,
+  unionBox,
+  useRuler,
+  useTool,
+  W,
+  type Ruler,
+  type Stroke,
+  type Tool,
+} from '../lib/ink';
 import { drawTemplate, endlessHeight, templateColors, type Paper } from '../lib/paper';
 import { useSettings } from '../lib/settings';
 import { InkToolbar } from './InkToolbar';
@@ -33,10 +58,54 @@ export interface EndlessCanvasProps {
 }
 
 type Gesture =
-  | { kind: 'stroke'; id: number; stroke: Stroke }
+  | { kind: 'stroke'; id: number; stroke: Stroke; ruled: boolean }
   | { kind: 'erase'; id: number; erased: boolean }
   | { kind: 'lasso'; id: number; poly: number[][] }
-  | { kind: 'move'; id: number; x: number; y: number; dx: number; dy: number };
+  | { kind: 'move'; id: number; x: number; y: number; dx: number; dy: number }
+  | { kind: 'ruler'; id: number; mode: 'move' | 'rotate'; x: number; y: number; flip: boolean };
+
+/** The straightedge itself: a translucent blade, ticks, and its angle. */
+function paintRuler(ctx: CanvasRenderingContext2D, r: Ruler, dark: boolean, scale: number) {
+  const { ux, uy } = rulerAxis(r);
+  const px = (n: number) => n / scale;
+  ctx.save();
+  ctx.translate(r.x, r.y);
+  ctx.rotate(Math.atan2(uy, ux));
+  const h = RULER_LEN / 2;
+  ctx.fillStyle = dark ? 'rgba(236,232,223,.14)' : 'rgba(31,31,31,.10)';
+  ctx.strokeStyle = dark ? 'rgba(236,232,223,.5)' : 'rgba(31,31,31,.42)';
+  ctx.lineWidth = px(1);
+  ctx.beginPath();
+  ctx.roundRect(-h, -RULER_HALF_W, RULER_LEN, RULER_HALF_W * 2, px(6));
+  ctx.fill();
+  ctx.stroke();
+  // Ticks run off one edge, as on a real rule, so which edge you are drawing
+  // along is never in doubt.
+  ctx.beginPath();
+  for (let d = -h; d <= h + 0.01; d += 20) {
+    const long = Math.round((d + h) / 20) % 5 === 0;
+    ctx.moveTo(d, RULER_HALF_W);
+    ctx.lineTo(d, RULER_HALF_W - (long ? 11 : 6));
+  }
+  ctx.stroke();
+  // Grips at the ends, where a finger turns it.
+  for (const d of [-h + 16, h - 16]) {
+    ctx.beginPath();
+    ctx.arc(d, 0, px(5), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.restore();
+  // The angle, upright wherever the ruler points.
+  ctx.save();
+  ctx.translate(r.x - uy * (RULER_HALF_W + px(18)), r.y + ux * (RULER_HALF_W + px(18)));
+  ctx.fillStyle = dark ? 'rgba(236,232,223,.78)' : 'rgba(31,31,31,.7)';
+  ctx.font = `${px(13)}px ui-sans-serif, system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`${Math.round(((r.angle % 180) + 180) % 180)}°`, 0, 0);
+  ctx.restore();
+}
 
 export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, dark, zoom, onZoom, onChange, toolbarExtra }: EndlessCanvasProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -45,6 +114,12 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
   const baseRef = useRef<HTMLCanvasElement>(null);
   const liveRef = useRef<HTMLCanvasElement>(null);
   const tool = useTool();
+  const ruler = useRuler();
+  // The pointer handlers are rebuilt every render, but `draw` is memoised and
+  // must not be: read the ruler through a ref so a nudge repaints without
+  // rebuilding the whole draw path.
+  const rulerRef = useRef(ruler);
+  rulerRef.current = ruler;
   const { fingerDrawing } = useSettings();
 
   const [strokes, setStrokes] = useState<Stroke[]>(initial);
@@ -144,6 +219,7 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
         paintStroke(ctx, shifted, dark, false);
       } else if (intersects(bbox(st), view)) paintStroke(ctx, st, dark);
     });
+    if (rulerRef.current.on) paintRuler(ctx, rulerRef.current, dark, scale);
     const sel = selection.size ? unionBox(strokesRef.current, selection) : null;
     if (sel) {
       ctx.save();
@@ -154,7 +230,7 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
       ctx.restore();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paper, dark, scale, selection]);
+  }, [paper, dark, scale, selection, ruler]);
 
   const schedule = useCallback(() => {
     cancelAnimationFrame(frame.current);
@@ -372,12 +448,27 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
   };
 
   const onDown = (e: React.PointerEvent) => {
-    if (e.pointerType === 'touch') {
-      touchPointers.current.add(e.pointerId);
-      if (!fingerDrawing || touchPointers.current.size > 1) return;
-    }
+    if (e.pointerType === 'touch') touchPointers.current.add(e.pointerId);
     if (gesture.current) return; // a palm or second contact while drawing
     if (e.button > 0 && e.pointerType === 'mouse') return;
+    const here = pos(e);
+    // The ruler is laid about with a finger or the mouse while the Pencil
+    // keeps drawing — the same division of labour as the rest of the canvas.
+    // A second finger is a pinch, not a grab.
+    if (e.pointerType !== 'pen' && !(e.pointerType === 'touch' && touchPointers.current.size > 1)) {
+      const grab = rulerGrab(ruler, here.x, here.y);
+      if (grab) {
+        e.preventDefault();
+        try {
+          liveRef.current!.setPointerCapture(e.pointerId);
+        } catch {
+          /* synthetic or already-released pointer */
+        }
+        gesture.current = { kind: 'ruler', id: e.pointerId, mode: grab, x: here.x, y: here.y, flip: rulerFrame(ruler, here.x, here.y).t < 0 };
+        return;
+      }
+    }
+    if (e.pointerType === 'touch' && (!fingerDrawing || touchPointers.current.size > 1)) return;
     e.preventDefault();
     try {
       liveRef.current!.setPointerCapture(e.pointerId);
@@ -403,8 +494,10 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
       }
       return;
     }
-    const stroke: Stroke = { t: tool.ink, c: tool.color, s: tool.size, p: [round(x), round(y), pressureOf(e.nativeEvent)] };
-    gesture.current = { kind: 'stroke', id: e.pointerId, stroke };
+    const onRuler = rulerCatches(ruler, x, y);
+    const p0 = onRuler ? snapToRuler(ruler, x, y) : { x, y };
+    const stroke: Stroke = { t: tool.ink, c: tool.color, s: tool.size, p: [round(p0.x), round(p0.y), pressureOf(e.nativeEvent)] };
+    gesture.current = { kind: 'stroke', id: e.pointerId, stroke, ruled: onRuler };
     drawLive(stroke);
   };
 
@@ -421,6 +514,20 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
       const { x, y } = pos(e);
       g.dx = x - g.x;
       g.dy = y - g.y;
+      schedule();
+      return;
+    }
+    if (g.kind === 'ruler') {
+      const { x, y } = pos(e);
+      if (g.mode === 'move') {
+        setRuler({ x: ruler.x + (x - g.x), y: ruler.y + (y - g.y) });
+        g.x = x;
+        g.y = y;
+      } else {
+        // Turn about the middle; the end you are not holding leads.
+        const deg = (Math.atan2(y - ruler.y, x - ruler.x) * 180) / Math.PI + (g.flip ? 180 : 0);
+        setRuler({ angle: tidyAngle(deg) });
+      }
       schedule();
       return;
     }
@@ -442,7 +549,8 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
     }
     for (const ev of list) {
       const { x, y } = pos(ev);
-      g.stroke.p.push(round(x), round(y), pressureOf(ev));
+      const q = g.ruled ? snapToRuler(ruler, x, y) : { x, y };
+      g.stroke.p.push(round(q.x), round(q.y), pressureOf(ev));
     }
     drawLive(g.stroke);
     const y = g.stroke.p[g.stroke.p.length - 2];
