@@ -3494,6 +3494,12 @@ select.input {
    undo and redo paired at the top, the tools lying on their side with their
    tips pointing into the page, the colours two abreast, and the custom colour
    and the rest at the foot. It never covers the line you are writing on. */
+/* A short pane is the normal case, not the exception: browser chrome, the
+   title bar and the note's own dock all eat height, so on an iPad the pane
+   can be 580px where the desktop gives 780. The column has to give way in
+   that order — squeeze the tool cells first, then scroll — because when it
+   simply overflowed, the glass shrank to the height it was given and every
+   control below it painted out on the open canvas. */
 .ink-dock.floating .ink-toolbar.column {
   flex-direction: column;
   align-items: center;
@@ -3501,8 +3507,27 @@ select.input {
   width: 104px;
   padding: 15px 10px 13px;
   border-radius: 34px;
-  overflow: visible;
   max-height: 100%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.ink-dock.floating .ink-toolbar.column::-webkit-scrollbar {
+  display: none;
+}
+/* Undo/redo, the colours and the foot keep their size; the pens take the
+   squeeze, down to a floor that is still a comfortable touch target. */
+.ink-dock.floating .ink-toolbar.column > * {
+  flex: 0 0 auto;
+}
+/* The tray gives way down to its cells' own floor and no further. With
+   min-height 0 it kept shrinking past that, and the pens overlapped the
+   colours below them instead of handing the problem to the scroll. */
+.ink-dock.floating .ink-toolbar.column .ink-tools {
+  flex: 0 1 auto;
+  min-height: min-content;
 }
 .ink-dock.floating .ink-toolbar.column .ink-actions .icon-btn {
   width: 36px;
@@ -3528,6 +3553,8 @@ select.input {
 .ink-dock.floating .ink-toolbar.column .ink-tool {
   width: 100%;
   height: 62px;
+  flex: 0 1 62px;
+  min-height: 46px;
   border-radius: 18px;
   transition:
     transform 0.22s cubic-bezier(0.22, 1, 0.3, 1),
@@ -3622,6 +3649,84 @@ select.input {
 .ink-dock.floating[data-edge='right'] .ink-toolbar.column .ink-grab {
   left: 4px;
   right: auto;
+}
+
+/* A short viewport is the normal case on an iPad in Safari, where the tab bar
+   and the address bar take ~70px, and the note's own title bar takes more: the
+   pane runs about 53px under the viewport. Rather than leave the column to
+   scroll — a palette you have to scroll to reach the eraser is no palette —
+   it tightens by steps so every control stays in reach. Flex shrink alone
+   would not do it: the column is a scroll container, so it overflows before
+   its items give way. */
+@media (max-height: 745px) {
+  .ink-dock.floating .ink-toolbar.column {
+    gap: 8px;
+    padding: 13px 10px 11px;
+  }
+  .ink-dock.floating .ink-toolbar.column .ink-tool {
+    height: 50px;
+    flex-basis: 50px;
+  }
+  .ink-dock.floating .ink-toolbar.column .ink-tool svg {
+    width: 28px;
+    height: 28px;
+  }
+}
+@media (max-height: 665px) {
+  .ink-dock.floating .ink-toolbar.column {
+    gap: 6px;
+    width: 96px;
+  }
+  .ink-dock.floating .ink-toolbar.column .ink-tool {
+    height: 44px;
+    flex-basis: 44px;
+    min-height: 40px;
+  }
+  .ink-dock.floating .ink-toolbar.column .ink-colors {
+    gap: 7px;
+  }
+  .ink-dock.floating .ink-toolbar.column .swatch {
+    width: 28px;
+    height: 28px;
+  }
+  .ink-dock.floating .ink-toolbar.column .ink-actions .icon-btn,
+  .ink-dock.floating .ink-toolbar.column .ink-add,
+  .ink-dock.floating .ink-toolbar.column .ink-more {
+    width: 32px;
+    height: 32px;
+  }
+}
+@media (max-height: 585px) {
+  .ink-dock.floating .ink-toolbar.column {
+    gap: 4px;
+    padding: 8px 8px 6px;
+    width: 88px;
+  }
+  .ink-dock.floating .ink-toolbar.column .ink-tool {
+    height: 40px;
+    flex-basis: 40px;
+    min-height: 36px;
+  }
+  .ink-dock.floating .ink-toolbar.column .ink-tool svg {
+    width: 24px;
+    height: 24px;
+  }
+  .ink-dock.floating .ink-toolbar.column .ink-colors {
+    gap: 5px;
+  }
+  .ink-dock.floating .ink-toolbar.column .swatch {
+    width: 24px;
+    height: 24px;
+  }
+  .ink-dock.floating .ink-toolbar.column .ink-actions .icon-btn,
+  .ink-dock.floating .ink-toolbar.column .ink-add,
+  .ink-dock.floating .ink-toolbar.column .ink-more {
+    width: 28px;
+    height: 28px;
+  }
+  .ink-dock.floating .ink-toolbar.column .ink-foot {
+    gap: 1px;
+  }
 }
 
 /* Apple's "+" adds a colour of your own; it opens the system picker. */
