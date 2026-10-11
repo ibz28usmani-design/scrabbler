@@ -24,8 +24,8 @@ export interface Settings {
   inkToolbarOpen: boolean;
   /** Which edge of the page the open palette is docked to; it centres there. */
   inkToolbarEdge: 'top' | 'bottom' | 'left' | 'right';
-  /** Where the tucked-away circle rests: the middle of a side, or a corner. */
-  inkToolbarSpot: 'top' | 'bottom' | 'left' | 'right' | 'tl' | 'tr' | 'bl' | 'br';
+  /** Which corner the tucked-away circle rests in. */
+  inkToolbarSpot: 'tl' | 'tr' | 'bl' | 'br';
   dailyGoal: number;
   newPerDay: number;
   liveCaptions: boolean;
@@ -51,7 +51,7 @@ export const DEFAULT_SETTINGS: Settings = {
   fingerDrawing: false,
   inkToolbarOpen: true,
   inkToolbarEdge: 'bottom',
-  inkToolbarSpot: 'right',
+  inkToolbarSpot: 'tr',
   dailyGoal: 20,
   newPerDay: 20,
   liveCaptions: true,
@@ -73,7 +73,7 @@ function load(): Settings {
 }
 
 /** Carries the old Bytez-only fields onto the generic OpenAI-compatible ones. */
-function migrate(s: Settings & { bytezKey?: string; bytezModel?: string }): Settings {
+export function migrate(s: Settings & { bytezKey?: string; bytezModel?: string }): Settings {
   if ((s.textProvider as string) === 'bytez') {
     s.textProvider = 'compat';
     s.compatPreset = 'bytez';
@@ -81,6 +81,10 @@ function migrate(s: Settings & { bytezKey?: string; bytezModel?: string }): Sett
   }
   if (s.bytezKey && !s.compatKey) s.compatKey = s.bytezKey;
   if (s.bytezModel && !s.compatModel) s.compatModel = s.bytezModel;
+  // The tucked circle briefly rested on the sides too. A saved side would match
+  // no corner rule and leave it unplaced, so nudge it to the nearest corner.
+  const sides: Record<string, Settings['inkToolbarSpot']> = { top: 'tr', bottom: 'br', left: 'tl', right: 'tr' };
+  if (sides[s.inkToolbarSpot]) s.inkToolbarSpot = sides[s.inkToolbarSpot];
   return s;
 }
 

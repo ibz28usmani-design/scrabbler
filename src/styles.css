@@ -3417,36 +3417,19 @@ select.input {
   width: auto;
   height: auto;
 }
-/* The circle rests wherever it is put down — the middle of a side as happily
-   as a corner — so it has all eight places, not just the four corners. */
-.ink-dock.floating.collapsed[data-spot='top'],
-.ink-dock.floating.collapsed[data-spot='bottom'] {
-  left: 0;
-  right: 0;
-  margin: 0 auto;
-}
-.ink-dock.floating.collapsed[data-spot='left'],
-.ink-dock.floating.collapsed[data-spot='right'] {
-  top: 0;
-  bottom: 0;
-  margin: auto 0;
-}
-.ink-dock.floating.collapsed[data-spot='top'],
+/* The circle lives in the corners. */
 .ink-dock.floating.collapsed[data-spot='tl'],
 .ink-dock.floating.collapsed[data-spot='tr'] {
   top: 12px;
 }
-.ink-dock.floating.collapsed[data-spot='bottom'],
 .ink-dock.floating.collapsed[data-spot='bl'],
 .ink-dock.floating.collapsed[data-spot='br'] {
   bottom: 12px;
 }
-.ink-dock.floating.collapsed[data-spot='left'],
 .ink-dock.floating.collapsed[data-spot='tl'],
 .ink-dock.floating.collapsed[data-spot='bl'] {
   left: 12px;
 }
-.ink-dock.floating.collapsed[data-spot='right'],
 .ink-dock.floating.collapsed[data-spot='tr'],
 .ink-dock.floating.collapsed[data-spot='br'] {
   right: 12px;

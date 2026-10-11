@@ -6,8 +6,7 @@ import { useDark } from '../lib/theme';
 import { IChevD, IEraser, IHighlighter, ILasso, IMarker, IPencil, IRedo, ITrash, IUndo } from './Icons';
 
 type Edge = Settings['inkToolbarEdge'];
-type Spot = Settings['inkToolbarSpot'];
-type Corner = Extract<Spot, 'tl' | 'tr' | 'bl' | 'br'>;
+type Corner = Settings['inkToolbarSpot'];
 
 const TOOLS: [Tool, ReactNode, string][] = [
   ['pen', <IPencil key="p" />, 'Pen'],
@@ -161,12 +160,14 @@ export function InkToolbar({
       flushSync(() =>
         updateSettings(
           open
-            ? p.inCorner
+            ? // Dropped in a corner it tucks away; anywhere else it centres on
+              // the nearest edge.
+              p.inCorner
               ? { inkToolbarOpen: false, inkToolbarSpot: p.corner }
               : { inkToolbarEdge: p.edge }
-            : // Tucked away it rests wherever it is put down: the middle of a
-              // side just as happily as a corner.
-              { inkToolbarSpot: p.inCorner ? p.corner : p.edge },
+            : // Tucked away it lives in the corners, so it goes to whichever is
+              // nearest wherever it is let go.
+              { inkToolbarSpot: p.corner },
         ),
       );
       const last = el.getBoundingClientRect();

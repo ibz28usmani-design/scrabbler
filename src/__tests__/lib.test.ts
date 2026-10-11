@@ -174,3 +174,24 @@ describe('openai-compatible provider', () => {
     expect(isProxyBase('https://integrate.api.nvidia.com/v1')).toBe(false);
   });
 });
+
+describe('settings migration', () => {
+  it('moves a tucked circle off a side and into the nearest corner', async () => {
+    const { migrate, DEFAULT_SETTINGS } = await import('../lib/settings');
+    const at = (spot: string) => migrate({ ...DEFAULT_SETTINGS, inkToolbarSpot: spot as never }).inkToolbarSpot;
+    expect(at('left')).toBe('tl');
+    expect(at('right')).toBe('tr');
+    expect(at('top')).toBe('tr');
+    expect(at('bottom')).toBe('br');
+  });
+
+  it('leaves a corner, and the rest of the settings, alone', async () => {
+    const { migrate, DEFAULT_SETTINGS } = await import('../lib/settings');
+    for (const c of ['tl', 'tr', 'bl', 'br'] as const) {
+      expect(migrate({ ...DEFAULT_SETTINGS, inkToolbarSpot: c }).inkToolbarSpot).toBe(c);
+    }
+    const kept = migrate({ ...DEFAULT_SETTINGS, apiKey: 'AIzaX', inkToolbarEdge: 'left' });
+    expect(kept.apiKey).toBe('AIzaX');
+    expect(kept.inkToolbarEdge).toBe('left');
+  });
+});
