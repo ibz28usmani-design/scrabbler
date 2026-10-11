@@ -69,8 +69,18 @@ const keyBytes = (b64: string) => {
 export async function enablePush(): Promise<void> {
   const blocker = pushBlocker();
   if (blocker) throw new Error(blocker);
+  const before = Notification.permission;
   const permission = await Notification.requestPermission();
-  if (permission !== 'granted') throw new Error('Notifications are off for Scrabbler. Turn them on in Settings → Notifications → Scrabbler.');
+  if (permission !== 'granted') {
+    // Refused before: the switch is in the iPad's Settings. Refused without ever asking:
+    // iPadOS never showed the request, so there is no switch to find — usually a school or
+    // Screen Time restriction on the iPad.
+    throw new Error(
+      before === 'denied'
+        ? 'Notifications are off for Scrabbler. Turn them on in the iPad’s Settings → Notifications → Scrabbler.'
+        : 'iPadOS didn’t show the permission request, so Scrabbler can’t send notifications on this iPad. This usually means the iPad is managed by a school or Screen Time blocks notifications from web apps.',
+    );
+  }
   const key = getSettings().pushPublicKey || (await connectServer());
   const reg = await navigator.serviceWorker.ready;
   let sub = await reg.pushManager.getSubscription();
