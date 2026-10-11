@@ -317,6 +317,13 @@ export async function seedCalendar() {
     });
   }
   if (!(await db.meta.get(TERM_CALENDAR_KEY))) await setMeta(TERM_CALENDAR_KEY, SEED_CALENDAR);
+  // Autumn half term was first guessed as 26 Oct; it starts Tue 20 Oct. Fix calendars still holding the guess.
+  const cal = await getTermCalendar();
+  const guess = cal.closures.find((c) => c.name === 'Autumn half term' && c.start === '2026-10-26' && !c.confirmed);
+  if (guess) {
+    Object.assign(guess, SEED_CALENDAR.closures.find((c) => c.name === 'Autumn half term'));
+    await setMeta(TERM_CALENDAR_KEY, cal);
+  }
   if (!(await db.reminderLists.count())) await db.reminderLists.add({ id: uid(), name: 'Reminders', color: '#2b2a28', order: 0, createdAt: Date.now() });
   // Lists from before the app's own palette: Apple blue becomes ink, and so on.
   const { OLD_LIST_COLORS } = await import('./lib/reminders');

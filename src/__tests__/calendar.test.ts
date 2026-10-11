@@ -18,6 +18,8 @@ describe('timetable times', () => {
   it('knows term, half term, holidays and weekends', () => {
     expect(isTeachingDay('2026-10-12', SEED_CALENDAR)).toBe(true);
     expect(isTeachingDay('2026-10-27', SEED_CALENDAR)).toBe(false);
+    expect(isTeachingDay('2026-10-19', SEED_CALENDAR)).toBe(true);
+    expect(dayStatus('2026-10-20', SEED_CALENDAR)).toEqual({ kind: 'closure', label: 'Autumn half term' });
     expect(dayStatus('2026-10-27', SEED_CALENDAR)).toEqual({ kind: 'closure', label: 'Autumn half term' });
     expect(dayStatus('2026-12-23', SEED_CALENDAR)).toEqual({ kind: 'holiday', label: 'Christmas holiday' });
     expect(dayStatus('2027-04-01', SEED_CALENDAR)).toEqual({ kind: 'holiday', label: 'Easter holiday' });
@@ -48,8 +50,8 @@ describe('classes', () => {
     const thu = currentAndNext(SEED_LESSONS, SEED_CALENDAR, zonedTime('2026-10-15', '10:00'));
     expect(thu.current?.lesson.id).toBe('thu-1');
     expect(thu.next?.lesson.id).toBe('thu-2');
-    // Friday afternoon before half term → Monday 2 November.
-    const fri = currentAndNext(SEED_LESSONS, SEED_CALENDAR, zonedTime('2026-10-23', '15:00'));
+    // Monday afternoon before half term → Monday 2 November.
+    const fri = currentAndNext(SEED_LESSONS, SEED_CALENDAR, zonedTime('2026-10-19', '15:00'));
     expect(fri.next?.date).toBe('2026-11-02');
   });
 
