@@ -144,7 +144,12 @@ export function InkToolbar({
     // height stops responding to k and a purely proportional step shrinks by
     // less each time, stalling while there was still room to be found: it
     // called a 548px pane hopeless when the floors fit in 454.
-    const next = Math.max(MIN_K, Math.min((k * room) / need, k - 0.04));
+    // A smaller forced step costs a few more layout passes on a resize and
+    // lands nearer the true fit: at 0.04 the last step overshot, so the same
+    // pane settled at 0.62 on the way back from full screen and 0.65 on the
+    // way in — both fit, but the palette has no business being smaller than
+    // it needs to be.
+    const next = Math.max(MIN_K, Math.min((k * room) / need, k - 0.02));
     if (next < k) setK(next);
     else setTooTight(true);
   }, [sideways, paneH, k, tool.ink, options]);
