@@ -74,12 +74,12 @@ const CHECK = 'M9.5 16.2 5.3 12l-1.4 1.4 5.6 5.6L21 7.5l-1.4-1.4z';
 const CAL = 'M7 2h2v2h6V2h2v2h2a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2zm-2 7v10h14V9z';
 const LIST = 'M4 6.5a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zM9 5.5h11v2H9zM4 12a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zm5-1h11v2H9zm-5 6.5a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zM9 16.5h11v2H9z';
 
-const SMART: { id: SmartList; title: string; color: string; icon: (today: string) => ReactNode }[] = [
-  { id: 'today', title: 'Today', color: '#007aff', icon: (t) => <span className="smart-date">{Number(t.slice(8))}</span> },
-  { id: 'scheduled', title: 'Scheduled', color: '#ff3b30', icon: () => <Glyph d={CAL} /> },
-  { id: 'all', title: 'All', color: '#3a3a3c', icon: () => <Glyph d={TRAY} /> },
-  { id: 'flagged', title: 'Flagged', color: '#ff9500', icon: () => <Glyph d={FLAG} /> },
-  { id: 'completed', title: 'Completed', color: '#8e8e93', icon: () => <Glyph d={CHECK} /> },
+const SMART: { id: SmartList; title: string; icon: (today: string) => ReactNode }[] = [
+  { id: 'today', title: 'Today', icon: (t) => <span className="smart-date">{Number(t.slice(8))}</span> },
+  { id: 'scheduled', title: 'Scheduled', icon: () => <Glyph d={CAL} /> },
+  { id: 'all', title: 'All', icon: () => <Glyph d={TRAY} /> },
+  { id: 'flagged', title: 'Flagged', icon: () => <Glyph d={FLAG} /> },
+  { id: 'completed', title: 'Completed', icon: () => <Glyph d={CHECK} /> },
 ];
 
 type Selection = { kind: 'smart'; id: SmartList } | { kind: 'list'; id: string } | { kind: 'subject'; id: string };
@@ -146,7 +146,7 @@ export function RemindersView({ narrow, showSidebarToggle }: { narrow: boolean; 
       <div className="smart-grid">
         {SMART.map((s) => (
           <button key={s.id} className={`smart-card ${sel.kind === 'smart' && sel.id === s.id && !query ? 'on' : ''}`} onClick={() => setSel({ kind: 'smart', id: s.id })}>
-            <span className="smart-icon" style={{ background: s.color }}>
+            <span className="smart-icon">
               {s.icon(today)}
             </span>
             <span className="smart-count">{s.id === 'completed' ? '' : counts[s.id]}</span>
@@ -231,7 +231,8 @@ function ListPane({ sel, query, lists, reminders, subjects, today, onEditList }:
   const smart = sel.kind === 'smart' ? SMART.find((s) => s.id === sel.id) : undefined;
   const subject = sel.kind === 'subject' ? subjects.find((s) => s.id === sel.id) : undefined;
   const title = query ? `Results for “${query}”` : (list?.name ?? smart?.title ?? subject?.name ?? 'Reminders');
-  const color = list?.color ?? smart?.color ?? subject?.color ?? '#007aff';
+  // Titles stay in ink, as everywhere else in the app; a list's or subject's colour marks it with a dot.
+  const color = list?.color ?? subject?.color;
 
   useEffect(() => {
     setAdding(false);
@@ -276,10 +277,11 @@ function ListPane({ sel, query, lists, reminders, subjects, today, onEditList }:
   return (
     <div className="rem-main">
       <div className="rem-title-row">
-        <h2 className="rem-title" style={{ color }}>
+        <h2 className="rem-title">
+          {color && <span className="rem-title-dot" style={{ background: color }} />}
           {title}
         </h2>
-        {!query && sel.kind === 'smart' && sel.id !== 'completed' && <span className="rem-title-count" style={{ color }}>{items.filter((r) => !r.completed).length}</span>}
+        {!query && sel.kind === 'smart' && sel.id !== 'completed' && <span className="rem-title-count">{items.filter((r) => !r.completed).length}</span>}
         <span className="spacer" />
         {!query && (
           <button className="icon-btn" onClick={(e) => openMenu(e.currentTarget)} aria-label="List options">
@@ -291,7 +293,8 @@ function ListPane({ sel, query, lists, reminders, subjects, today, onEditList }:
         {groups.map((g) => (
           <div key={g.key} className="rem-group">
             {g.title && (
-              <div className="rem-group-title" style={sel.kind === 'smart' && (sel.id === 'all' || sel.id === 'completed') ? { color: listById(g.key)?.color } : undefined}>
+              <div className={`rem-group-title ${g.key === 'overdue' ? 'late' : ''}`}>
+                {sel.kind === 'smart' && (sel.id === 'all' || sel.id === 'completed') && <span className="rem-title-dot small" style={{ background: listById(g.key)?.color }} />}
                 {g.title}
               </div>
             )}
@@ -301,11 +304,11 @@ function ListPane({ sel, query, lists, reminders, subjects, today, onEditList }:
           </div>
         ))}
         {!groups.length && !adding && <div className="rem-empty">{query ? 'No results' : sel.kind === 'smart' && sel.id === 'completed' ? 'No completed reminders' : 'No reminders'}</div>}
-        {adding && <NewReminderRow color={color} defaults={defaults} subjects={subjects} today={today} onDone={() => setAdding(false)} />}
+        {adding && <NewReminderRow defaults={defaults} subjects={subjects} today={today} onDone={() => setAdding(false)} />}
       </div>
       {canAdd && !adding && (
-        <button className="rem-new" style={{ color }} onClick={() => setAdding(true)}>
-          <span className="rem-new-plus" style={{ background: color }}>
+        <button className="rem-new" onClick={() => setAdding(true)}>
+          <span className="rem-new-plus">
             <IPlus size={14} />
           </span>
           New Reminder
@@ -364,7 +367,6 @@ const byManual = (a: Reminder, b: Reminder) => a.order - b.order;
 // ------------------------------------------------------------------ one reminder
 
 function ReminderRow({ r, list, subjects, today, showList, onComplete, onInfo }: { r: Reminder; list?: ReminderList; subjects: Subject[]; today: string; showList: boolean; onComplete: () => void; onInfo: () => void }) {
-  const color = list?.color ?? '#007aff';
   const [title, setTitle] = useState(r.title);
   const [swipe, setSwipe] = useState(0);
   const drag = useRef<{ x: number; y: number; base: number; active: boolean } | null>(null);
@@ -407,10 +409,10 @@ function ReminderRow({ r, list, subjects, today, showList, onComplete, onInfo }:
         </button>
       </div>
       <div className={`rem-row ${r.completed ? 'done' : ''}`} style={{ transform: swipe ? `translateX(${swipe}px)` : undefined }} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
-        <button className={`rem-circle ${r.completed ? 'on' : ''}`} style={{ ['--list' as string]: color }} onClick={onComplete} aria-label={r.completed ? `Mark “${r.title}” as not completed` : `Complete “${r.title}”`} />
+        <button className={`rem-circle ${r.completed ? 'on' : ''}`} onClick={onComplete} aria-label={r.completed ? `Mark “${r.title}” as not completed` : `Complete “${r.title}”`} />
         <div className="rem-text">
           <div className="rem-line">
-            {r.priority > 0 && <span className="rem-priority" style={{ color }}>{priorityMarks(r.priority)}</span>}
+            {r.priority > 0 && <span className="rem-priority">{priorityMarks(r.priority)}</span>}
             <input className="rem-input" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()} aria-label="Reminder" />
           </div>
           {r.notes && <div className="rem-notes">{r.notes}</div>}
@@ -428,7 +430,11 @@ function ReminderRow({ r, list, subjects, today, showList, onComplete, onInfo }:
                   {kind.emoji} {kind.label}
                 </span>
               )}
-              {showList && list && <span className="rem-list-tag">{list.name}</span>}
+              {showList && list && (
+                <span className="rem-list-tag" style={{ ['--list' as string]: list.color }}>
+                  {list.name}
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -446,7 +452,7 @@ function ReminderRow({ r, list, subjects, today, showList, onComplete, onInfo }:
 }
 
 /** The row you type a new reminder into, with Apple's quick toolbar under it. */
-function NewReminderRow({ color, defaults, subjects, today, onDone }: { color: string; defaults: Partial<Reminder>; subjects: Subject[]; today: string; onDone: () => void }) {
+function NewReminderRow({ defaults, subjects, today, onDone }: { defaults: Partial<Reminder>; subjects: Subject[]; today: string; onDone: () => void }) {
   const [title, setTitle] = useState('');
   const [due, setDue] = useState<string | undefined>(defaults.due);
   const [subjectId, setSubjectId] = useState<string | undefined>(defaults.subjectId);
@@ -481,7 +487,7 @@ function NewReminderRow({ color, defaults, subjects, today, onDone }: { color: s
 
   return (
     <div className="rem-row new">
-      <span className="rem-circle" style={{ ['--list' as string]: color }} />
+      <span className="rem-circle" />
       <div className="rem-text">
         <input
           ref={input}
@@ -580,7 +586,7 @@ function ReminderDetails({ id, lists, subjects, onClose }: { id: string; lists: 
 
       <div className="ios-group">
         <div className="ios-row">
-          <span className="ios-icon" style={{ background: '#ff3b30' }}>
+          <span className="ios-icon">
             <Glyph d={CAL} size={15} />
           </span>
           <span className="ios-label">
@@ -591,7 +597,7 @@ function ReminderDetails({ id, lists, subjects, onClose }: { id: string; lists: 
         </div>
         {r.due && <input className="ios-field picker" type="date" value={r.due} onChange={(e) => e.target.value && set({ due: e.target.value })} aria-label="Due date" />}
         <div className="ios-row">
-          <span className="ios-icon" style={{ background: '#007aff' }}>
+          <span className="ios-icon">
             🕑
           </span>
           <span className="ios-label">
@@ -603,7 +609,7 @@ function ReminderDetails({ id, lists, subjects, onClose }: { id: string; lists: 
         {r.time && <input className="ios-field picker" type="time" value={r.time} onChange={(e) => e.target.value && set({ time: e.target.value })} aria-label="Due time" />}
         {r.due && (
           <label className="ios-row">
-            <span className="ios-icon" style={{ background: '#8e8e93' }}>
+            <span className="ios-icon">
               ↻
             </span>
             <span className="ios-label">Repeat</span>
@@ -619,7 +625,7 @@ function ReminderDetails({ id, lists, subjects, onClose }: { id: string; lists: 
         )}
         {r.time && (
           <label className="ios-row">
-            <span className="ios-icon" style={{ background: '#ff9500' }}>
+            <span className="ios-icon">
               ⏱
             </span>
             <span className="ios-label">Early Reminder</span>
@@ -636,7 +642,7 @@ function ReminderDetails({ id, lists, subjects, onClose }: { id: string; lists: 
 
       <div className="ios-group">
         <label className="ios-row">
-          <span className="ios-icon" style={{ background: '#5856d6' }}>
+          <span className="ios-icon">
             📚
           </span>
           <span className="ios-label">Subject</span>
@@ -660,7 +666,7 @@ function ReminderDetails({ id, lists, subjects, onClose }: { id: string; lists: 
 
       <div className="ios-group">
         <div className="ios-row">
-          <span className="ios-icon" style={{ background: '#ff9500' }}>
+          <span className="ios-icon">
             <Glyph d={FLAG} size={15} />
           </span>
           <span className="ios-label">Flag</span>
@@ -737,7 +743,7 @@ function ListEditor({ list, count, onClose, onCreated }: { list: ReminderList | 
         <span className="list-dot big" style={{ background: color }}>
           <Glyph d={LIST} size={30} />
         </span>
-        <input className="input list-name" autoFocus value={name} placeholder="List Name" onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} style={{ color }} />
+        <input className="input list-name" autoFocus value={name} placeholder="List Name" onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} />
         <div className="swatches">
           {LIST_COLORS.map((c) => (
             <button key={c} className={`swatch ${c === color ? 'on' : ''}`} style={{ background: c }} onClick={() => setColor(c)} aria-label={`Colour ${c}`} />

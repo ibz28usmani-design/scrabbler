@@ -317,7 +317,13 @@ export async function seedCalendar() {
     });
   }
   if (!(await db.meta.get(TERM_CALENDAR_KEY))) await setMeta(TERM_CALENDAR_KEY, SEED_CALENDAR);
-  if (!(await db.reminderLists.count())) await db.reminderLists.add({ id: uid(), name: 'Reminders', color: '#007aff', order: 0, createdAt: Date.now() });
+  if (!(await db.reminderLists.count())) await db.reminderLists.add({ id: uid(), name: 'Reminders', color: '#2b2a28', order: 0, createdAt: Date.now() });
+  // Lists from before the app's own palette: Apple blue becomes ink, and so on.
+  const { OLD_LIST_COLORS } = await import('./lib/reminders');
+  await db.reminderLists.toCollection().modify((l) => {
+    const c = OLD_LIST_COLORS[l.color.toLowerCase()];
+    if (c) l.color = c;
+  });
 }
 
 export async function getTermCalendar(): Promise<TermCalendar> {

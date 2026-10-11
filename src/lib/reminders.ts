@@ -66,8 +66,23 @@ export const REPEATS: { id: Repeat; label: string }[] = [
   { id: 'yearly', label: 'Yearly' },
 ];
 
-/** Apple's list colours. */
-export const LIST_COLORS = ['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#5ac8fa', '#007aff', '#5856d6', '#af52de', '#ff2d55', '#a2845e', '#8e8e93'];
+/** List colours in the app's inks: charcoal, then muted earth and print colours. */
+export const LIST_COLORS = ['#2b2a28', '#b42318', '#c2621b', '#b8862b', '#4b6b3e', '#2f6f73', '#2f4f7a', '#5b4a8a', '#9b3d6b', '#8a5a32', '#77736a'];
+
+/** Lists made before the app's palette carried Apple's colours; map each to its nearest ink. */
+export const OLD_LIST_COLORS: Record<string, string> = {
+  '#ff3b30': '#b42318',
+  '#ff9500': '#c2621b',
+  '#ffcc00': '#b8862b',
+  '#34c759': '#4b6b3e',
+  '#5ac8fa': '#2f6f73',
+  '#007aff': '#2b2a28',
+  '#5856d6': '#2f4f7a',
+  '#af52de': '#5b4a8a',
+  '#ff2d55': '#9b3d6b',
+  '#a2845e': '#8a5a32',
+  '#8e8e93': '#77736a',
+};
 
 /** When an all-day reminder alerts, as in Apple Reminders. */
 export const ALL_DAY_ALERT = '09:00';
