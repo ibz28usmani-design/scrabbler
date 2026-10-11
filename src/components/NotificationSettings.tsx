@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { updateSettings, useSettings } from '../lib/settings';
-import { connectServer, disablePush, enablePush, pushBlocker, sendTest, syncPush } from '../lib/push';
+import { connectServer, disablePush, enablePush, primePush, pushBlocker, pushDiagnostics, sendTest, syncPush } from '../lib/push';
 import { toast, toastError } from '../lib/events';
 import { Spinner } from './ui';
 
@@ -12,6 +12,13 @@ export function NotificationSettings() {
   const [url, setUrl] = useState(s.pushUrl);
   const [password, setPassword] = useState(s.pushPassword);
   const [busy, setBusy] = useState<null | 'connect' | 'on' | 'test' | 'off'>(null);
+  const [, refresh] = useState(0);
+  // Have the service worker and server key ready before "Turn on" is tapped.
+  useEffect(() => {
+    primePush();
+    const t = setTimeout(() => refresh((n) => n + 1), 1500);
+    return () => clearTimeout(t);
+  }, [s.pushUrl]);
   const blocker = pushBlocker();
   const permission = typeof Notification === 'undefined' ? 'unsupported' : Notification.permission;
 
@@ -58,6 +65,7 @@ export function NotificationSettings() {
         .
       </p>
       <p className={`push-status ${s.pushEnabled && permission === 'granted' && !blocker ? 'on' : ''}`}>{status}</p>
+      <p className="push-diag">{pushDiagnostics()}</p>
       <div className="grid2">
         <label className="field">
           <span>Server address</span>
@@ -91,7 +99,7 @@ export function NotificationSettings() {
             </button>
           </>
         )}
-        <button className="btn" disabled={!!busy || !url.trim()} onClick={() => run('connect', async () => (save(), await connectServer()), 'The server answered — it’s set up.')}>
+        <button className="btn" disabled={!!busy || !url.trim()} onClick={() => run('connect', async () => (save(), await connectServer(), primePush(), refresh((n) => n + 1)), 'The server answered — it’s set up.')}>
           {busy === 'connect' && <Spinner size={14} />} Check server
         </button>
         <button className="btn" onClick={() => copyCode().catch(toastError)}>

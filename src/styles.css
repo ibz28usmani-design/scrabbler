@@ -5976,3 +5976,9 @@ body.block-dragging * {
 .app.narrow .poster-year {
   font-size: 13px;
 }
+
+.push-diag {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: -4px;
+}

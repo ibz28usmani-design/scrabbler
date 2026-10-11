@@ -62,33 +62,81 @@ const keyBytes = (b64: string) => {
   return Uint8Array.from(s, (c) => c.charCodeAt(0));
 };
 
+let readyReg: ServiceWorkerRegistration | null = null;
+
 /**
- * Turns notifications on. Call straight from a tap: iPadOS only shows the
- * permission prompt inside one, so nothing slow happens before it.
+ * Gets the service worker and the server's key ready before the tap, so the
+ * tap itself can go straight to subscribing — the call iPadOS shows its
+ * permission request for. Anything awaited first can cost the request.
+ */
+export function primePush() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.ready.then((r) => (readyReg = r)).catch(() => {});
+  if (base() && !getSettings().pushPublicKey) connectServer().catch(() => {});
+}
+
+/** What the iPad reports, for working out why notifications won't turn on. */
+export function pushDiagnostics(): string {
+  const installed = matchMedia('(display-mode: standalone)').matches || !!(navigator as { standalone?: boolean }).standalone;
+  const perm = typeof Notification === 'undefined' ? 'unavailable' : Notification.permission;
+  const safari = /Version\/([\d.]+)/.exec(navigator.userAgent)?.[1];
+  return [
+    `Installed app: ${installed ? 'yes' : 'no'}`,
+    `Permission: ${perm}`,
+    `Push: ${'PushManager' in window ? 'yes' : 'no'}`,
+    `Service worker: ${readyReg ? 'ready' : 'not ready'}`,
+    `Server key: ${getSettings().pushPublicKey ? 'yes' : 'no'}`,
+    safari ? `Safari ${safari}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+const refusedMessage = (before: NotificationPermission, detail = '') =>
+  (before === 'denied'
+    ? 'Notifications are off for Scrabbler. Turn them on in the iPad’s Settings → Notifications → Scrabbler.'
+    : 'iPadOS said no without showing the permission request.') + (detail ? ` (${detail})` : '');
+
+/**
+ * Turns notifications on. Call straight from a tap. With the service worker
+ * and key ready (see primePush) it subscribes at once, which is what shows
+ * Apple's permission request; otherwise it asks for permission first.
  */
 export async function enablePush(): Promise<void> {
   const blocker = pushBlocker();
   if (blocker) throw new Error(blocker);
   const before = Notification.permission;
-  const permission = await Notification.requestPermission();
-  if (permission !== 'granted') {
-    // Refused before: the switch is in the iPad's Settings. Refused without ever asking:
-    // iPadOS never showed the request, so there is no switch to find — usually a school or
-    // Screen Time restriction on the iPad.
-    throw new Error(
-      before === 'denied'
-        ? 'Notifications are off for Scrabbler. Turn them on in the iPad’s Settings → Notifications → Scrabbler.'
-        : 'iPadOS didn’t show the permission request, so Scrabbler can’t send notifications on this iPad. This usually means the iPad is managed by a school or Screen Time blocks notifications from web apps.',
-    );
+  const key = getSettings().pushPublicKey;
+  let sub: PushSubscription | null = null;
+
+  if (readyReg && key) {
+    const reg = readyReg;
+    try {
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
+    } catch (e) {
+      const err = e as Error;
+      // Subscribed before with an old server key: swap it (no prompt needed once allowed).
+      if (Notification.permission === 'granted') {
+        await (await reg.pushManager.getSubscription())?.unsubscribe();
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
+      } else {
+        throw new Error(refusedMessage(before, `${err.name}: ${err.message}`));
+      }
+    }
+  } else {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') throw new Error(refusedMessage(before, `asked before the app was ready — tap again`));
+    const k = key || (await connectServer());
+    const reg = await navigator.serviceWorker.ready;
+    readyReg = reg;
+    sub = await reg.pushManager.getSubscription();
+    if (sub && !sameKey(sub, k)) {
+      await sub.unsubscribe();
+      sub = null;
+    }
+    sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(k) });
   }
-  const key = getSettings().pushPublicKey || (await connectServer());
-  const reg = await navigator.serviceWorker.ready;
-  let sub = await reg.pushManager.getSubscription();
-  if (sub && !sameKey(sub, key)) {
-    await sub.unsubscribe();
-    sub = null;
-  }
-  sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
+
   if (!getSettings().pushDeviceId) updateSettings({ pushDeviceId: `device-${uid().replace(/[^\w-]/g, '').slice(0, 24)}` });
   updateSettings({ pushEnabled: true });
   lastSent = '';
