@@ -44,6 +44,8 @@ export interface Settings {
   pushEnabled: boolean;
   notifyClasses: boolean;
   classLeadMinutes: number;
+  /** Extra heads-up before the first class of each day (0 = off). */
+  firstClassLeadMinutes: number;
   notifyReminders: boolean;
 }
 
@@ -78,6 +80,7 @@ export const DEFAULT_SETTINGS: Settings = {
   pushEnabled: false,
   notifyClasses: true,
   classLeadMinutes: 10,
+  firstClassLeadMinutes: 60,
   notifyReminders: true,
 };
 

@@ -62,6 +62,18 @@ describe('classes', () => {
     expect(classAlertText(due[0], SEED_SUBJECTS, 10)).toEqual({ title: 'Law in 10 min', body: '09:00–10:50 · John Shields JS203 · Immie Phelps' });
   });
 
+  it('gives the first class of each day a heads-up an hour before', () => {
+    const first = (date: string, at: string) => classAlertsInMinute(SEED_LESSONS, SEED_CALENDAR, zonedTime(date, at), 60, undefined, true).map((c) => c.lesson.id);
+    expect(first('2026-10-12', '08:55')).toEqual(['mon-1']);
+    expect(first('2026-10-12', '10:10')).toEqual([]); // Monday's 11:10 Economics isn't the first class
+    expect(first('2026-10-13', '10:10')).toEqual(['tue-1']);
+    expect(first('2026-10-15', '08:00')).toEqual(['thu-1']);
+    expect(first('2026-10-16', '10:10')).toEqual(['fri-1']);
+    expect(first('2026-10-29', '08:00')).toEqual([]); // half term
+    const thu = classAlertsInMinute(SEED_LESSONS, SEED_CALENDAR, zonedTime('2026-10-15', '08:00'), 60, undefined, true)[0];
+    expect(classAlertText(thu, SEED_SUBJECTS, 60, true).title).toBe('First class in 1 hour: Law');
+  });
+
   it('back-to-back classes each get their own alert', () => {
     // Monday: Economics ends 13:00, Tutor Group starts 13:00.
     const due = classAlertsInMinute(SEED_LESSONS, SEED_CALENDAR, zonedTime('2026-10-12', '12:55'), 5);

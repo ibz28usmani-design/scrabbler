@@ -133,6 +133,17 @@ describe('push server', () => {
     expect(await res.json()).toMatchObject({ ok: false, status: 0 });
   });
 
+  it('sends the first-class heads-up as well as the usual alert, and never twice', () => {
+    const d: Device = { id: 'x', subscription: browser().subscription, subjects: SEED_SUBJECTS, lessons: SEED_LESSONS, calendar: SEED_CALENDAR, classAlerts: true, leadMinutes: 10, firstLeadMinutes: 60, updatedAt: 0, alerts: [] };
+    expect(dueInMinute(d, zonedTime('2026-10-15', '08:00')).map((x) => [x.msg.title, x.msg.tag])).toEqual([['First class in 1 hour: Law', 'first-thu-1-2026-10-15']]);
+    expect(dueInMinute(d, zonedTime('2026-10-15', '08:50')).map((x) => x.msg.title)).toEqual(['Law in 10 min']);
+    // Off, or the same lead as every class: no extra alert.
+    expect(dueInMinute({ ...d, firstLeadMinutes: 0 }, zonedTime('2026-10-15', '08:00'))).toEqual([]);
+    expect(dueInMinute({ ...d, firstLeadMinutes: 10 }, zonedTime('2026-10-15', '08:50'))).toHaveLength(1);
+    // Older devices synced before this setting existed get none.
+    expect(dueInMinute({ ...d, firstLeadMinutes: undefined }, zonedTime('2026-10-15', '08:00'))).toEqual([]);
+  });
+
   it('picks only what falls in the minute', () => {
     const d: Device = { id: 'x', subscription: browser().subscription, subjects: SEED_SUBJECTS, lessons: SEED_LESSONS, calendar: SEED_CALENDAR, classAlerts: false, leadMinutes: 10, updatedAt: 0, alerts: [{ at: 120_000, title: 'a', body: '' }, { at: 185_000, title: 'b', body: '' }] };
     expect(dueInMinute(d, 120_000).map((x) => x.msg.title)).toEqual(['a']);

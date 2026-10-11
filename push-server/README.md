@@ -5,6 +5,7 @@ This is that server: a free [Cloudflare Worker](https://workers.cloudflare.com)
 that you own. Scrabbler sends it your timetable, term dates and reminder times;
 every minute it checks what is due and pushes:
 
+- **"First class in 1 hour: Law"** before the first class of each day, and
 - **"Law in 10 min"** before each class (only on teaching days — never at
   weekends, in half term or in the holidays), and
 - your **reminders** at their due time (09:00 for all-day ones), plus any early

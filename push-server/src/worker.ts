@@ -59,6 +59,7 @@ export default {
         calendar: body.calendar,
         classAlerts: body.classAlerts !== false,
         leadMinutes: Math.max(0, Math.min(120, Number(body.leadMinutes) || 0)),
+        firstLeadMinutes: Math.max(0, Math.min(240, Number(body.firstLeadMinutes) || 0)),
         alerts: body.alerts.filter((a: any) => typeof a?.at === 'number' && a.at > Date.now() - 60000 && typeof a.title === 'string').slice(0, 500),
         updatedAt: Date.now(),
       };

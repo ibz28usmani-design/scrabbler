@@ -112,6 +112,16 @@ export function NotificationSettings() {
           ))}
         </select>
       </label>
+      <label className="field inline">
+        <span>First class of the day</span>
+        <select className="input" value={s.firstClassLeadMinutes} disabled={!s.notifyClasses} onChange={(e) => updateSettings({ firstClassLeadMinutes: Number(e.target.value) })}>
+          {[0, 30, 45, 60, 90, 120].map((m) => (
+            <option key={m} value={m}>
+              {m ? `Also ${m < 60 ? `${m} minutes` : m === 60 ? '1 hour' : `${m / 60} hours`} before` : 'No extra alert'}
+            </option>
+          ))}
+        </select>
+      </label>
       <label className="check">
         <input type="checkbox" checked={s.notifyReminders} onChange={(e) => updateSettings({ notifyReminders: e.target.checked })} />
         When reminders are due (all-day ones at 9:00)

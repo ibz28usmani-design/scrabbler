@@ -182,11 +182,20 @@ export function currentAndNext(lessons: Lesson[], cal: TermCalendar, now: number
   return { current, next };
 }
 
-/** Classes whose alert (start minus lead) falls in a given minute — what the push server sends. */
-export function classAlertsInMinute(lessons: Lesson[], cal: TermCalendar, minuteStart: number, leadMinutes: number, tz = COLLEGE_TZ): ClassTime[] {
+/** Is this the first class of its day? (The day's earliest lesson in the timetable.) */
+export function isFirstOfDay(c: ClassTime, lessons: Lesson[]): boolean {
+  return !lessons.some((l) => l.day === c.lesson.day && l.id !== c.lesson.id && (l.start < c.lesson.start || (l.start === c.lesson.start && l.id < c.lesson.id)));
+}
+
+/**
+ * Classes whose alert (start minus lead) falls in a given minute — what the
+ * push server sends. `firstOnly` keeps just the first class of each day.
+ */
+export function classAlertsInMinute(lessons: Lesson[], cal: TermCalendar, minuteStart: number, leadMinutes: number, tz = COLLEGE_TZ, firstOnly = false): ClassTime[] {
   const lead = leadMinutes * 60000;
   const window = classesBetween(lessons, cal, minuteStart + lead - 60000, minuteStart + lead + 120000, tz);
   return window.filter((c) => {
+    if (firstOnly && !isFirstOfDay(c, lessons)) return false;
     const alertAt = c.start - lead;
     return alertAt >= minuteStart && alertAt < minuteStart + 60000;
   });
@@ -196,13 +205,21 @@ export function timeRange(l: Lesson) {
   return `${l.start}–${l.end}`;
 }
 
-/** The words of a class alert. */
-export function classAlertText(c: ClassTime, subjects: Subject[], leadMinutes: number) {
+/** "10 min", "1 hour", "1 h 30 min". */
+export function leadText(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m ? `${h} h ${m} min` : `${h} hour${h === 1 ? '' : 's'}`;
+}
+
+/** The words of a class alert; `first` for the heads-up before the day's first class. */
+export function classAlertText(c: ClassTime, subjects: Subject[], leadMinutes: number, first = false) {
   const subject = subjects.find((s) => s.id === c.lesson.subjectId);
   const name = subject?.name ?? 'Class';
   const where = [c.lesson.room, c.lesson.teacher].filter(Boolean).join(' · ');
   return {
-    title: leadMinutes > 0 ? `${name} in ${leadMinutes} min` : `${name} now`,
+    title: first ? `First class in ${leadText(leadMinutes)}: ${name}` : leadMinutes > 0 ? `${name} in ${leadText(leadMinutes)}` : `${name} now`,
     body: [timeRange(c.lesson), where].filter(Boolean).join(' · '),
   };
 }

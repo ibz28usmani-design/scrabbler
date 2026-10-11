@@ -16,6 +16,7 @@ export interface PushPayload {
   calendar: TermCalendar;
   classAlerts: boolean;
   leadMinutes: number;
+  firstLeadMinutes: number;
   alerts: { at: number; title: string; body: string; tag: string; url: string }[];
 }
 
@@ -156,6 +157,7 @@ export async function syncPush(force = false): Promise<void> {
     calendar,
     classAlerts: s.notifyClasses,
     leadMinutes: s.classLeadMinutes,
+    firstLeadMinutes: s.firstClassLeadMinutes,
     alerts: s.notifyReminders ? reminderAlerts(reminders, subjects) : [],
   };
   const body = JSON.stringify(payload);

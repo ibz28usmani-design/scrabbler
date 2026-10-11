@@ -88,10 +88,18 @@ function classesBetween(lessons, cal, from, to, tz = COLLEGE_TZ) {
 	}
 	return out.sort((a, b) => a.start - b.start);
 }
-/** Classes whose alert (start minus lead) falls in a given minute — what the push server sends. */
-function classAlertsInMinute(lessons, cal, minuteStart, leadMinutes, tz = COLLEGE_TZ) {
+/** Is this the first class of its day? (The day's earliest lesson in the timetable.) */
+function isFirstOfDay(c, lessons) {
+	return !lessons.some((l) => l.day === c.lesson.day && l.id !== c.lesson.id && (l.start < c.lesson.start || l.start === c.lesson.start && l.id < c.lesson.id));
+}
+/**
+* Classes whose alert (start minus lead) falls in a given minute — what the
+* push server sends. `firstOnly` keeps just the first class of each day.
+*/
+function classAlertsInMinute(lessons, cal, minuteStart, leadMinutes, tz = COLLEGE_TZ, firstOnly = false) {
 	const lead = leadMinutes * 6e4;
 	return classesBetween(lessons, cal, minuteStart + lead - 6e4, minuteStart + lead + 12e4, tz).filter((c) => {
+		if (firstOnly && !isFirstOfDay(c, lessons)) return false;
 		const alertAt = c.start - lead;
 		return alertAt >= minuteStart && alertAt < minuteStart + 6e4;
 	});
@@ -99,12 +107,19 @@ function classAlertsInMinute(lessons, cal, minuteStart, leadMinutes, tz = COLLEG
 function timeRange(l) {
 	return `${l.start}–${l.end}`;
 }
-/** The words of a class alert. */
-function classAlertText(c, subjects, leadMinutes) {
+/** "10 min", "1 hour", "1 h 30 min". */
+function leadText(minutes) {
+	if (minutes < 60) return `${minutes} min`;
+	const h = Math.floor(minutes / 60);
+	const m = minutes % 60;
+	return m ? `${h} h ${m} min` : `${h} hour${h === 1 ? "" : "s"}`;
+}
+/** The words of a class alert; `first` for the heads-up before the day's first class. */
+function classAlertText(c, subjects, leadMinutes, first = false) {
 	const name = subjects.find((s) => s.id === c.lesson.subjectId)?.name ?? "Class";
 	const where = [c.lesson.room, c.lesson.teacher].filter(Boolean).join(" · ");
 	return {
-		title: leadMinutes > 0 ? `${name} in ${leadMinutes} min` : `${name} now`,
+		title: first ? `First class in ${leadText(leadMinutes)}: ${name}` : leadMinutes > 0 ? `${name} in ${leadText(leadMinutes)}` : `${name} now`,
 		body: [timeRange(c.lesson), where].filter(Boolean).join(" · ")
 	};
 }
@@ -279,14 +294,25 @@ async function send(kv, device, msg, ttl, origin) {
 /** Everything one device should hear about in a given minute. */
 function dueInMinute(device, minute) {
 	const out = [];
-	if (device.classAlerts) for (const c of classAlertsInMinute(device.lessons, device.calendar, minute, device.leadMinutes)) out.push({
-		msg: {
-			...classAlertText(c, device.subjects, device.leadMinutes),
-			tag: `class-${c.lesson.id}-${c.date}`,
-			url: "./?open=calendar"
-		},
-		ttl: Math.max(60, (c.start - minute) / 1e3)
-	});
+	if (device.classAlerts) {
+		for (const c of classAlertsInMinute(device.lessons, device.calendar, minute, device.leadMinutes)) out.push({
+			msg: {
+				...classAlertText(c, device.subjects, device.leadMinutes),
+				tag: `class-${c.lesson.id}-${c.date}`,
+				url: "./?open=calendar"
+			},
+			ttl: Math.max(60, (c.start - minute) / 1e3)
+		});
+		const first = device.firstLeadMinutes ?? 0;
+		if (first > 0 && first !== device.leadMinutes) for (const c of classAlertsInMinute(device.lessons, device.calendar, minute, first, void 0, true)) out.push({
+			msg: {
+				...classAlertText(c, device.subjects, first, true),
+				tag: `first-${c.lesson.id}-${c.date}`,
+				url: "./?open=calendar"
+			},
+			ttl: Math.max(60, (c.start - minute) / 1e3)
+		});
+	}
 	for (const a of device.alerts) if (a.at >= minute && a.at < minute + 6e4) out.push({
 		msg: {
 			title: a.title,
@@ -391,6 +417,7 @@ var worker_default = {
 				calendar: body.calendar,
 				classAlerts: body.classAlerts !== false,
 				leadMinutes: Math.max(0, Math.min(120, Number(body.leadMinutes) || 0)),
+				firstLeadMinutes: Math.max(0, Math.min(240, Number(body.firstLeadMinutes) || 0)),
 				alerts: body.alerts.filter((a) => typeof a?.at === "number" && a.at > Date.now() - 6e4 && typeof a.title === "string").slice(0, 500),
 				updatedAt: Date.now()
 			};

@@ -49,5 +49,5 @@ export function usePushSync() {
       sub.unsubscribe();
       document.removeEventListener('visibilitychange', onShow);
     };
-  }, [s.pushEnabled, s.notifyClasses, s.classLeadMinutes, s.notifyReminders, s.pushUrl, s.pushPassword]);
+  }, [s.pushEnabled, s.notifyClasses, s.classLeadMinutes, s.firstClassLeadMinutes, s.notifyReminders, s.pushUrl, s.pushPassword]);
 }

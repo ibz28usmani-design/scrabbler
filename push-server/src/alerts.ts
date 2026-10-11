@@ -26,6 +26,8 @@ export interface Device {
   calendar: TermCalendar;
   classAlerts: boolean;
   leadMinutes: number;
+  /** Heads-up before the first class of each day, in minutes (0 = off). */
+  firstLeadMinutes?: number;
   alerts: TimedAlert[];
   updatedAt: number;
 }
@@ -112,6 +114,16 @@ export function dueInMinute(device: Device, minute: number): { msg: PushMessage;
         // Useless once class has started.
         ttl: Math.max(60, (c.start - minute) / 1000),
       });
+    }
+    const first = device.firstLeadMinutes ?? 0;
+    // The same lead as every class would only repeat that alert.
+    if (first > 0 && first !== device.leadMinutes) {
+      for (const c of classAlertsInMinute(device.lessons, device.calendar, minute, first, undefined, true)) {
+        out.push({
+          msg: { ...classAlertText(c, device.subjects, first, true), tag: `first-${c.lesson.id}-${c.date}`, url: './?open=calendar' },
+          ttl: Math.max(60, (c.start - minute) / 1000),
+        });
+      }
     }
   }
   for (const a of device.alerts) {
