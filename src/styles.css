@@ -3490,33 +3490,179 @@ select.input {
   pointer-events: none;
 }
 
-/* Down the sides the palette becomes a column, so it never covers the line
-   you are writing on. */
-.ink-dock.floating[data-edge='left'] .ink-toolbar,
-.ink-dock.floating[data-edge='right'] .ink-toolbar {
+/* Down the sides the palette is Apple's column, not the row stood on its end:
+   undo and redo paired at the top, the tools lying on their side with their
+   tips pointing into the page, the colours two abreast, and the custom colour
+   and the rest at the foot. It never covers the line you are writing on. */
+.ink-dock.floating .ink-toolbar.column {
   flex-direction: column;
-  overflow-x: visible;
-  overflow-y: auto;
+  align-items: center;
+  gap: 10px;
+  width: 104px;
+  padding: 15px 10px 13px;
+  border-radius: 34px;
+  overflow: visible;
   max-height: 100%;
-  padding: 13px 6px 8px;
 }
-.ink-dock.floating[data-edge='left'] .ink-tools,
-.ink-dock.floating[data-edge='right'] .ink-tools,
-.ink-dock.floating[data-edge='left'] .ink-actions,
-.ink-dock.floating[data-edge='right'] .ink-actions {
+.ink-dock.floating .ink-toolbar.column .ink-actions .icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+.ink-dock.floating .ink-toolbar.column .ink-actions .icon-btn:disabled {
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+.ink-dock.floating .ink-toolbar.column .ink-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  width: 100%;
+  place-items: center;
+}
+.ink-dock.floating .ink-toolbar.column .ink-tools {
   flex-direction: column;
+  gap: 2px;
+  width: 100%;
 }
-.ink-dock.floating[data-edge='left'] .ink-sep,
-.ink-dock.floating[data-edge='right'] .ink-sep {
-  width: 24px;
+.ink-dock.floating .ink-toolbar.column .ink-tool {
+  width: 100%;
+  height: 62px;
+  border-radius: 18px;
+  transition:
+    transform 0.22s cubic-bezier(0.22, 1, 0.3, 1),
+    background 0.15s ease;
+}
+/* Apple's pens run almost the width of the palette; a 20px glyph adrift in a
+   62px cell reads as an icon list, not a tray of pens. */
+.ink-dock.floating .ink-toolbar.column .ink-tool svg {
+  width: 32px;
+  height: 32px;
+}
+/* The pen in hand is shown by sliding out of the tray, as PencilKit does, so
+   the filled pill the row layout uses would be saying it twice — and a pill
+   under a pen lying on its side reads as a smudge. */
+.ink-dock.floating .ink-toolbar.column .ink-tool.on {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text);
+}
+.ink-dock.floating .ink-toolbar.column .ink-tool .tool-ink {
+  bottom: 7px;
+  width: 20px;
+}
+.ink-dock.floating .ink-toolbar.column .ink-sep {
+  width: 58px;
   height: 1px;
 }
-.ink-dock.floating[data-edge='left'] .ink-chip,
-.ink-dock.floating[data-edge='right'] .ink-chip {
+.ink-dock.floating .ink-toolbar.column .ink-colors {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 9px;
+  place-items: center;
+}
+.ink-dock.floating .ink-toolbar.column .swatch {
+  width: 32px;
+  height: 32px;
+}
+.ink-foot {
+  display: flex;
   flex-direction: column;
-  gap: 0;
-  height: auto;
-  padding: 3px 4px;
+  align-items: center;
+  gap: 4px;
+}
+
+/* The tools lie on their side, tip towards the page, and the one in hand
+   slides out of the palette towards it — PencilKit's own tell for which pen
+   you are holding. */
+.ink-dock.floating[data-edge='left'] .ink-toolbar.column .ink-tool svg {
+  transform: rotate(-135deg);
+}
+.ink-dock.floating[data-edge='right'] .ink-toolbar.column .ink-tool svg {
+  transform: rotate(45deg);
+}
+/* The lasso is a shape, not a pen: standing it on its side reads as a mistake. */
+.ink-dock.floating .ink-toolbar.column .ink-tool[data-tool='lasso'] svg {
+  transform: none;
+}
+/* The pens lie towards the page with their tails back in the tray, and the
+   one in hand reaches further out still. Shifting the glyph with padding
+   rather than the button keeps the cell — and so the highlight behind it —
+   where it is; translating the whole button slid the highlight too, which
+   reads as the tray moving rather than the pen. */
+.ink-dock.floating[data-edge='left'] .ink-toolbar.column .ink-tool {
+  padding-left: 14px;
+}
+.ink-dock.floating[data-edge='right'] .ink-toolbar.column .ink-tool {
+  padding-right: 14px;
+}
+.ink-dock.floating[data-edge='left'] .ink-toolbar.column .ink-tool.on {
+  padding-left: 30px;
+}
+.ink-dock.floating[data-edge='right'] .ink-toolbar.column .ink-tool.on {
+  padding-right: 30px;
+}
+.ink-dock.floating .ink-toolbar.column .ink-tool {
+  transition:
+    padding 0.22s cubic-bezier(0.22, 1, 0.3, 1),
+    background 0.15s ease;
+}
+
+/* The grabber runs down the inner edge, where Apple puts it. */
+.ink-dock.floating .ink-toolbar.column .ink-grab {
+  top: 50%;
+  bottom: auto;
+  width: 3px;
+  height: 34px;
+  transform: translateY(-50%);
+}
+.ink-dock.floating[data-edge='left'] .ink-toolbar.column .ink-grab {
+  left: auto;
+  right: 4px;
+}
+.ink-dock.floating[data-edge='right'] .ink-toolbar.column .ink-grab {
+  left: 4px;
+  right: auto;
+}
+
+/* Apple's "+" adds a colour of your own; it opens the system picker. */
+.ink-add {
+  position: relative;
+  border: 0;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.ink-add input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.ink-more {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 0;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.ink-add:hover,
+.ink-more:hover,
+.ink-more.on {
+  background: color-mix(in srgb, var(--text) 20%, transparent);
+  color: var(--text);
 }
 
 /* The options sheet opens away from whichever edge the palette is on. */

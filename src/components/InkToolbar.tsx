@@ -4,7 +4,7 @@ import { displayColor, HIGHLIGHTS, INK_PALETTE, setTool, setToolColor, setToolSi
 import { updateSettings, useSettings, type Settings } from '../lib/settings';
 import { useMediaQuery } from './ui';
 import { useDark } from '../lib/theme';
-import { IChevD, IEraser, IHighlighter, ILasso, IMarker, IPencil, IRedo, ITrash, IUndo } from './Icons';
+import { IChevD, IEraser, IHighlighter, ILasso, IMarker, IMore, IPencil, IPlus, IRedo, ITrash, IUndo } from './Icons';
 
 type Edge = Settings['inkToolbarEdge']['portrait'];
 type Corner = Settings['inkToolbarSpot']['portrait'];
@@ -238,6 +238,91 @@ export function InkToolbar({
   // the dock into an invisible sheet and left the circle adrift in the middle.
   const place = open ? { 'data-edge': edge } : { 'data-spot': spot };
 
+  // The same controls serve both layouts, so they are built once. Along an
+  // edge they sit in a row; down a side they stack into Apple's column.
+  const toolBtn = ([t, icon, label]: [Tool, ReactNode, string]) => (
+    <button
+      key={t}
+      className={`ink-tool ${tool.tool === t ? 'on' : ''}`}
+      data-tool={t}
+      title={label}
+      aria-label={label}
+      aria-pressed={tool.tool === t}
+      onClick={() => {
+        // Tapping the tool you are already using opens its options, as PencilKit does.
+        if (tool.tool === t && t !== 'eraser' && t !== 'lasso') setOptions((o) => !o);
+        else {
+          setTool(t);
+          setOptions(false);
+        }
+      }}
+    >
+      {icon}
+      {tool.tool === t && t !== 'eraser' && t !== 'lasso' && <span className="tool-ink" style={{ ['--sw' as string]: swatch }} />}
+    </button>
+  );
+
+  const actions = (
+    <>
+      <button className="icon-btn" onClick={onUndo} disabled={!canUndo} aria-label="Undo">
+        <IUndo />
+      </button>
+      <button className="icon-btn" onClick={onRedo} disabled={!canRedo} aria-label="Redo">
+        <IRedo />
+      </button>
+      {onDeleteSelection && (
+        <button className="icon-btn danger" aria-label="Delete selection" onClick={onDeleteSelection}>
+          <ITrash />
+        </button>
+      )}
+      {children}
+    </>
+  );
+
+  const swatches = palette.map(({ c, name }) => (
+    <button
+      key={c}
+      className={`swatch ${tool.color === c ? 'on' : ''}`}
+      style={{ ['--sw' as string]: displayColor(c, dark) }}
+      aria-label={name}
+      aria-pressed={tool.color === c}
+      title={name}
+      onClick={() => setToolColor(c)}
+    />
+  ));
+
+  const customColor = (label: string) => (
+    <label className="swatch custom" title={label} aria-label={label}>
+      <input type="color" value={tool.color} onChange={(e) => setToolColor(e.target.value)} aria-label={label} />
+    </label>
+  );
+
+  const widthRow = (
+    <div className="ink-opt-row">
+      <span className="ink-opt-label">Width</span>
+      <div className="ink-sizes">
+        {SIZES[tool.ink].map((s) => (
+          <button key={s} className={`size-dot ${tool.size === s ? 'on' : ''}`} onClick={() => setToolSize(s)} aria-label={`Width ${s}`} aria-pressed={tool.size === s}>
+            <span style={{ width: 2 + s * (tool.ink === 'marker' ? 1.6 : 1.2), height: 2 + s * (tool.ink === 'marker' ? 1.6 : 1.2) }} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const fingerRow = (
+    <label className="check finger-check" title="Off: only Apple Pencil draws, fingers scroll">
+      <input type="checkbox" checked={fingerDrawing} onChange={(e) => updateSettings({ fingerDrawing: e.target.checked })} />
+      Draw with finger
+    </label>
+  );
+
+  const collapseBtn = (
+    <button className="ink-collapse" onClick={() => setOpen(false)} aria-label="Hide drawing tools" title="Hide drawing tools">
+      <IChevD />
+    </button>
+  );
+
   if (!open) {
     return (
       <div className={cls} {...place} ref={dock} {...dragProps}>
@@ -249,32 +334,52 @@ export function InkToolbar({
     );
   }
 
+  /**
+   * Down a side the palette is Apple's column, not the row stood on its end:
+   * undo and redo paired at the top, the tools lying on their side with their
+   * tips pointing into the page, the colours as a two-wide grid, and the
+   * custom colour and the rest behind + and … at the foot. A row rotated 90°
+   * puts its colour chip and its controls in the order of a bar, which is not
+   * what the hand reaches for when the palette is beside the writing.
+   */
+  if (vertical) {
+    return (
+      <div className={cls} {...place} ref={dock} {...dragProps}>
+        <div className="ink-toolbar glass column" role="toolbar" aria-label="Drawing tools">
+          <span className="ink-grab" aria-hidden="true" />
+          <div className="ink-actions">{actions}</div>
+          <span className="ink-sep" />
+          <div className="ink-tools">{TOOLS.map(toolBtn)}</div>
+          <span className="ink-sep" />
+          <div className="ink-colors">{swatches}</div>
+          <div className="ink-foot">
+            <label className="ink-add" title="Custom colour" aria-label="Custom colour">
+              <input type="color" value={tool.color} onChange={(e) => setToolColor(e.target.value)} aria-label="Custom colour" />
+              <IPlus size={18} />
+            </label>
+            <button className={`ink-more ${options ? 'on' : ''}`} onClick={() => setOptions((o) => !o)} aria-label="Width and more" aria-expanded={options} title="Width and more">
+              <IMore />
+            </button>
+            {collapseBtn}
+          </div>
+        </div>
+
+        {options && (
+          <div className="ink-options glass" role="dialog" aria-label="Width and more">
+            {widthRow}
+            {fingerRow}
+          </div>
+        )}
+        <span className="sr-only">Palette docked to the {edge} as a column</span>
+      </div>
+    );
+  }
+
   return (
     <div className={cls} {...place} ref={dock} {...dragProps}>
       <div className="ink-toolbar glass" role="toolbar" aria-label="Drawing tools">
         {floating && <span className="ink-grab" aria-hidden="true" />}
-        <div className="ink-tools">
-          {TOOLS.map(([t, icon, label]) => (
-            <button
-              key={t}
-              className={`ink-tool ${tool.tool === t ? 'on' : ''}`}
-              title={label}
-              aria-label={label}
-              aria-pressed={tool.tool === t}
-              onClick={() => {
-                // Tapping the tool you are already using opens its options, as PencilKit does.
-                if (tool.tool === t && t !== 'eraser' && t !== 'lasso') setOptions((o) => !o);
-                else {
-                  setTool(t);
-                  setOptions(false);
-                }
-              }}
-            >
-              {icon}
-              {tool.tool === t && t !== 'eraser' && t !== 'lasso' && <span className="tool-ink" style={{ ['--sw' as string]: swatch }} />}
-            </button>
-          ))}
-        </div>
+        <div className="ink-tools">{TOOLS.map(toolBtn)}</div>
         <span className="ink-sep" />
         <button
           className={`ink-chip ${options ? 'on' : ''}`}
@@ -288,23 +393,8 @@ export function InkToolbar({
           <IChevD size={13} />
         </button>
         <span className="ink-sep" />
-        <div className="ink-actions">
-          <button className="icon-btn" onClick={onUndo} disabled={!canUndo} aria-label="Undo">
-            <IUndo />
-          </button>
-          <button className="icon-btn" onClick={onRedo} disabled={!canRedo} aria-label="Redo">
-            <IRedo />
-          </button>
-          {onDeleteSelection && (
-            <button className="icon-btn danger" aria-label="Delete selection" onClick={onDeleteSelection}>
-              <ITrash />
-            </button>
-          )}
-          {children}
-        </div>
-        <button className="ink-collapse" onClick={() => setOpen(false)} aria-label="Hide drawing tools" title="Hide drawing tools">
-          <IChevD />
-        </button>
+        <div className="ink-actions">{actions}</div>
+        {collapseBtn}
       </div>
 
       {options && (
@@ -312,36 +402,12 @@ export function InkToolbar({
           <div className="ink-opt-row">
             <span className="ink-opt-label">{tool.ink === 'marker' ? 'Highlight' : 'Ink'}</span>
             <div className="ink-colors">
-              {palette.map(({ c, name }) => (
-                <button
-                  key={c}
-                  className={`swatch ${tool.color === c ? 'on' : ''}`}
-                  style={{ ['--sw' as string]: displayColor(c, dark) }}
-                  aria-label={name}
-                  aria-pressed={tool.color === c}
-                  title={name}
-                  onClick={() => setToolColor(c)}
-                />
-              ))}
-              <label className="swatch custom" title="Custom colour">
-                <input type="color" value={tool.color} onChange={(e) => setToolColor(e.target.value)} aria-label="Custom colour" />
-              </label>
+              {swatches}
+              {customColor('Custom colour')}
             </div>
           </div>
-          <div className="ink-opt-row">
-            <span className="ink-opt-label">Width</span>
-            <div className="ink-sizes">
-              {SIZES[tool.ink].map((s) => (
-                <button key={s} className={`size-dot ${tool.size === s ? 'on' : ''}`} onClick={() => setToolSize(s)} aria-label={`Width ${s}`} aria-pressed={tool.size === s}>
-                  <span style={{ width: 2 + s * (tool.ink === 'marker' ? 1.6 : 1.2), height: 2 + s * (tool.ink === 'marker' ? 1.6 : 1.2) }} />
-                </button>
-              ))}
-            </div>
-          </div>
-          <label className="check finger-check" title="Off: only Apple Pencil draws, fingers scroll">
-            <input type="checkbox" checked={fingerDrawing} onChange={(e) => updateSettings({ fingerDrawing: e.target.checked })} />
-            Draw with finger
-          </label>
+          {widthRow}
+          {fingerRow}
         </div>
       )}
       <span className="sr-only">
