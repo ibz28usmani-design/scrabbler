@@ -214,7 +214,8 @@ function MonthView({ tt, year, month, today, reminders, narrow, onDay }: { tt: T
   else for (let i = 0; i < trail; i++) cells.push(<div key={`t${i}`} className="cal-cell blank" />);
 
   return (
-    <div className="month">
+    // Keyed by month so a new month prints in afresh rather than swapping in place.
+    <div className="month" key={`${year}-${month}`}>
       <MonthPoster year={year} month={month} />
       <div className="cal-grid">
         {DAY_HEADS.map((d) => (

@@ -14,7 +14,7 @@ export default defineConfig({
         short_name: 'Scrabbler',
         description: 'AI notes, sources, lectures and flashcards in one place.',
         theme_color: '#1a1a1a',
-        background_color: '#f5f2ea',
+        background_color: '#f3eee3',
         display: 'standalone',
         orientation: 'any',
         start_url: './',
@@ -26,7 +26,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,wasm,mjs,ttf}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,wasm,mjs,ttf,woff2}'],
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         navigateFallbackDenylist: [/^\/api/],
         // Shows push notifications and opens the app when one is tapped.
