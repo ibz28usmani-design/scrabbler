@@ -3709,8 +3709,20 @@ select.input {
   left: 0;
   right: 0;
 }
-.app.focus .ink-pane .ink-dock.floating {
+.app.focus .ink-pane .ink-dock.floating[data-edge='top'] {
   top: 74px;
+}
+/*
+  In full screen the edge handles that pull the library and the notebook in sit
+  at the middle of the left and right edges — exactly where a side-docked
+  palette centres, and they are above it, so a tap meant for a tool opened a
+  panel instead. Move the palette inboard of the handles; both stay reachable.
+*/
+.app.focus .ink-pane .ink-dock.floating[data-edge='left'] {
+  left: 54px;
+}
+.app.focus .ink-pane .ink-dock.floating[data-edge='right'] {
+  right: 54px;
 }
 .app.focus .ink-pane .endless-scroller {
   padding-top: 62px;

@@ -209,3 +209,44 @@ describe('settings migration', () => {
     expect(kept.apiKey).toBe('AIzaX');
   });
 });
+
+describe('where the ink palette settles', () => {
+  const W = 1194;
+  const H = 790;
+
+  it('centres on whichever edge the drop was nearest', async () => {
+    const { placeAt } = await import('../components/InkToolbar');
+    expect(placeAt(20, H / 2, W, H).edge).toBe('left');
+    expect(placeAt(W - 20, H / 2, W, H).edge).toBe('right');
+    expect(placeAt(W / 2, 14, W, H).edge).toBe('top');
+    expect(placeAt(W / 2, H - 14, W, H).edge).toBe('bottom');
+  });
+
+  it('reaches all four corners, bottom ones included', async () => {
+    const { placeAt } = await import('../components/InkToolbar');
+    const I = 30;
+    expect(placeAt(I, I, W, H)).toMatchObject({ corner: 'tl', inCorner: true });
+    expect(placeAt(W - I, I, W, H)).toMatchObject({ corner: 'tr', inCorner: true });
+    expect(placeAt(I, H - I, W, H)).toMatchObject({ corner: 'bl', inCorner: true });
+    expect(placeAt(W - I, H - I, W, H)).toMatchObject({ corner: 'br', inCorner: true });
+  });
+
+  it('does not tuck away a drop in the middle of an edge', async () => {
+    const { placeAt } = await import('../components/InkToolbar');
+    for (const [x, y] of [
+      [10, H / 2],
+      [W - 10, H / 2],
+      [W / 2, 10],
+      [W / 2, H - 10],
+    ])
+      expect(placeAt(x, y, W, H).inCorner, `${x},${y}`).toBe(false);
+  });
+
+  it('names the nearest corner even for a drop nowhere near one', async () => {
+    const { placeAt } = await import('../components/InkToolbar');
+    // A cancelled pointer settles wherever it last was; the circle lives in the
+    // corners, so every position has to name one.
+    expect(placeAt(W / 2 + 1, H / 2 + 1, W, H).corner).toBe('br');
+    expect(placeAt(W / 2 - 1, H / 2 - 1, W, H).corner).toBe('tl');
+  });
+});

@@ -30,7 +30,7 @@ const labelFor = (t: Tool) => TOOLS.find(([k]) => k === t)![2];
 const CORNER = 120;
 
 /** Where a release lands: an edge to centre on, a corner, and whether it tucked. */
-function placeAt(x: number, y: number, w: number, h: number): { edge: Edge; corner: Corner; inCorner: boolean } {
+export function placeAt(x: number, y: number, w: number, h: number): { edge: Edge; corner: Corner; inCorner: boolean } {
   const d = { left: x, right: w - x, top: y, bottom: h - y };
   const edge = (Object.keys(d) as Edge[]).reduce((a, b) => (d[a] <= d[b] ? a : b));
   const corner = `${y < h / 2 ? 't' : 'b'}${x < w / 2 ? 'l' : 'r'}` as Corner;
@@ -89,7 +89,7 @@ export function InkToolbar({
    * tool buttons, seven swatches and a blurred glass panel is what made this
    * lag behind the Pencil; a move is now one compositor-only transform write.
    */
-  const drag = useRef<{ id: number; sx: number; sy: number; moved: boolean } | null>(null);
+  const drag = useRef<{ id: number; sx: number; sy: number; x: number; y: number; moved: boolean } | null>(null);
   /** Tears down the window listeners for the drag in flight, if any. */
   const stopDrag = useRef<(() => void) | null>(null);
   useEffect(() => () => stopDrag.current?.(), []);
@@ -126,7 +126,7 @@ export function InkToolbar({
     if (open && (e.target as HTMLElement).closest('button, input, label, select')) return;
     const el = dock.current;
     if (!el) return;
-    drag.current = { id: e.pointerId, sx: e.clientX, sy: e.clientY, moved: false };
+    drag.current = { id: e.pointerId, sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY, moved: false };
     el.classList.add('dragging');
 
     const onMove = (ev: PointerEvent) => {
@@ -135,15 +135,14 @@ export function InkToolbar({
       const dx = ev.clientX - d.sx;
       const dy = ev.clientY - d.sy;
       if (!d.moved && Math.abs(dx) + Math.abs(dy) > 5) d.moved = true;
+      d.x = ev.clientX;
+      d.y = ev.clientY;
       el.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
       const box = el.offsetParent?.getBoundingClientRect();
       if (box) el.classList.toggle('will-tuck', open && placeAt(ev.clientX - box.left, ev.clientY - box.top, box.width, box.height).inCorner);
     };
 
-    const onUp = (ev: PointerEvent) => {
-      const d = drag.current;
-      if (!d || ev.pointerId !== d.id) return;
-      stop();
+    const settle = (d: NonNullable<typeof drag.current>, px: number, py: number) => {
       drag.current = null;
       el.classList.remove('dragging', 'will-tuck');
 
@@ -158,7 +157,7 @@ export function InkToolbar({
         el.style.transform = '';
         return;
       }
-      const p = placeAt(ev.clientX - box.left, ev.clientY - box.top, box.width, box.height);
+      const p = placeAt(px - box.left, py - box.top, box.width, box.height);
       // FLIP: note where it is, let the new resting place apply synchronously,
       // then animate the difference away on the compositor. Cheaper than
       // transitioning layout, which would relayout the page every frame.
@@ -194,19 +193,26 @@ export function InkToolbar({
     // Listen on the window rather than capturing the pointer. Capture retargets
     // every event to the dock, which cost us the circle's own click and, on
     // WebKit, made the drag lag the Pencil.
+    const onUp = (ev: PointerEvent) => {
+      const d = drag.current;
+      if (!d || ev.pointerId !== d.id) return;
+      stop();
+      settle(d, ev.clientX, ev.clientY);
+    };
+
     /**
-     * A cancelled pointer is an abandoned drag, not a drop. It carries no
-     * useful coordinates — Chromium reports (0, 0) — so treating it as a
-     * release flung the palette into the top-left corner and tucked it away.
-     * Put it back where it was and commit nothing.
+     * A cancelled pointer still ends the drag somewhere — it just does not say
+     * where, since the event reports (0, 0). Settle from the last position a
+     * pointermove gave us. Trusting the event's own coordinates flung the
+     * palette into the top-left corner; abandoning the drag instead made the
+     * bottom corners unreachable on an iPad, where dragging to the bottom edge
+     * meets the home-indicator gesture and cancels the pointer.
      */
     const onCancel = (ev: PointerEvent) => {
       const d = drag.current;
       if (!d || ev.pointerId !== d.id) return;
       stop();
-      drag.current = null;
-      el.classList.remove('dragging', 'will-tuck');
-      el.style.transform = '';
+      settle(d, d.x, d.y);
     };
 
     const stop = () => {
