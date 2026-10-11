@@ -5,7 +5,10 @@ import { editorExtensions } from './editorExtensions';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { db, type Note } from '../db';
 import { LecturePanel } from './LecturePanel';
-import { AIToolsButton } from './AITools';
+import { AIToolsButton, OPEN_AI_TOOLS } from './AITools';
+import { menuExtensions } from './SlashMenu';
+import { BlockHandle } from './BlockHandle';
+import { setSlashHost } from '../lib/slashCommands';
 import { nav, toggleSidebar, openModal, useNav } from '../lib/nav';
 import { Menu, useElementWidth, useMenu, confirmDialog } from './ui';
 import { IAa, IBook, IChecklist, IChevL, ICompose, IImage, IMic, IMore, IPencil, IPin, IRuled, ISidebar, ITable, ITrash, ICards, IDownload, IFolder } from './Icons';
@@ -60,9 +63,12 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
     {
       extensions: [
         ...editorExtensions,
+        ...menuExtensions,
         Placeholder.configure({
-          placeholder: ({ node, pos }) => (pos === 0 && node.type.name !== 'drawing' ? 'Title' : 'Start writing, or tap ✎ to draw with Apple Pencil…'),
+          placeholder: ({ node, pos }) =>
+            pos === 0 && node.type.name !== 'drawing' ? 'Title' : node.type.name === 'detailsSummary' ? 'Toggle' : node.type.name === 'heading' ? `Heading ${node.attrs.level}` : 'Start writing, or tap ✎ to draw with Apple Pencil…',
           showOnlyCurrent: false,
+          includeChildren: true,
         }),
       ],
       content: (note.content as any) ?? '',
@@ -107,6 +113,17 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
     if (lastStatus.current !== note.status && note.status === 'ready') editor.commands.setContent(note.content as any);
     lastStatus.current = note.status;
   }, [contentVersion, editor, note.content, note.status]);
+
+  // What the / menu needs from this screen.
+  useEffect(() => {
+    if (!editor) return;
+    setSlashHost(editor, {
+      noteId: note.id,
+      folderId: note.folderId,
+      pickImage: () => imgInput.current?.click(),
+      openAI: () => window.dispatchEvent(new CustomEvent(OPEN_AI_TOOLS, { detail: editor })),
+    });
+  }, [editor, note.id, note.folderId]);
 
   if (!editor) return null;
 
@@ -224,6 +241,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
         <div className="doc-page">
           <div className="editor-date">{new Date(note.updatedAt).toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' })}</div>
           <EditorContent editor={editor} />
+          <BlockHandle editor={editor} />
         </div>
       </div>
       <div className="doc-status" aria-live="polite">

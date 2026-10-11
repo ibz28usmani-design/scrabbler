@@ -1,5 +1,5 @@
 import type { Editor } from '@tiptap/react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Note } from '../db';
 import { runWritingTool, WRITING_TOOLS, type WritingTool } from '../lib/ai';
 import { hasTextKey } from '../lib/llm';
@@ -18,8 +18,17 @@ interface Result {
 
 const MSG = 'Add an AI key in Settings';
 
+export const OPEN_AI_TOOLS = 'scrabbler:ai-tools';
+
 export function AIToolsButton({ editor, note }: { editor: Editor; note: Note }) {
   const [anchor, open, close] = useMenu();
+  const btn = useRef<HTMLButtonElement>(null);
+  // The / menu's "Ask AI" opens this same menu.
+  useEffect(() => {
+    const onOpen = (e: Event) => (e as CustomEvent).detail === editor && btn.current && open(btn.current);
+    window.addEventListener(OPEN_AI_TOOLS, onOpen);
+    return () => window.removeEventListener(OPEN_AI_TOOLS, onOpen);
+  }, [editor, open]);
   const [result, setResult] = useState<Result | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
   const [custom, setCustom] = useState('');
@@ -59,7 +68,7 @@ export function AIToolsButton({ editor, note }: { editor: Editor; note: Note }) 
 
   return (
     <>
-      <button className="icon-btn ai" onClick={(e) => open(e.currentTarget)} aria-label="AI tools">
+      <button ref={btn} className="icon-btn ai" onClick={(e) => open(e.currentTarget)} aria-label="AI tools">
         <ISparkle />
         <span className="btn-label">AI</span>
       </button>

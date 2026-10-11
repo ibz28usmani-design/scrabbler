@@ -52,6 +52,14 @@ function runsOf(nodes: JNode[] | undefined): Run[] {
       out.push({ text: '', br: true });
       continue;
     }
+    if (n.type === 'mathInline' && n.attrs?.latex) {
+      out.push({ text: n.attrs.latex, code: true });
+      continue;
+    }
+    if (n.type === 'noteLink') {
+      out.push({ text: n.attrs?.title || 'Untitled', u: true });
+      continue;
+    }
     if (n.type !== 'text' || !n.text) continue;
     const r: Run = { text: n.text };
     for (const m of n.marks ?? []) {
@@ -132,6 +140,27 @@ export function toBlocks(doc: JNode): Block[] {
         break;
       case 'image':
         if (n.attrs?.src) out.push({ type: 'image', src: n.attrs.src });
+        break;
+      // Toggles export open: the title line, then what was folded under it.
+      case 'details': {
+        const [summary, body] = n.content ?? [];
+        const runs = runsOf(summary?.content);
+        const level = Number(n.attrs?.heading);
+        if (runs.length) out.push(level ? { type: 'heading', level: Math.min(3, Math.max(1, level)) as 1 | 2 | 3, runs } : { type: 'paragraph', runs: runs.map((r) => ({ ...r, b: true })) });
+        if (body) out.push(...toBlocks(body));
+        break;
+      }
+      // A callout's emoji is left out: the PDF font has no emoji to draw it with.
+      case 'callout':
+        out.push({ type: 'quote', blocks: toBlocks(n) });
+        break;
+      case 'mathBlock':
+        if (n.attrs?.latex) out.push({ type: 'code', text: n.attrs.latex });
+        break;
+      case 'embed':
+        if (n.attrs?.src) out.push({ type: 'paragraph', runs: [{ text: n.attrs.src, href: n.attrs.src }] });
+        break;
+      case 'tableOfContents':
         break;
       case 'drawing':
         if (Array.isArray(n.attrs?.strokes) && n.attrs!.strokes.length) out.push({ type: 'drawing', strokes: n.attrs!.strokes, height: Number(n.attrs!.height) || 420 });

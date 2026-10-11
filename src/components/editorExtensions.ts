@@ -6,10 +6,13 @@ import { Highlight } from '@tiptap/extension-highlight';
 import { Image } from '@tiptap/extension-image';
 import { TextAlign } from '@tiptap/extension-text-align';
 import { Drawing } from './DrawingNode';
+import { notionExtensions } from './notionBlocks';
+import { notionViewExtensions } from './NotionBlockViews';
 
 /** The typed-note schema, shared by the editor and the exporters. */
 export const editorExtensions = [
-  StarterKit.configure({ heading: { levels: [1, 2, 3] }, link: { openOnClick: false, autolink: true } }),
+  // Blockquote comes from notionBlocks, with Notion's `"` shortcut instead of `>`.
+  StarterKit.configure({ heading: { levels: [1, 2, 3] }, link: { openOnClick: false, autolink: true }, blockquote: false }),
   TaskList,
   TaskItem.configure({ nested: true }),
   TableKit.configure({ table: { resizable: false } }),
@@ -17,4 +20,6 @@ export const editorExtensions = [
   Image.configure({ allowBase64: true }),
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
   Drawing,
+  ...notionExtensions,
+  ...notionViewExtensions,
 ];
