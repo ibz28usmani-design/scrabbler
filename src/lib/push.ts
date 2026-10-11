@@ -95,7 +95,7 @@ export function pushDiagnostics(): string {
 const refusedMessage = (before: NotificationPermission, detail = '') =>
   (before === 'denied'
     ? 'Notifications are off for Scrabbler. Turn them on in the iPad’s Settings → Notifications → Scrabbler.'
-    : 'iPadOS said no without showing the permission request.') + (detail ? ` (${detail})` : '');
+    : 'iPadOS said no without showing the permission request.') + (detail ? ` (${detail})` : '') + ` [${pushDiagnostics()}]`;
 
 /**
  * Turns notifications on. Call straight from a tap. With the service worker
