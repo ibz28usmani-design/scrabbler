@@ -60,7 +60,6 @@ export function Sidebar() {
       <div className="sidebar-head">
         <div className="brand masthead">
           <span className="brand-name">Scrabbler</span>
-          <span className="brand-tag">Notebook &amp; Study</span>
         </div>
         <button
           className="icon-btn"
@@ -73,6 +72,11 @@ export function Sidebar() {
         <button className="icon-btn" onClick={() => openModal({ type: 'settings' })} aria-label="Settings">
           <IGear />
         </button>
+        {/* The front page's dateline, between the rules under the nameplate. */}
+        <div className="dateline">
+          <span className="brand-tag">Notebook &amp; Study</span>
+          <span>{new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>
+        </div>
       </div>
       <div className="search">
         <ISearch size={16} />
