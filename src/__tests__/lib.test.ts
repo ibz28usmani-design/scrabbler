@@ -318,3 +318,59 @@ describe('the ruler', () => {
     expect(tidyAngle(200)).toBe(20);
   });
 });
+
+describe('the pixel eraser', () => {
+  /** A flat 300-unit line at y=100, sampled every 10 units. */
+  const flat = { t: 'pen' as const, c: '#1f1f1f', s: 3, p: Array.from({ length: 31 }, (_, i) => [100 + i * 10, 100, 0.5]).flat() };
+
+  it('leaves a stroke it never reached entirely alone', async () => {
+    const { erasePixels } = await import('../lib/ink');
+    expect(erasePixels(flat, 200, 400, 20)).toBeNull();
+    // Just outside the nib plus half the stroke's own width.
+    expect(erasePixels(flat, 200, 100 + 20 + 3, 20)).toBeNull();
+  });
+
+  it('cuts a stroke in two where the nib crosses it', async () => {
+    const { erasePixels } = await import('../lib/ink');
+    const left = erasePixels(flat, 250, 100, 20)!;
+    expect(left).toHaveLength(2);
+    const xs = (st: { p: number[] }) => st.p.filter((_, i) => i % 3 === 0);
+    // The gap is the nib, and nothing survives inside it.
+    expect(Math.max(...xs(left[0]))).toBeLessThan(250 - 20);
+    expect(Math.min(...xs(left[1]))).toBeGreaterThan(250 + 20);
+    // The far ends are untouched.
+    expect(Math.min(...xs(left[0]))).toBe(100);
+    expect(Math.max(...xs(left[1]))).toBe(400);
+  });
+
+  it('takes an end off rather than splitting, when it rubs at an end', async () => {
+    const { erasePixels } = await import('../lib/ink');
+    const left = erasePixels(flat, 100, 100, 30)!;
+    expect(left).toHaveLength(1);
+    expect(Math.min(...left[0].p.filter((_, i) => i % 3 === 0))).toBeGreaterThan(129);
+  });
+
+  it('erases a short stroke to nothing rather than leaving a speck', async () => {
+    const { erasePixels } = await import('../lib/ink');
+    const dot = { ...flat, p: [200, 200, 0.5, 203, 201, 0.5] };
+    expect(erasePixels(dot, 200, 200, 25)).toEqual([]);
+  });
+
+  it('cuts a ruled line, which has points too far apart to catch by point alone', async () => {
+    const { erasePixels } = await import('../lib/ink');
+    // Two points, 600 apart: a nib in the middle touches neither of them.
+    const ruled = { ...flat, p: [100, 100, 0.5, 700, 100, 0.5] };
+    const left = erasePixels(ruled, 400, 100, 25)!;
+    expect(left).toHaveLength(2);
+    expect(Math.max(...left[0].p.filter((_, i) => i % 3 === 0))).toBeCloseTo(400 - 25 - 1.5, 0);
+  });
+
+  it('keeps the stroke it did not touch when rubbing across a page of them', async () => {
+    const { erasePixelsAll } = await import('../lib/ink');
+    const other = { ...flat, p: [100, 800, 0.5, 400, 800, 0.5] };
+    const out = erasePixelsAll([flat, other], 250, 100, 20)!;
+    expect(out).toHaveLength(3);
+    expect(out[2]).toBe(other);
+    expect(erasePixelsAll([other], 250, 100, 20)).toBeNull();
+  });
+});

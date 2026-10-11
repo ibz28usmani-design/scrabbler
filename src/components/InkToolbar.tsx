@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
-import { displayColor, HIGHLIGHTS, INK_PALETTE, setTool, setToolColor, setToolSize, toggleRuler, useRuler, useTool, type Tool } from '../lib/ink';
+import { displayColor, ERASER_SIZES, HIGHLIGHTS, INK_PALETTE, setEraserMode, setTool, setToolColor, setToolSize, toggleRuler, useRuler, useTool, type Tool } from '../lib/ink';
 import { updateSettings, useSettings, type Settings } from '../lib/settings';
 import { useMediaQuery, useOffsetParentHeight } from './ui';
 import { useDark } from '../lib/theme';
@@ -314,7 +314,7 @@ export function InkToolbar({
       aria-pressed={tool.tool === t}
       onClick={() => {
         // Tapping the tool you are already using opens its options, as PencilKit does.
-        if (tool.tool === t && t !== 'eraser' && t !== 'lasso') setOptions((o) => !o);
+        if (tool.tool === t && t !== 'lasso') setOptions((o) => !o);
         else {
           setTool(t);
           setOptions(false);
@@ -374,15 +374,38 @@ export function InkToolbar({
     </label>
   );
 
-  const widthRow = (
+  const erasing = tool.tool === 'eraser';
+
+  // Object lifts a whole stroke; pixel rubs through one. Only the second has
+  // a size worth choosing, so the width row below switches with it.
+  const eraserRow = (
     <div className="ink-opt-row">
-      <span className="ink-opt-label">Width</span>
-      <div className="ink-sizes">
-        {SIZES[tool.ink].map((s) => (
-          <button key={s} className={`size-dot ${tool.size === s ? 'on' : ''}`} onClick={() => setToolSize(s)} aria-label={`Width ${s}`} aria-pressed={tool.size === s}>
-            <span style={{ width: 2 + s * (tool.ink === 'marker' ? 1.6 : 1.2), height: 2 + s * (tool.ink === 'marker' ? 1.6 : 1.2) }} />
+      <span className="ink-opt-label">Eraser</span>
+      <div className="segmented sm">
+        {(['object', 'pixel'] as const).map((m) => (
+          <button key={m} className={tool.eraserMode === m ? 'on' : ''} aria-pressed={tool.eraserMode === m} onClick={() => setEraserMode(m)}>
+            {m === 'object' ? 'Whole stroke' : 'Rub out'}
           </button>
         ))}
+      </div>
+    </div>
+  );
+
+  const widthRow = (
+    <div className="ink-opt-row">
+      <span className="ink-opt-label">{erasing ? 'Nib' : 'Width'}</span>
+      <div className="ink-sizes">
+        {(erasing ? ERASER_SIZES : SIZES[tool.ink]).map((s) => {
+          const on = (erasing ? tool.eraserSize : tool.size) === s;
+          // The eraser's sizes are page units, far bigger than a nib width, so
+          // they are shown to scale against each other rather than literally.
+          const d = erasing ? 6 + s / 4 : 2 + s * (tool.ink === 'marker' ? 1.6 : 1.2);
+          return (
+            <button key={s} className={`size-dot ${on ? 'on' : ''}`} onClick={() => setToolSize(s)} aria-label={`${erasing ? 'Eraser' : 'Width'} ${s}`} aria-pressed={on}>
+              <span style={{ width: d, height: d }} />
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -446,7 +469,8 @@ export function InkToolbar({
 
         {options && (
           <div className="ink-options glass" role="dialog" aria-label="Width and more">
-            {widthRow}
+            {erasing && eraserRow}
+            {(!erasing || tool.eraserMode === 'pixel') && widthRow}
             {fingerRow}
           </div>
         )}
@@ -482,14 +506,18 @@ export function InkToolbar({
 
       {options && (
         <div className="ink-options glass" role="dialog" aria-label="Colour and width">
-          <div className="ink-opt-row">
-            <span className="ink-opt-label">{tool.ink === 'marker' ? 'Highlight' : 'Ink'}</span>
-            <div className="ink-colors">
-              {swatches}
-              {customColor('Custom colour')}
+          {erasing ? (
+            eraserRow
+          ) : (
+            <div className="ink-opt-row">
+              <span className="ink-opt-label">{tool.ink === 'marker' ? 'Highlight' : 'Ink'}</span>
+              <div className="ink-colors">
+                {swatches}
+                {customColor('Custom colour')}
+              </div>
             </div>
-          </div>
-          {widthRow}
+          )}
+          {(!erasing || tool.eraserMode === 'pixel') && widthRow}
           {fingerRow}
         </div>
       )}

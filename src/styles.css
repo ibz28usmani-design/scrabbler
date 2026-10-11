@@ -3628,6 +3628,17 @@ select.input {
   right: auto;
 }
 
+/* The eraser's two minds, inside the palette's own options sheet, where the
+   row is narrower than a settings panel's. */
+.segmented.sm {
+  flex: 0 0 auto;
+}
+.segmented.sm button {
+  padding: 5px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 /* Apple's "+" adds a colour of your own; it opens the system picker. */
 .ink-add {
   position: relative;

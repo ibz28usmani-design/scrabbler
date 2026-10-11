@@ -43,17 +43,30 @@ export const HIGHLIGHTS: { c: string; name: string }[] = [
 
 // ---------------------------------------------------------------- tool state
 
+/**
+ * Object takes the whole stroke away at a touch; pixel rubs through it and
+ * leaves what it did not reach, splitting the stroke in two where it crosses.
+ */
+export type EraserMode = 'object' | 'pixel';
+
+/** Radii, in page units. The nib is drawn at this size as you hover. */
+export const ERASER_SIZES = [7, 14, 26, 44];
+
 /** Each tool remembers its own colour and size, like PencilKit's picker. */
 interface ToolState {
   tool: Tool;
   colors: Record<InkTool, string>;
   sizes: Record<InkTool, number>;
+  eraserMode: EraserMode;
+  eraserSize: number;
 }
 
 const toolState: ToolState = {
   tool: 'pen',
   colors: { pen: CHARCOAL, pencil: '#3a3a3a', marker: '#ffd60a' },
   sizes: { pen: 3, pencil: 3, marker: 5 },
+  eraserMode: 'object',
+  eraserSize: ERASER_SIZES[1],
 };
 let toolSnapshot = snapshot();
 const toolListeners = new Set<() => void>();
@@ -79,7 +92,15 @@ export function setToolColor(c: string) {
 }
 
 export function setToolSize(s: number) {
-  toolState.sizes[toolSnapshot.ink] = s;
+  // With the eraser in hand, width means the eraser's nib, not the pen's.
+  if (toolState.tool === 'eraser') toolState.eraserSize = s;
+  else toolState.sizes[toolSnapshot.ink] = s;
+  toolSnapshot = snapshot();
+  toolListeners.forEach((l) => l());
+}
+
+export function setEraserMode(eraserMode: EraserMode) {
+  toolState.eraserMode = eraserMode;
   toolSnapshot = snapshot();
   toolListeners.forEach((l) => l());
 }
@@ -92,6 +113,102 @@ export function useTool() {
     },
     () => toolSnapshot,
   );
+}
+
+// ---------------------------------------------------------- pixel erasing
+
+/**
+ * Rub a disc through one stroke and return what survives.
+ *
+ * The page holds vectors, not pixels, so there is nothing to rub out a dot at
+ * a time: a "pixel" eraser on a vector page cuts the stroke where the disc
+ * crosses it and keeps the ends, which is what PencilKit does under the same
+ * name. The alternative — a raster layer — would cost the SVG and PDF exports
+ * their sharpness and leave transcription with a photograph to read.
+ *
+ * Returns null when the disc never touched this stroke, so the caller can
+ * tell "nothing happened" from "erased to nothing".
+ */
+export function erasePixels(st: Stroke, cx: number, cy: number, r: number): Stroke[] | null {
+  const reach = r + st.s / 2;
+  const b = bbox(st);
+  if (cx < b.x0 - reach || cx > b.x1 + reach || cy < b.y0 - reach || cy > b.y1 + reach) return null;
+
+  const n = st.p.length / 3;
+  if (n === 1) {
+    const d = Math.hypot(st.p[0] - cx, st.p[1] - cy);
+    return d <= reach ? [] : null;
+  }
+
+  const at = (i: number) => ({ x: st.p[i * 3], y: st.p[i * 3 + 1], w: st.p[i * 3 + 2] });
+  const lerp = (a: ReturnType<typeof at>, c: ReturnType<typeof at>, t: number) => ({ x: a.x + (c.x - a.x) * t, y: a.y + (c.y - a.y) * t, w: a.w + (c.w - a.w) * t });
+  /** Where this segment is inside the disc, as a sub-range of [0, 1]. */
+  const inside = (a: { x: number; y: number }, c: { x: number; y: number }) => {
+    const dx = c.x - a.x;
+    const dy = c.y - a.y;
+    const fx = a.x - cx;
+    const fy = a.y - cy;
+    const A = dx * dx + dy * dy;
+    const B = 2 * (fx * dx + fy * dy);
+    const C = fx * fx + fy * fy - reach * reach;
+    if (A < 1e-9) return C <= 0 ? ([0, 1] as const) : null;
+    const disc = B * B - 4 * A * C;
+    if (disc <= 0) return null;
+    const sq = Math.sqrt(disc);
+    const t0 = (-B - sq) / (2 * A);
+    const t1 = (-B + sq) / (2 * A);
+    const lo = Math.max(0, Math.min(1, t0));
+    const hi = Math.max(0, Math.min(1, t1));
+    return t1 < 0 || t0 > 1 || hi <= lo ? null : ([lo, hi] as const);
+  };
+
+  const pieces: number[][] = [];
+  let run: number[] = [];
+  const push = (q: { x: number; y: number; w: number }) => run.push(round(q.x), round(q.y), q.w);
+  const cut = () => {
+    if (run.length >= 6) pieces.push(run);
+    run = [];
+  };
+
+  let touched = false;
+  push(at(0));
+  for (let i = 0; i + 1 < n; i++) {
+    const a = at(i);
+    const c = at(i + 1);
+    const hit = inside(a, c);
+    if (!hit) {
+      push(c);
+      continue;
+    }
+    touched = true;
+    const [lo, hi] = hit;
+    // Up to where the disc starts, then stop; pick the line up where it ends.
+    if (lo > 0) push(lerp(a, c, lo));
+    cut();
+    if (hi < 1) {
+      push(lerp(a, c, hi));
+      push(c);
+    }
+  }
+  cut();
+  if (!touched) return null;
+  return pieces.map((p) => ({ ...st, p }));
+}
+
+/** The same rub across the whole page. Returns null when nothing was hit. */
+export function erasePixelsAll(strokes: Stroke[], cx: number, cy: number, r: number): Stroke[] | null {
+  let hit = false;
+  const out: Stroke[] = [];
+  for (const st of strokes) {
+    const left = erasePixels(st, cx, cy, r);
+    if (left === null) {
+      out.push(st);
+      continue;
+    }
+    hit = true;
+    out.push(...left);
+  }
+  return hit ? out : null;
 }
 
 // ------------------------------------------------------------------ ruler

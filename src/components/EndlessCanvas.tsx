@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNo
 import {
   bbox,
   contentBottom,
+  erasePixelsAll,
   hitsStroke,
   intersects,
   lassoSelect,
@@ -59,7 +60,7 @@ export interface EndlessCanvasProps {
 
 type Gesture =
   | { kind: 'stroke'; id: number; stroke: Stroke; ruled: boolean }
-  | { kind: 'erase'; id: number; erased: boolean }
+  | { kind: 'erase'; id: number; erased: boolean; lx: number; ly: number }
   | { kind: 'lasso'; id: number; poly: number[][] }
   | { kind: 'move'; id: number; x: number; y: number; dx: number; dy: number }
   | { kind: 'ruler'; id: number; mode: 'move' | 'rotate'; x: number; y: number; flip: boolean };
@@ -199,17 +200,31 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
     return dpr;
   };
 
-  const draw = useCallback(() => {
+  /**
+   * Repaint the page. With a `clip` only that patch of it is touched, which
+   * is what the eraser wants: rubbing changes a nib's worth of page, and
+   * redrawing all of it per frame cost 26ms a frame on a busy one.
+   */
+  const draw = useCallback((clip?: { x0: number; y0: number; x1: number; y1: number }) => {
     const base = baseRef.current;
     if (!base || !vpRef.current || !sheetRef.current || !scale) return;
     const { ox, oy, w, h } = geometry();
     const dpr = prepare(base, w, h);
     prepare(liveRef.current!, w, h);
     const ctx = base.getContext('2d')!;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, -ox * dpr, -oy * dpr);
-    const view = { x0: ox / scale, y0: oy / scale, x1: (ox + w) / scale, y1: (oy + h) / scale };
+    const whole = { x0: ox / scale, y0: oy / scale, x1: (ox + w) / scale, y1: (oy + h) / scale };
+    const view = clip
+      ? { x0: Math.max(whole.x0, clip.x0), y0: Math.max(whole.y0, clip.y0), x1: Math.min(whole.x1, clip.x1), y1: Math.min(whole.y1, clip.y1) }
+      : whole;
+    if (view.x1 <= view.x0 || view.y1 <= view.y0) return;
+    ctx.save();
+    if (clip) {
+      ctx.beginPath();
+      ctx.rect(view.x0, view.y0, view.x1 - view.x0, view.y1 - view.y0);
+      ctx.clip();
+    }
+    ctx.clearRect(view.x0, view.y0, view.x1 - view.x0, view.y1 - view.y0);
     drawTemplate(ctx, paper, view.y0 - 20, view.y1 + 20, templateColors(dark), scale);
     const g = gesture.current;
     const moving = g?.kind === 'move' ? g : null;
@@ -229,13 +244,28 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
       ctx.strokeRect(sel.x0 - 8 + (moving?.dx ?? 0), sel.y0 - 8 + (moving?.dy ?? 0), sel.x1 - sel.x0 + 16, sel.y1 - sel.y0 + 16);
       ctx.restore();
     }
+    ctx.restore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paper, dark, scale, selection, ruler]);
 
-  const schedule = useCallback(() => {
-    cancelAnimationFrame(frame.current);
-    frame.current = requestAnimationFrame(draw);
-  }, [draw]);
+  /** Pending clip for the next frame; several nudges in one frame merge. */
+  const clipRef = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const schedule = useCallback(
+    (clip?: { x0: number; y0: number; x1: number; y1: number }) => {
+      if (!clip) clipRef.current = null;
+      else if (clipRef.current) {
+        const c = clipRef.current;
+        clipRef.current = { x0: Math.min(c.x0, clip.x0), y0: Math.min(c.y0, clip.y0), x1: Math.max(c.x1, clip.x1), y1: Math.max(c.y1, clip.y1) };
+      } else clipRef.current = clip;
+      cancelAnimationFrame(frame.current);
+      const only = clip ? clipRef.current : null;
+      frame.current = requestAnimationFrame(() => {
+        clipRef.current = null;
+        draw(only ?? undefined);
+      });
+    },
+    [draw],
+  );
 
   useLayoutEffect(() => {
     draw();
@@ -265,11 +295,21 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
     if (hover) {
       ctx.save();
       ctx.beginPath();
-      const r = tool.tool === 'eraser' ? 10 : Math.max(1.5, (tool.size * (tool.ink === 'marker' ? 4 : 1.1)) / 2);
+      const r = tool.tool === 'eraser' ? eraserR : Math.max(1.5, (tool.size * (tool.ink === 'marker' ? 4 : 1.1)) / 2);
       ctx.arc(hover.x, hover.y, r, 0, Math.PI * 2);
-      ctx.fillStyle = tool.tool === 'eraser' ? 'rgba(120,120,120,.3)' : tool.color;
-      ctx.globalAlpha = 0.4;
-      ctx.fill();
+      if (tool.tool === 'eraser') {
+        // An outline, not a blob: at 44 units a filled disc hides the very ink
+        // you are aiming at.
+        ctx.fillStyle = dark ? 'rgba(236,232,223,.12)' : 'rgba(31,31,31,.08)';
+        ctx.strokeStyle = dark ? 'rgba(236,232,223,.65)' : 'rgba(31,31,31,.5)';
+        ctx.lineWidth = 1.2 / scale;
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = tool.color;
+        ctx.globalAlpha = 0.4;
+        ctx.fill();
+      }
       ctx.restore();
     }
   };
@@ -435,16 +475,42 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
   };
   const pressureOf = (e: PointerEvent) => (e.pointerType === 'pen' ? Math.max(0.05, e.pressure || 0.5) : 0.5);
 
+  /** The eraser's reach, in page units. Object mode stays a fingertip. */
+  const eraserR = tool.eraserMode === 'pixel' ? tool.eraserSize : 10 / Math.max(zoom, 0.75);
+
   const eraseAt = (g: Extract<Gesture, { kind: 'erase' }>, x: number, y: number) => {
+    // A pointer reports far more often than the nib moves anywhere new, and
+    // each sample walks every stroke on the page. Overlapping discs look
+    // identical, so only act once the nib has actually moved on.
+    const step = Math.max(2, eraserR / 3);
+    if (g.erased && Math.hypot(x - g.lx, y - g.ly) < step) return;
+    const px = g.lx;
+    const py = g.ly;
     const before = strokesRef.current;
-    const next = before.filter((st) => !hitsStroke(st, x, y, 10 / Math.max(zoom, 0.75)));
-    if (next.length === before.length) return;
+    const next =
+      tool.eraserMode === 'pixel'
+        ? erasePixelsAll(before, x, y, eraserR)
+        : (() => {
+            const kept = before.filter((st) => !hitsStroke(st, x, y, eraserR));
+            return kept.length === before.length ? null : kept;
+          })();
+    g.lx = x;
+    g.ly = y;
+    if (!next) return;
     if (!g.erased) {
       undo.current.push(before);
       redo.current = [];
       g.erased = true;
     }
-    apply(next);
+    // Straight to the ref and a frame-coalesced repaint. Going through React
+    // for every sample meant a render, a save and a walk of every point on the
+    // page per sample: 26ms a frame on a busy page, and visibly dropped ones.
+    // The state catches up once, when the hand lifts.
+    strokesRef.current = next;
+    // Only the patch the nib swept since the last sample has changed. Pad it
+    // by the widest stroke so a half-drawn cap cannot be left behind.
+    const pad = eraserR + 24;
+    schedule({ x0: Math.min(x, px) - pad, y0: Math.min(y, py) - pad, x1: Math.max(x, px) + pad, y1: Math.max(y, py) + pad });
   };
 
   const onDown = (e: React.PointerEvent) => {
@@ -479,7 +545,7 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
     // Barrel button / eraser end on styluses that have one.
     const t: Tool = e.buttons === 32 || e.button === 5 ? 'eraser' : tool.tool;
     if (t === 'eraser') {
-      const g: Gesture = { kind: 'erase', id: e.pointerId, erased: false };
+      const g: Gesture = { kind: 'erase', id: e.pointerId, erased: false, lx: x, ly: y };
       gesture.current = g;
       eraseAt(g, x, y);
       return;
@@ -565,6 +631,8 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
     if (g.kind === 'stroke' && g.stroke.p.length >= 3) commit([...strokesRef.current, g.stroke]);
     if (g.kind === 'lasso' && g.poly.length > 3) setSelection(lassoSelect(strokesRef.current, g.poly));
     if (g.kind === 'move' && (g.dx || g.dy)) commit(translateStrokes(strokesRef.current, selection, g.dx, g.dy));
+    // The erase ran on the ref alone; tell React and the store about it now.
+    if (g.kind === 'erase' && g.erased) apply(strokesRef.current);
     drawLive(null);
     schedule();
     bump((n) => n + 1);
