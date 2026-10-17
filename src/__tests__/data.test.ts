@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { db, deleteNotesForever, failInterrupted, holdJob, putBlob, runningJobs, uid, type Note } from '../db';
+import { anyJobsRunning, db, deleteNotesForever, failInterrupted, holdJob, putBlob, runningJobs, uid, type Note } from '../db';
 import { exportBackup, importBackup } from '../lib/backup';
 import { chunkText } from '../lib/retrieval';
 import { thinkFilter } from '../lib/openaiCompat';
@@ -57,15 +57,19 @@ describe('interrupted work', () => {
         request: (name: string, fn: () => Promise<void>) => (held.add(name), fn().finally(() => held.delete(name))),
       },
     });
-    await db.notes.bulkAdd([note('', { id: 'orphan', status: 'transcribing' }), note('', { id: 'live', status: 'writing' })]);
-    const end = holdJob('live');
-    expect(runningJobs()).toBe(1);
-    await failInterrupted();
-    expect((await db.notes.get('orphan'))?.status).toBe('error');
-    expect((await db.notes.get('live'))?.status).toBe('writing');
-    end();
-    expect(runningJobs()).toBe(0);
-    vi.unstubAllGlobals();
+    try {
+      await db.notes.bulkAdd([note('', { id: 'orphan', status: 'transcribing' }), note('', { id: 'live', status: 'writing' })]);
+      const end = holdJob('live');
+      expect(runningJobs()).toBe(1);
+      expect(await anyJobsRunning()).toBe(true);
+      await failInterrupted();
+      expect((await db.notes.get('orphan'))?.status).toBe('error');
+      expect((await db.notes.get('live'))?.status).toBe('writing');
+      end();
+      expect(runningJobs()).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

@@ -217,6 +217,8 @@ export async function syncPush(force = false): Promise<void> {
   if (!sub) return;
   // Made for another key than the server's now: it could never deliver to it.
   if (s.pushPublicKey && !sameKey(sub, s.pushPublicKey)) {
+    // Another sync may have got here first while this one waited.
+    if (!getSettings().pushEnabled) return;
     updateSettings({ pushEnabled: false });
     // Thrown, so a caller such as "Send a test" stops here; background syncs show it.
     throw new KeyChangedError();

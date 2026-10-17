@@ -34,7 +34,8 @@ export function startLiveCaptions(
       onUpdate(finalText, interim);
     };
     rec.onerror = (e: any) => {
-      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') stopped = true;
+      // These won't change by trying again.
+      if (['not-allowed', 'service-not-allowed', 'language-not-supported', 'bad-grammar'].includes(e.error)) stopped = true;
       // Silence is routine. Anything else (offline, mic busy) may pass, so keep
       // trying, but ever more slowly, up to every 8 s.
       else if (e.error !== 'no-speech') failures = Math.min(failures + 1, 5);

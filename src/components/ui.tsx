@@ -268,8 +268,11 @@ export function DraftInput({
 }: Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> & {
   value: string;
   onValue?: (v: string) => void;
-  /** Saves when the field is left instead of as it changes — including when its dialog closes with it focused. */
-  onLeave?: (v: string) => void;
+  /**
+   * Saves when the field is left instead of as it changes — including when its
+   * dialog closes with it focused. Return false to refuse the value.
+   */
+  onLeave?: (v: string) => boolean | void;
 }) {
   const [draft, setDraft] = useState(value);
   const editing = useRef(false);
@@ -295,8 +298,8 @@ export function DraftInput({
       }}
       onBlur={(e) => {
         editing.current = false;
-        onLeave?.(e.currentTarget.value);
-        setDraft(value);
+        // Kept on screen while the store catches up, unless it was refused.
+        if (!onLeave || onLeave(e.currentTarget.value) === false) setDraft(value);
         rest.onBlur?.(e);
       }}
       onChange={(e) => {

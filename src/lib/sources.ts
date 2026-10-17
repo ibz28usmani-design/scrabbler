@@ -17,7 +17,12 @@ const endClaim = (id: string) => {
 async function create(folderId: string, kind: SourceKind, title: string, extra: Partial<Source> = {}): Promise<Source> {
   const s: Source = { id: uid(), folderId, kind, title, text: '', status: 'processing', enabled: true, createdAt: Date.now(), ...extra };
   claims.set(s.id, holdJob(s.id));
-  await db.sources.add(s);
+  try {
+    await db.sources.add(s);
+  } catch (e) {
+    endClaim(s.id);
+    throw e;
+  }
   return s;
 }
 

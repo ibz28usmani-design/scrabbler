@@ -385,8 +385,12 @@ function TimetableEditor({ tt, onClose }: { tt: Timetable; onClose: () => void }
   const update = (id: string, patch: Partial<Lesson>) => db.lessons.update(id, patch);
   // A cleared picker, or an end before the start, would put a class alert at midnight.
   const setTimes = (l: Lesson, start: string, end: string) => {
-    if (!start || !end || (start === l.start && end === l.end)) return;
-    if (end <= start) return toast('A lesson has to end after it starts.', 'error');
+    if (start === l.start && end === l.end) return;
+    if (!start || !end) return false;
+    if (end <= start) {
+      toast('A lesson has to end after it starts.', 'error');
+      return false;
+    }
     update(l.id, { start, end });
   };
   const addLesson = (day: number) => db.lessons.add({ id: uid(), subjectId: tt.subjects[0]?.id ?? '', day, start: '09:00', end: '10:00' });

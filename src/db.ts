@@ -296,8 +296,19 @@ const JOB_LOCK = 'scrabbler-job:';
 const locks = () => (typeof navigator !== 'undefined' ? navigator.locks : undefined);
 let jobs = 0;
 
-/** Long jobs this tab is running now: not the moment to reload for an update. */
+/** Long jobs this tab is running now. */
 export const runningJobs = () => jobs;
+
+/**
+ * Whether any tab is running a long job. An update reloads every tab at once,
+ * so this tab being idle isn't enough.
+ */
+export async function anyJobsRunning(): Promise<boolean> {
+  const l = locks();
+  if (!l) return jobs > 0;
+  const { held = [] } = await l.query();
+  return jobs > 0 || held.some((h) => h.name?.startsWith(JOB_LOCK));
+}
 
 /**
  * Claims a long job (a transcription, a source being read, a studio item) for

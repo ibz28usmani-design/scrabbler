@@ -9,10 +9,21 @@ import { fmtClock } from './dates';
 import { toast, toastError } from './events';
 
 export async function processLecture(noteId: string, opts: { context?: string; liveText?: string } = {}) {
+  // Claimed before anything is awaited: the note may already say "transcribing".
+  const end = holdJob(noteId);
+  try {
+    await lecture(noteId, opts);
+  } finally {
+    end();
+  }
+}
+
+async function lecture(noteId: string, opts: { context?: string; liveText?: string }) {
   const note = await db.notes.get(noteId);
-  if (!note?.audioBlobId) return;
-  const stored = await db.blobs.get(note.audioBlobId);
-  if (!stored) return;
+  if (!note) return;
+  const stored = note.audioBlobId ? await db.blobs.get(note.audioBlobId) : undefined;
+  // Otherwise the note would say "Transcribing…" for good.
+  if (!stored) return void (await db.notes.update(noteId, { status: 'error', error: 'The recording isn’t on this device any more.' }));
   if (!hasKey()) {
     // Offline/no-key fallback: keep the on-device live captions.
     const live = opts.liveText?.trim();
@@ -20,7 +31,6 @@ export async function processLecture(noteId: string, opts: { context?: string; l
     await db.notes.update(noteId, { status: 'error', error: 'No Gemini key — saved the recording and live captions only.', content: html, text: live ?? '', updatedAt: Date.now() });
     return;
   }
-  const end = holdJob(noteId);
   try {
     let segs: TranscriptSegment[] | undefined = note.transcript?.length ? note.transcript : undefined;
     if (!segs) {
@@ -48,8 +58,6 @@ export async function processLecture(noteId: string, opts: { context?: string; l
   } catch (e) {
     await db.notes.update(noteId, { status: 'error', error: e instanceof Error ? e.message : String(e) });
     toastError(e);
-  } finally {
-    end();
   }
 }
 
