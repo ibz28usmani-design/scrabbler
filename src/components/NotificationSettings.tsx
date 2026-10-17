@@ -35,8 +35,14 @@ export function NotificationSettings() {
   };
 
   const save = () => {
-    const changed = url.trim() !== s.pushUrl || password !== s.pushPassword;
-    if (changed) updateSettings({ pushUrl: url.trim(), pushPassword: password, pushPublicKey: url.trim() !== s.pushUrl ? '' : s.pushPublicKey });
+    const moved = url.trim() !== s.pushUrl;
+    const changed = moved || password !== s.pushPassword;
+    // This device's subscription belongs to the old server: leave it there, then start again.
+    if (moved && s.pushEnabled) {
+      void disablePush();
+      toast('The server changed, so notifications are off. Turn them on again.');
+    }
+    if (changed) updateSettings({ pushUrl: url.trim(), pushPassword: password, pushPublicKey: moved ? '' : s.pushPublicKey });
     return changed;
   };
 

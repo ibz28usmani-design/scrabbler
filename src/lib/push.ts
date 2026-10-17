@@ -31,10 +31,10 @@ export function pushBlocker(): string | null {
 
 const base = () => getSettings().pushUrl.trim().replace(/\/+$/, '');
 
-async function call<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${base()}${path}`, {
+async function call<T>(path: string, body: unknown, server = { url: base(), password: getSettings().pushPassword }): Promise<T> {
+  const res = await fetch(`${server.url}${path}`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${getSettings().pushPassword}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${server.password}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
@@ -115,10 +115,13 @@ export async function enablePush(): Promise<void> {
       sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
     } catch (e) {
       const err = e as Error;
+      const old = Notification.permission === 'granted' ? await reg.pushManager.getSubscription() : null;
       // Subscribed before with an old server key: swap it (no prompt needed once allowed).
-      if (Notification.permission === 'granted') {
-        await (await reg.pushManager.getSubscription())?.unsubscribe();
+      if (old && !sameKey(old, key)) {
+        await old.unsubscribe();
         sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
+      } else if (Notification.permission === 'granted') {
+        throw new Error(`Couldn’t subscribe this device (${err.name}: ${err.message}). Try again in a moment.`);
       } else {
         throw new Error(refusedMessage(before, `${err.name}: ${err.message}`));
       }
@@ -151,13 +154,15 @@ function sameKey(sub: PushSubscription, key: string) {
   return a.length === b.length && a.every((x, i) => x === b[i]);
 }
 
+/** Turns notifications off here and tells the server — the one set now, even if the address changes meanwhile. */
 export async function disablePush() {
-  const id = getSettings().pushDeviceId;
+  const s = getSettings();
+  const server = { url: base(), password: s.pushPassword };
   updateSettings({ pushEnabled: false });
   try {
     const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
     await sub?.unsubscribe();
-    if (id && base()) await call('/unsubscribe', { id });
+    if (s.pushDeviceId && server.url) await call('/unsubscribe', { id: s.pushDeviceId }, server);
   } catch {
     /* already gone */
   }
@@ -205,7 +210,8 @@ export async function syncPush(force = false): Promise<void> {
   const s = getSettings();
   if (!s.pushEnabled || !s.pushDeviceId || !base() || pushBlocker()) return;
   const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
-  if (!sub) return;
+  // Made for another server's key: that server could never deliver to it.
+  if (!sub || (s.pushPublicKey && !sameKey(sub, s.pushPublicKey))) return;
   const [subjects, lessons, calendar, reminders] = await Promise.all([db.subjects.toArray(), db.lessons.toArray(), getTermCalendar(), db.reminders.toArray()]);
   const payload: PushPayload = {
     id: s.pushDeviceId,

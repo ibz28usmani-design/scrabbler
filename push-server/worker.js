@@ -22,8 +22,10 @@ function weekday(key) {
 	const w = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 	return w === 0 ? 7 : w;
 }
-var parts = (ms, tz) => {
-	const f = new Intl.DateTimeFormat("en-GB", {
+var formatters = /* @__PURE__ */ new Map();
+var formatter = (tz) => {
+	let f = formatters.get(tz);
+	if (!f) formatters.set(tz, f = new Intl.DateTimeFormat("en-GB", {
 		timeZone: tz,
 		year: "numeric",
 		month: "2-digit",
@@ -32,7 +34,11 @@ var parts = (ms, tz) => {
 		minute: "2-digit",
 		second: "2-digit",
 		hourCycle: "h23"
-	});
+	}));
+	return f;
+};
+var parts = (ms, tz) => {
+	const f = formatter(tz);
 	const o = {};
 	for (const p of f.formatToParts(new Date(ms))) if (p.type !== "literal") o[p.type] = Number(p.value);
 	return o;
@@ -273,23 +279,27 @@ function authorised(req, env) {
 function validDevice(d) {
 	return d && typeof d.id === "string" && /^[\w-]{8,64}$/.test(d.id) && typeof d.subscription?.endpoint === "string" && /^https:\/\//.test(d.subscription.endpoint) && typeof d.subscription?.keys?.p256dh === "string" && typeof d.subscription?.keys?.auth === "string" && Array.isArray(d.lessons) && Array.isArray(d.subjects) && Array.isArray(d.alerts) && Array.isArray(d.calendar?.terms) && Array.isArray(d.calendar?.closures);
 }
-/** Sends one alert; returns the push service's status, or 0 if it couldn't be reached. Never throws. */
-async function send(kv, device, msg, ttl, origin) {
-	let status = 0;
+/** Forgets a device the browser has dropped. */
+async function forget(kv, id) {
+	await kv.delete(`device:${id}`);
+	await kv.put("devices", JSON.stringify((await deviceIds(kv)).filter((d) => d !== id)));
+}
+/**
+* Sends one alert; returns the push service's status, or 0 if it couldn't be
+* reached. Never throws. Pass the keys when sending many, to load them once.
+*/
+async function send(kv, device, msg, ttl, origin, keys) {
 	try {
-		status = await sendPush(device.subscription, msg, await vapidKeys(kv), {
+		const status = await sendPush(device.subscription, msg, keys ?? await vapidKeys(kv), {
 			subject: origin,
 			ttl
 		});
+		if (status === 404 || status === 410) await forget(kv, device.id);
+		return status;
 	} catch (e) {
 		console.log(`push to ${device.id} failed:`, e instanceof Error ? e.message : e);
 		return 0;
 	}
-	if (status === 404 || status === 410) {
-		await kv.delete(`device:${device.id}`);
-		await kv.put("devices", JSON.stringify((await deviceIds(kv)).filter((id) => id !== device.id)));
-	}
-	return status;
 }
 /** Everything one device should hear about in a given minute. */
 function dueInMinute(device, minute) {
@@ -328,15 +338,19 @@ async function runMinute(env, scheduledTime, origin) {
 	const kv = env.SCRABBLER;
 	if (!kv) return 0;
 	const minute = Math.floor(scheduledTime / 6e4) * 6e4;
+	const keys = await vapidKeys(kv);
 	let sent = 0;
-	for (const id of await deviceIds(kv)) {
+	for (const id of await deviceIds(kv)) try {
 		const raw = await kv.get(`device:${id}`);
 		if (!raw) continue;
 		const device = JSON.parse(raw);
 		for (const { msg, ttl } of dueInMinute(device, minute)) {
-			await send(kv, device, msg, ttl, origin);
+			const status = await send(kv, device, msg, ttl, origin, keys);
 			sent++;
+			if (status === 404 || status === 410) break;
 		}
+	} catch (e) {
+		console.log(`alerts for ${id} failed:`, e instanceof Error ? e.message : e);
 	}
 	return sent;
 }
@@ -446,8 +460,7 @@ var worker_default = {
 		}
 		if (url.pathname === "/unsubscribe") {
 			if (typeof body.id !== "string") return fail("Which device?", 400);
-			await kv.delete(`device:${body.id}`);
-			await kv.put("devices", JSON.stringify((await deviceIds(kv)).filter((id) => id !== body.id)));
+			await forget(kv, body.id);
 			return json({ ok: true });
 		}
 		return fail("Not found", 404);
