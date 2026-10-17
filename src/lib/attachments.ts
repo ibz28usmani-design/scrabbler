@@ -58,8 +58,17 @@ export async function downscaleImage(file: Blob, max = 1600): Promise<string> {
   const ctx = c.getContext('2d')!;
   ctx.drawImage(bmp, 0, 0, c.width, c.height);
   bmp.close();
-  // JPEG has no transparency, so a diagram's clear background would turn black.
-  return /png|gif|webp/.test(file.type) && hasTransparency(ctx, c.width, c.height) ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.86);
+  // JPEG has no transparency, so a diagram's clear background would turn black:
+  // keep a PNG then, unless it is big (a screenshot's soft shadow), which
+  // would sit in the note and slow every save.
+  if (/png|gif|webp/.test(file.type) && hasTransparency(ctx, c.width, c.height)) {
+    const png = c.toDataURL('image/png');
+    if (png.length < 1.5 * 1024 * 1024) return png;
+    ctx.globalCompositeOperation = 'destination-over';
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, c.width, c.height);
+  }
+  return c.toDataURL('image/jpeg', 0.86);
 }
 
 function hasTransparency(ctx: CanvasRenderingContext2D, w: number, h: number) {

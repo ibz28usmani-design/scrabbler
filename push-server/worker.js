@@ -279,6 +279,8 @@ function authorised(req, env) {
 function validDevice(d) {
 	return d && typeof d.id === "string" && /^[\w-]{8,64}$/.test(d.id) && typeof d.subscription?.endpoint === "string" && /^https:\/\//.test(d.subscription.endpoint) && typeof d.subscription?.keys?.p256dh === "string" && typeof d.subscription?.keys?.auth === "string" && Array.isArray(d.lessons) && Array.isArray(d.subjects) && Array.isArray(d.alerts) && Array.isArray(d.calendar?.terms) && Array.isArray(d.calendar?.closures);
 }
+/** The push service's way of saying the subscription no longer exists. */
+var isGone = (status) => status === 404 || status === 410;
 /** Forgets a device the browser has dropped. */
 async function forget(kv, id) {
 	await kv.delete(`device:${id}`);
@@ -294,7 +296,7 @@ async function send(kv, device, msg, ttl, origin, keys) {
 			subject: origin,
 			ttl
 		});
-		if (status === 404 || status === 410) await forget(kv, device.id);
+		if (isGone(status)) await forget(kv, device.id);
 		return status;
 	} catch (e) {
 		console.log(`push to ${device.id} failed:`, e instanceof Error ? e.message : e);
@@ -338,16 +340,17 @@ async function runMinute(env, scheduledTime, origin) {
 	const kv = env.SCRABBLER;
 	if (!kv) return 0;
 	const minute = Math.floor(scheduledTime / 6e4) * 6e4;
-	const keys = await vapidKeys(kv);
+	let keys;
 	let sent = 0;
 	for (const id of await deviceIds(kv)) try {
 		const raw = await kv.get(`device:${id}`);
 		if (!raw) continue;
 		const device = JSON.parse(raw);
 		for (const { msg, ttl } of dueInMinute(device, minute)) {
+			keys ??= await vapidKeys(kv);
 			const status = await send(kv, device, msg, ttl, origin, keys);
 			sent++;
-			if (status === 404 || status === 410) break;
+			if (isGone(status)) break;
 		}
 	} catch (e) {
 		console.log(`alerts for ${id} failed:`, e instanceof Error ? e.message : e);

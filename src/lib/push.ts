@@ -5,6 +5,7 @@
  */
 import { db, getTermCalendar, uid } from '../db';
 import { getSettings, updateSettings } from './settings';
+import { toast } from './events';
 import { alertTimes, typeInfo, type Reminder } from './reminders';
 import type { Lesson, Subject, TermCalendar } from './timetable';
 
@@ -121,7 +122,10 @@ export async function enablePush(): Promise<void> {
         await old.unsubscribe();
         sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
       } else if (Notification.permission === 'granted') {
-        throw new Error(`Couldn’t subscribe this device (${err.name}: ${err.message}). Try again in a moment.`);
+        // Safari can fail the first try even when allowed: once more, then say so.
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) }).catch(() => {
+          throw new Error(`Couldn’t subscribe this device (${err.name}: ${err.message}). Try again in a moment.`);
+        });
       } else {
         throw new Error(refusedMessage(before, `${err.name}: ${err.message}`));
       }
@@ -210,8 +214,13 @@ export async function syncPush(force = false): Promise<void> {
   const s = getSettings();
   if (!s.pushEnabled || !s.pushDeviceId || !base() || pushBlocker()) return;
   const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
-  // Made for another server's key: that server could never deliver to it.
-  if (!sub || (s.pushPublicKey && !sameKey(sub, s.pushPublicKey))) return;
+  if (!sub) return;
+  // Made for another key than the server's now: it could never deliver to it.
+  if (s.pushPublicKey && !sameKey(sub, s.pushPublicKey)) {
+    updateSettings({ pushEnabled: false });
+    toast('The push server’s key changed, so notifications are off. Turn them on again in Settings.', 'error');
+    return;
+  }
   const [subjects, lessons, calendar, reminders] = await Promise.all([db.subjects.toArray(), db.lessons.toArray(), getTermCalendar(), db.reminders.toArray()]);
   const payload: PushPayload = {
     id: s.pushDeviceId,

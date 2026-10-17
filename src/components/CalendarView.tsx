@@ -385,7 +385,7 @@ function TimetableEditor({ tt, onClose }: { tt: Timetable; onClose: () => void }
   const update = (id: string, patch: Partial<Lesson>) => db.lessons.update(id, patch);
   // A cleared picker, or an end before the start, would put a class alert at midnight.
   const setTimes = (l: Lesson, start: string, end: string) => {
-    if (!start || !end) return;
+    if (!start || !end || (start === l.start && end === l.end)) return;
     if (end <= start) return toast('A lesson has to end after it starts.', 'error');
     update(l.id, { start, end });
   };
@@ -435,8 +435,9 @@ function TimetableEditor({ tt, onClose }: { tt: Timetable; onClose: () => void }
                     </option>
                   ))}
                 </select>
-                <DraftInput className="input time" type="time" value={l.start} onValue={(v) => setTimes(l, v, l.end)} aria-label="Starts" />
-                <DraftInput className="input time" type="time" value={l.end} onValue={(v) => setTimes(l, l.start, v)} aria-label="Ends" />
+                {/* Saved when left: typing "11" into the hour passes through 01:00 on the way. */}
+                <DraftInput className="input time" type="time" value={l.start} onValue={() => {}} onBlur={(e) => setTimes(l, e.currentTarget.value, l.end)} aria-label="Starts" />
+                <DraftInput className="input time" type="time" value={l.end} onValue={() => {}} onBlur={(e) => setTimes(l, l.start, e.currentTarget.value)} aria-label="Ends" />
                 <DraftInput className="input" value={l.room ?? ''} placeholder="Room" onValue={(v) => update(l.id, { room: v })} aria-label="Room" />
                 <DraftInput className="input" value={l.teacher ?? ''} placeholder="Teacher" onValue={(v) => update(l.id, { teacher: v })} aria-label="Teacher" />
                 <button className="icon-btn small danger" onClick={() => db.lessons.delete(l.id)} aria-label="Delete lesson">

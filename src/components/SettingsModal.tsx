@@ -239,7 +239,7 @@ export function SettingsModal() {
           <label className="field">
             <span>Host 1</span>
             <div className="row">
-              <DraftInput className="input" value={s.hostA} onValue={(v) => v.trim() && updateSettings({ hostA: v })} />
+              <DraftInput className="input" value={s.hostA} onValue={(v) => v.trim() && updateSettings({ hostA: v.trim() })} />
               <select className="input" value={s.voiceA} onChange={(e) => updateSettings({ voiceA: e.target.value })}>
                 {GEMINI_VOICES.map((v) => (
                   <option key={v}>{v}</option>
@@ -250,7 +250,7 @@ export function SettingsModal() {
           <label className="field">
             <span>Host 2</span>
             <div className="row">
-              <DraftInput className="input" value={s.hostB} onValue={(v) => v.trim() && updateSettings({ hostB: v })} />
+              <DraftInput className="input" value={s.hostB} onValue={(v) => v.trim() && updateSettings({ hostB: v.trim() })} />
               <select className="input" value={s.voiceB} onChange={(e) => updateSettings({ voiceB: e.target.value })}>
                 {GEMINI_VOICES.map((v) => (
                   <option key={v}>{v}</option>

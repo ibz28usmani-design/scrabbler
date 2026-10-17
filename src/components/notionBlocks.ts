@@ -40,9 +40,6 @@ export const Callout = Node.create({
   renderHTML({ HTMLAttributes }) {
     return ['div', mergeAttributes(HTMLAttributes, { 'data-type': 'callout' }), 0];
   },
-  renderText() {
-    return '';
-  },
   addCommands() {
     return {
       setCallout:

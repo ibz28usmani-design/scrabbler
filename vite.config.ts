@@ -37,5 +37,7 @@ export default defineConfig({
   ],
   test: {
     environment: 'node',
+    // The college's zone, so date tests mean the same on any machine.
+    env: { TZ: 'Europe/London' },
   },
 } as any);

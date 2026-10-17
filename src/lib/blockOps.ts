@@ -130,8 +130,9 @@ export function textblockToToggle(tr: Transaction, $pos: ResolvedPos, headingLev
   const text: PMNode[] = [];
   let lossy = false;
   $pos.parent.content.forEach((n) => (n.isText ? text.push(n) : (lossy ||= n.type.name !== 'hardBreak')));
-  const summary = schema.nodes.detailsSummary.create(null, text);
-  // A title holds only text: an equation or link to a note would be lost, so the line goes inside too.
+  // A title holds only text: a line with an equation or a link to a note goes
+  // inside the toggle whole, leaving the title to type, rather than lose them.
+  const summary = schema.nodes.detailsSummary.create(null, lossy ? [] : text);
   const first = lossy ? schema.nodes.paragraph.create(null, $pos.parent.content) : schema.nodes.paragraph.create();
   const body = schema.nodes.detailsContent.create(null, first);
   // New toggles start open, so Enter after the title lands inside them.

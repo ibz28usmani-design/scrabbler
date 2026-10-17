@@ -86,6 +86,9 @@ export function validDevice(d: any): d is Omit<Device, 'updatedAt'> {
   );
 }
 
+/** The push service's way of saying the subscription no longer exists. */
+export const isGone = (status: number) => status === 404 || status === 410;
+
 /** Forgets a device the browser has dropped. */
 export async function forget(kv: KV, id: string) {
   await kv.delete(`device:${id}`);
@@ -100,7 +103,7 @@ export async function send(kv: KV, device: Device, msg: PushMessage, ttl: number
   try {
     const status = await sendPush(device.subscription, msg, keys ?? (await vapidKeys(kv)), { subject: origin, ttl });
     // The browser dropped the subscription: forget the device.
-    if (status === 404 || status === 410) await forget(kv, device.id);
+    if (isGone(status)) await forget(kv, device.id);
     return status;
   } catch (e) {
     // One unreachable push service mustn't stop the other alerts due this minute.
@@ -141,7 +144,8 @@ export async function runMinute(env: Env, scheduledTime: number, origin: string)
   const kv = env.SCRABBLER;
   if (!kv) return 0;
   const minute = Math.floor(scheduledTime / 60000) * 60000;
-  const keys = await vapidKeys(kv);
+  // Loaded at the first alert due: most minutes have none.
+  let keys: VapidKeys | undefined;
   let sent = 0;
   for (const id of await deviceIds(kv)) {
     try {
@@ -149,10 +153,11 @@ export async function runMinute(env: Env, scheduledTime: number, origin: string)
       if (!raw) continue;
       const device: Device = JSON.parse(raw);
       for (const { msg, ttl } of dueInMinute(device, minute)) {
+        keys ??= await vapidKeys(kv);
         const status = await send(kv, device, msg, ttl, origin, keys);
         sent++;
         // Gone: the rest of its alerts would only hit the dead endpoint again.
-        if (status === 404 || status === 410) break;
+        if (isGone(status)) break;
       }
     } catch (e) {
       // One device's bad data mustn't silence everyone after it in the list.

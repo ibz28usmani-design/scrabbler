@@ -238,6 +238,13 @@ db.version(2).stores({
   reminders: 'id, listId',
 });
 
+// Find work in flight (a transcription, a source being read) without loading every note.
+db.version(3).stores({
+  notes: 'id, folderId, updatedAt, pinned, deletedAt, status',
+  sources: 'id, folderId, createdAt, status',
+  studio: 'id, folderId, createdAt, status',
+});
+
 export function uid(): ID {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -281,17 +288,42 @@ export async function sweepAttachments(now = Date.now()) {
   return orphans.length;
 }
 
+const BUSY_NOTE = ['recording', 'transcribing', 'writing'];
+// Typed loosely: Dexie's key-path types recurse on MindNode.
+const studioTable = () => db.studio as any;
+
+/** How many jobs are under way: transcribing or writing a lecture, reading a source, making a studio item. */
+export async function inFlight(): Promise<number> {
+  const [n, s, st] = await Promise.all([db.notes.where('status').anyOf(BUSY_NOTE).count(), db.sources.where('status').equals('processing').count(), studioTable().where('status').equals('working').count()]);
+  return n + s + st;
+}
+
+const TAB_LOCK = 'scrabbler-open';
+
+/**
+ * Holds a lock for as long as this tab is open, and says whether another tab
+ * already held one — whose jobs, then, may well still be running.
+ */
+async function otherTabsOpen(): Promise<boolean> {
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  if (!locks) return false;
+  const { held = [] } = await locks.query();
+  void locks.request(TAB_LOCK, { mode: 'shared' }, () => new Promise(() => {}));
+  return held.some((l) => l.name === TAB_LOCK);
+}
+
 /**
  * Work the app was doing when it was closed (transcribing, writing notes,
  * reading a source, making a studio item) never finishes. Mark it failed so it
- * offers a retry instead of a spinner for ever.
+ * offers a retry instead of a spinner for ever — unless another open tab may
+ * still be doing it.
  */
 export async function failInterrupted() {
+  if (await otherTabsOpen()) return;
   const error = 'Interrupted when the app closed. Try again.';
-  await db.notes.filter((n) => n.status === 'recording' || n.status === 'transcribing' || n.status === 'writing').modify({ status: 'error', error });
-  await db.sources.filter((s) => s.status === 'processing').modify({ status: 'error', error });
-  // Typed loosely: Dexie's key-path types recurse on MindNode.
-  await (db.studio as any).filter((s: StudioItem) => s.status === 'working').modify({ status: 'error', error });
+  await db.notes.where('status').anyOf(BUSY_NOTE).modify({ status: 'error', error });
+  await db.sources.where('status').equals('processing').modify({ status: 'error', error });
+  await studioTable().where('status').equals('working').modify({ status: 'error', error });
 }
 
 export async function getMeta<T>(key: string, fallback: T): Promise<T> {

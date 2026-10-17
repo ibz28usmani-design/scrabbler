@@ -97,6 +97,8 @@ export function InkToolbar({
   const drag = useRef<{ id: number; sx: number; sy: number; x: number; y: number; moved: boolean } | null>(null);
   /** Tears down the window listeners for the drag in flight, if any. */
   const stopDrag = useRef<(() => void) | null>(null);
+  /** The click that ends a drag of the circle is not a tap on it. */
+  const dragged = useRef(false);
   useEffect(() => () => stopDrag.current?.(), []);
   const palette = tool.ink === 'marker' ? HIGHLIGHTS : INK_PALETTE;
   const swatch = displayColor(tool.color, dark);
@@ -207,6 +209,7 @@ export function InkToolbar({
 
     const settle = (d: NonNullable<typeof drag.current>, px: number, py: number) => {
       drag.current = null;
+      dragged.current = d.moved;
       el.classList.remove('dragging', 'will-tuck');
 
       // A tap, not a drag.
@@ -427,7 +430,7 @@ export function InkToolbar({
     return (
       <div className={cls} {...place} ref={dock} {...dragProps}>
         {/* A tap on a floating circle is also seen by the drag, which opens it too; the click covers inline sketches and the keyboard. */}
-        <button className="ink-mini glass" onClick={() => setOpen(true)} aria-label={`${labelFor(tool.tool)} — show drawing tools`} title={floating ? 'Show drawing tools (drag to move)' : 'Show drawing tools'}>
+        <button className="ink-mini glass" onClick={() => (dragged.current ? (dragged.current = false) : setOpen(true))} aria-label={`${labelFor(tool.tool)} — show drawing tools`} title={floating ? 'Show drawing tools (drag to move)' : 'Show drawing tools'}>
           {iconFor(tool.tool)}
           {tool.tool !== 'eraser' && tool.tool !== 'lasso' && <span className="tool-ink" style={{ ['--sw' as string]: swatch }} />}
         </button>

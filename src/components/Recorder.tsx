@@ -38,8 +38,10 @@ export function Recorder({ folderId }: { folderId: string }) {
     captionBox.current?.scrollTo({ top: captionBox.current.scrollHeight });
   }, [caption]);
 
+  const gone = useRef(false);
   useEffect(
     () => () => {
+      gone.current = true;
       live.current?.stop();
       rec.current?.stop().catch(() => {});
     },
@@ -53,12 +55,15 @@ export function Recorder({ folderId }: { folderId: string }) {
     starting.current = true;
     try {
       let last = 0;
-      rec.current = await startRecording((lvl) => {
+      const handle = await startRecording((lvl) => {
         const now = performance.now();
         if (now - last < 60) return;
         last = now;
         setLevels((l) => [...l.slice(1), lvl]);
       });
+      // Closed while the permission sheet was up: nothing would ever stop it.
+      if (gone.current) return void handle.stop().catch(() => {});
+      rec.current = handle;
       if (liveCaptions && speechSupported()) live.current = startLiveCaptions((final, interim) => setCaption({ final, interim }));
       setPhase('recording');
     } catch (e) {

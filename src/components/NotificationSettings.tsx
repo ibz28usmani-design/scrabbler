@@ -97,7 +97,15 @@ export function NotificationSettings() {
           </button>
         ) : (
           <>
-            <button className="btn primary" disabled={!!busy} onClick={() => run('test', async () => (save() && (await connectServer()), await syncPush(true), await sendTest()), 'Test sent — it should arrive in a few seconds.')}>
+            <button
+              className="btn primary"
+              disabled={!!busy}
+              onClick={() => {
+                // A new address turns notifications off (see save), so there is nothing to test yet.
+                if (url.trim() !== s.pushUrl) return void save();
+                run('test', async () => (save() && (await connectServer()), await syncPush(true), await sendTest()), 'Test sent — it should arrive in a few seconds.');
+              }}
+            >
               {busy === 'test' && <Spinner size={14} />} Send a test
             </button>
             <button className="btn" disabled={!!busy} onClick={() => run('off', disablePush, 'Notifications are off on this device.')}>

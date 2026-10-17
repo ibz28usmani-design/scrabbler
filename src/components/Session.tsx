@@ -124,8 +124,12 @@ export function Session({ deckIds, mode }: { deckIds: string[]; mode: Mode }) {
       toastError(e);
     }
     advance();
-    committing.current = false;
   };
+  // Free again once the next card is actually showing, not before: a held key
+  // can still reach the old card's handler until then.
+  useEffect(() => {
+    committing.current = false;
+  }, [pos]);
 
   const checkTyped = async () => {
     if (!item || verdict) return;
