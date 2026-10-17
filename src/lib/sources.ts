@@ -1,5 +1,6 @@
 /** Source ingestion: PDFs, text, websites, YouTube, audio and images. */
-import { db, deleteSource, holdJob, putBlob, uid, type Source, type SourceKind } from '../db';
+import { db, deleteSource, putBlob, uid, type Source, type SourceKind } from '../db';
+import { holdJob } from './jobs';
 import { blobPart, generate, generateGrounded, hasKey, MissingKeyError } from './gemini';
 import { chunkText, type RawPage } from './retrieval';
 import { geminiMime } from './audio';

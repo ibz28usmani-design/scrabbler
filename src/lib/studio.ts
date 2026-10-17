@@ -1,4 +1,5 @@
-import { db, holdJob, putBlob, uid, type StudioItem } from '../db';
+import { db, putBlob, uid, type StudioItem } from '../db';
+import { holdJob } from './jobs';
 import { generateMindMap, generatePodcastScript, generateStudioDoc, renderPodcastAudio, type PodcastLength } from './ai';
 import { toast, toastError } from './events';
 

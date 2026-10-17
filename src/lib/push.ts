@@ -147,6 +147,7 @@ export async function enablePush(): Promise<void> {
   if (!getSettings().pushDeviceId) updateSettings({ pushDeviceId: `device-${uid().replace(/[^\w-]/g, '').slice(0, 24)}` });
   updateSettings({ pushEnabled: true });
   lastSent = '';
+  keyChanged = false;
   await syncPush(true);
 }
 
@@ -208,6 +209,8 @@ export function reminderAlerts(reminders: Reminder[], subjects: Subject[], now =
 
 let lastSent = '';
 let timer = 0;
+/** Notifications were turned off because the server's key no longer matched. */
+let keyChanged = false;
 
 /** Sends the server what it needs, if it changed since last time. */
 export async function syncPush(force = false): Promise<void> {
@@ -218,8 +221,11 @@ export async function syncPush(force = false): Promise<void> {
   // Made for another key than the server's now: it could never deliver to it.
   if (s.pushPublicKey && !sameKey(sub, s.pushPublicKey)) {
     // Thrown, so a caller such as "Send a test" stops here. Only the sync that
-    // turned notifications off has news to show; another may have got there first.
+    // turned notifications off has news to show; another may have got there
+    // first. Turned off some other way meanwhile (by the user), there's no news.
     const first = getSettings().pushEnabled;
+    if (!first && !keyChanged) return;
+    keyChanged = true;
     updateSettings({ pushEnabled: false });
     throw new KeyChangedError(first);
   }

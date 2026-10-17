@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { anyJobsRunning, db, deleteNotesForever, failInterrupted, holdJob, putBlob, runningJobs, uid, type Note } from '../db';
+import { db, deleteNotesForever, failInterrupted, putBlob, uid, type Note } from '../db';
+import { anyJobsRunning, holdJob, runningJobs } from '../lib/jobs';
 import { exportBackup, importBackup } from '../lib/backup';
 import { chunkText } from '../lib/retrieval';
 import { thinkFilter } from '../lib/openaiCompat';

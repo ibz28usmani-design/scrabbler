@@ -3,8 +3,6 @@ import type { Lesson, Subject, TermCalendar } from './lib/timetable';
 import type { Reminder, ReminderList } from './lib/reminders';
 import { JOB_LOCK, locks } from './lib/jobs';
 
-export { anyJobsRunning, holdJob, runningJobs } from './lib/jobs';
-
 export type ID = string;
 
 export interface Folder {

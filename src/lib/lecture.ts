@@ -1,5 +1,6 @@
 /** Turbo-style pipeline: recording → state-of-the-art transcript → structured notes. */
-import { db, holdJob, uid, type TranscriptSegment } from '../db';
+import { db, uid, type TranscriptSegment } from '../db';
+import { holdJob } from './jobs';
 import { lectureNotes, transcribe, transcriptToText } from './ai';
 import { chunkText } from './retrieval';
 import { hasKey } from './gemini';
@@ -23,8 +24,11 @@ async function lecture(noteId: string, opts: { context?: string; liveText?: stri
   if (!note) return;
   const stored = note.audioBlobId ? await db.blobs.get(note.audioBlobId) : undefined;
   const missing = 'The recording isn’t on this device any more.';
+  // Rewriting from a transcript needs no audio; transcribing does.
+  if (!stored && !note.transcript?.length) return void (await db.notes.update(noteId, { status: 'error', error: missing }));
   if (!hasKey()) {
-    // Offline/no-key fallback: keep the on-device live captions.
+    // A fresh recording gets the on-device live captions as its note; a retry keeps what is there.
+    if (note.status !== 'transcribing') return void (await db.notes.update(noteId, { status: 'error', error: 'Add a free Gemini key in Settings to transcribe this.' }));
     const live = opts.liveText?.trim();
     const html = `<h1>${escapeHtml(note.title || 'Lecture')}</h1><p><em>Add a free Gemini key in Settings, then tap “Transcribe & write notes” for a full transcript with speakers and AI notes.</em></p>${live ? `<h2>Live captions</h2><p>${escapeHtml(live)}</p>` : ''}`;
     await db.notes.update(noteId, { status: 'error', error: 'No Gemini key — saved the recording and live captions only.', content: html, text: live ?? '', updatedAt: Date.now() });
@@ -33,7 +37,6 @@ async function lecture(noteId: string, opts: { context?: string; liveText?: stri
   try {
     let segs: TranscriptSegment[] | undefined = note.transcript?.length ? note.transcript : undefined;
     if (!segs) {
-      // Rewriting from a transcript needs no audio; transcribing does.
       if (!stored) throw new Error(missing);
       await db.notes.update(noteId, { status: 'transcribing', error: undefined });
       const name = stored.name || 'lecture.mp3';

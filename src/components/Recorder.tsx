@@ -9,6 +9,7 @@ import { fmtClock } from '../lib/dates';
 import { toastError } from '../lib/events';
 import { download } from '../lib/backup';
 import { escapeHtml } from '../lib/markdown';
+import { holdJob } from '../lib/jobs';
 import { useSettings, updateSettings } from '../lib/settings';
 import { hasKey } from '../lib/gemini';
 import { Modal, confirmDialog } from './ui';
@@ -78,6 +79,9 @@ export function Recorder({ folderId }: { folderId: string }) {
     const r = rec.current;
     if (!r) return;
     rec.current = null;
+    // Stopping ends the recording's own claim; until the note exists and its
+    // transcription has claimed it, this one keeps an update from reloading.
+    const end = holdJob(`saving-${Date.now()}`);
     setPhase('saving');
     live.current?.stop();
     const duration = r.elapsed;
@@ -101,6 +105,8 @@ export function Recorder({ folderId }: { folderId: string }) {
       // Storage full, most likely: hand the recording over as a file rather than lose it.
       if (blob) download(blob, `${name}.mp3`);
       closeModal();
+    } finally {
+      end();
     }
   };
 

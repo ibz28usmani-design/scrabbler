@@ -2,7 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import App from './App';
-import { anyJobsRunning, initDb } from './db';
+import { initDb } from './db';
+import { anyJobsRunning } from './lib/jobs';
 import './styles.css';
 
 // An update waits until the app is put away with nothing recording or being
