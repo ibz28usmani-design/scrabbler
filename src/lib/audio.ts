@@ -2,6 +2,7 @@
  * Lecture recorder: captures the mic as PCM and encodes 16 kHz mono MP3 on the
  * fly (~14 MB/hour) — compact to store and a format Gemini accepts directly.
  */
+import { holdJob } from './jobs';
 
 const TARGET_RATE = 16000;
 
@@ -23,10 +24,6 @@ export interface RecorderHandle {
   readonly elapsed: number;
   readonly paused: boolean;
 }
-
-let recording = 0;
-/** A recording is running: not the moment to reload the app for an update. */
-export const isRecording = () => recording > 0;
 
 export async function startRecording(onLevel: (level: number) => void): Promise<RecorderHandle> {
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -110,7 +107,8 @@ async function record(stream: MediaStream, ctx: AudioContext, onLevel: (level: n
   }
 
   let stopped = false;
-  recording++;
+  // Claimed like any long job, so an update from another tab won't reload this one mid-lecture.
+  const end = holdJob(`recording-${Math.random().toString(36).slice(2)}`);
   return {
     get elapsed() {
       return elapsedMs / 1000;
@@ -128,7 +126,7 @@ async function record(stream: MediaStream, ctx: AudioContext, onLevel: (level: n
     async stop() {
       if (stopped) throw new Error('This recording has already been stopped.');
       stopped = true;
-      recording--;
+      end();
       src.disconnect();
       node.disconnect();
       stream.getTracks().forEach((t) => t.stop());

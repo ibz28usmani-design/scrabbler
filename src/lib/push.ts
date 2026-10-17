@@ -217,11 +217,11 @@ export async function syncPush(force = false): Promise<void> {
   if (!sub) return;
   // Made for another key than the server's now: it could never deliver to it.
   if (s.pushPublicKey && !sameKey(sub, s.pushPublicKey)) {
-    // Another sync may have got here first while this one waited.
-    if (!getSettings().pushEnabled) return;
+    // Thrown, so a caller such as "Send a test" stops here. Only the sync that
+    // turned notifications off has news to show; another may have got there first.
+    const first = getSettings().pushEnabled;
     updateSettings({ pushEnabled: false });
-    // Thrown, so a caller such as "Send a test" stops here; background syncs show it.
-    throw new KeyChangedError();
+    throw new KeyChangedError(first);
   }
   const [subjects, lessons, calendar, reminders] = await Promise.all([db.subjects.toArray(), db.lessons.toArray(), getTermCalendar(), db.reminders.toArray()]);
   const payload: PushPayload = {
@@ -242,14 +242,14 @@ export async function syncPush(force = false): Promise<void> {
 }
 
 export class KeyChangedError extends Error {
-  constructor() {
+  constructor(readonly first: boolean) {
     super('The push server’s key changed, so notifications are off. Turn them on again in Settings.');
   }
 }
 
 /** Syncs with nobody waiting on it: only a change the user must act on is shown. */
 export function syncInBackground() {
-  return syncPush().catch((e) => (e instanceof KeyChangedError ? toastError(e) : console.warn('Push sync failed', e)));
+  return syncPush().catch((e) => (e instanceof KeyChangedError ? e.first && toastError(e) : console.warn('Push sync failed', e)));
 }
 
 /** A change happened: sync a moment later, once the edits settle. */

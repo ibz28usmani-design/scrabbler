@@ -22,8 +22,7 @@ async function lecture(noteId: string, opts: { context?: string; liveText?: stri
   const note = await db.notes.get(noteId);
   if (!note) return;
   const stored = note.audioBlobId ? await db.blobs.get(note.audioBlobId) : undefined;
-  // Otherwise the note would say "Transcribing…" for good.
-  if (!stored) return void (await db.notes.update(noteId, { status: 'error', error: 'The recording isn’t on this device any more.' }));
+  const missing = 'The recording isn’t on this device any more.';
   if (!hasKey()) {
     // Offline/no-key fallback: keep the on-device live captions.
     const live = opts.liveText?.trim();
@@ -34,6 +33,8 @@ async function lecture(noteId: string, opts: { context?: string; liveText?: stri
   try {
     let segs: TranscriptSegment[] | undefined = note.transcript?.length ? note.transcript : undefined;
     if (!segs) {
+      // Rewriting from a transcript needs no audio; transcribing does.
+      if (!stored) throw new Error(missing);
       await db.notes.update(noteId, { status: 'transcribing', error: undefined });
       const name = stored.name || 'lecture.mp3';
       const mime = stored.mime === 'audio/mpeg' ? 'audio/mp3' : stored.mime || 'audio/mp3';

@@ -67,6 +67,11 @@ describe('interrupted work', () => {
       expect((await db.notes.get('live'))?.status).toBe('writing');
       end();
       expect(runningJobs()).toBe(0);
+      await new Promise((r) => setTimeout(r)); // the lock is let go asynchronously
+      expect(await anyJobsRunning()).toBe(false);
+      // Another tab's claim counts too.
+      held.add('scrabbler-job:elsewhere');
+      expect(await anyJobsRunning()).toBe(true);
     } finally {
       vi.unstubAllGlobals();
     }

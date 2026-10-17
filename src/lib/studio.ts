@@ -26,8 +26,8 @@ export async function runStudio(folderId: string, kind: StudioItem['kind'], opts
     } else if (kind === 'podcast') {
       const { title, lines } = await generatePodcastScript(folderId, opts.length ?? 'default', opts.focus ?? '');
       await patch(id, { script: lines, title: title || 'Audio Overview', progress: 'Recording voices…' });
-      // Already claimed here; the voices run inside this claim.
-      await renderPodcastVoices(id, true);
+      // Inside this run's claim.
+      await recordVoices(id);
       return;
     } else {
       const { title, markdown } = await generateStudioDoc(folderId, kind);
@@ -43,10 +43,18 @@ export async function runStudio(folderId: string, kind: StudioItem['kind'], opts
 }
 
 /** Renders studio-quality voices; on failure the script still plays with device voices. */
-export async function renderPodcastVoices(id: string, claimed = false) {
+export async function renderPodcastVoices(id: string) {
+  const end = holdJob(id);
+  try {
+    await recordVoices(id);
+  } finally {
+    end();
+  }
+}
+
+async function recordVoices(id: string) {
   const item = await db.studio.get(id);
   if (!item?.script) return;
-  const end = claimed ? () => {} : holdJob(id);
   try {
     await patch(id, { status: 'working', progress: 'Recording voices…', error: undefined });
     const wav = await renderPodcastAudio(item.script, (done, total) => {
@@ -63,7 +71,5 @@ export async function renderPodcastVoices(id: string, claimed = false) {
       error: `Studio voices unavailable (${e instanceof Error ? e.message : e}). You can play it with your device's voices.`,
     });
     toast('Script ready — studio voices hit a limit, so it will play with device voices.', 'info');
-  } finally {
-    end();
   }
 }

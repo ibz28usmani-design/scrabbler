@@ -1,6 +1,9 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { Lesson, Subject, TermCalendar } from './lib/timetable';
 import type { Reminder, ReminderList } from './lib/reminders';
+import { JOB_LOCK, locks } from './lib/jobs';
+
+export { anyJobsRunning, holdJob, runningJobs } from './lib/jobs';
 
 export type ID = string;
 
@@ -291,43 +294,6 @@ export async function sweepAttachments(now = Date.now()) {
 const BUSY_NOTE = ['recording', 'transcribing', 'writing'];
 // Typed loosely: Dexie's key-path types recurse on MindNode.
 const studioTable = () => db.studio as any;
-
-const JOB_LOCK = 'scrabbler-job:';
-const locks = () => (typeof navigator !== 'undefined' ? navigator.locks : undefined);
-let jobs = 0;
-
-/** Long jobs this tab is running now. */
-export const runningJobs = () => jobs;
-
-/**
- * Whether any tab is running a long job. An update reloads every tab at once,
- * so this tab being idle isn't enough.
- */
-export async function anyJobsRunning(): Promise<boolean> {
-  const l = locks();
-  if (!l) return jobs > 0;
-  const { held = [] } = await l.query();
-  return jobs > 0 || held.some((h) => h.name?.startsWith(JOB_LOCK));
-}
-
-/**
- * Claims a long job (a transcription, a source being read, a studio item) for
- * this tab while it runs, so another tab starting up leaves it alone. Returns
- * the function that ends the claim.
- */
-export function holdJob(id: ID): () => void {
-  jobs++;
-  let release!: () => void;
-  const done = new Promise<void>((r) => (release = r));
-  locks()?.request(JOB_LOCK + id, () => done).catch(() => {});
-  let ended = false;
-  return () => {
-    if (ended) return;
-    ended = true;
-    jobs--;
-    release();
-  };
-}
 
 /**
  * Work the app was doing when it was closed (transcribing, writing notes,

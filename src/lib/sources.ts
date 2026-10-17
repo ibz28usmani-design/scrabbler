@@ -21,6 +21,8 @@ async function create(folderId: string, kind: SourceKind, title: string, extra: 
     await db.sources.add(s);
   } catch (e) {
     endClaim(s.id);
+    // Nothing points at the file stored for it now.
+    if (s.blobId) await db.blobs.delete(s.blobId).catch(() => {});
     throw e;
   }
   return s;
