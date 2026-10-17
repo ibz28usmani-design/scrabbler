@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
-import { beforeEach, describe, expect, it } from 'vitest';
-import { db, deleteNotesForever, putBlob, uid, type Note } from '../db';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { db, deleteNotesForever, failInterrupted, holdJob, putBlob, runningJobs, uid, type Note } from '../db';
 import { exportBackup, importBackup } from '../lib/backup';
 import { chunkText } from '../lib/retrieval';
 import { thinkFilter } from '../lib/openaiCompat';
@@ -44,6 +44,28 @@ describe('stored data', () => {
     await importBackup(new Blob([JSON.stringify(old)], { type: 'application/json' }));
     expect(await db.notes.get('old-note')).toBeDefined();
     expect(new Uint8Array(await (await db.blobs.get('b1'))!.blob.arrayBuffer())).toEqual(new Uint8Array([0, 1, 104, 105]));
+  });
+});
+
+describe('interrupted work', () => {
+  it('fails jobs nobody holds, and leaves claimed ones running', async () => {
+    await Promise.all(db.tables.map((t) => t.clear()));
+    const held = new Set<string>();
+    vi.stubGlobal('navigator', {
+      locks: {
+        query: async () => ({ held: [...held].map((name) => ({ name })) }),
+        request: (name: string, fn: () => Promise<void>) => (held.add(name), fn().finally(() => held.delete(name))),
+      },
+    });
+    await db.notes.bulkAdd([note('', { id: 'orphan', status: 'transcribing' }), note('', { id: 'live', status: 'writing' })]);
+    const end = holdJob('live');
+    expect(runningJobs()).toBe(1);
+    await failInterrupted();
+    expect((await db.notes.get('orphan'))?.status).toBe('error');
+    expect((await db.notes.get('live'))?.status).toBe('writing');
+    end();
+    expect(runningJobs()).toBe(0);
+    vi.unstubAllGlobals();
   });
 });
 

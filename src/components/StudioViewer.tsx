@@ -201,8 +201,10 @@ function Podcast({ item }: { item: StudioItem }) {
             onClick={() => {
               if (deviceIdx !== null) {
                 stopDevice();
-                // WebKit can drop an utterance spoken straight after cancel().
-                setTimeout(() => playDevice(i), 50);
+                // WebKit can drop an utterance spoken straight after cancel(). Not if
+                // stopped or closed meanwhile: then the run has moved on.
+                const r = run.current;
+                setTimeout(() => run.current === r && playDevice(i), 50);
               } else if (audio.current && duration) {
                 audio.current.currentTime = offsets[i] * duration;
                 audio.current.play();

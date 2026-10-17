@@ -2,7 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import App from './App';
-import { inFlight, initDb } from './db';
+import { initDb, runningJobs } from './db';
 import { isRecording } from './lib/audio';
 import './styles.css';
 
@@ -11,8 +11,8 @@ import './styles.css';
 const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {
-    const apply = async () => {
-      if (document.visibilityState === 'hidden' && !isRecording() && !(await inFlight())) void updateSW(true);
+    const apply = () => {
+      if (document.visibilityState === 'hidden' && !isRecording() && !runningJobs()) void updateSW(true);
     };
     document.addEventListener('visibilitychange', apply);
   },

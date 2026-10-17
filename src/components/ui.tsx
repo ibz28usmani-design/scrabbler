@@ -260,12 +260,31 @@ export function PromptHost() {
  * typed and saves as it goes; once left, it shows what was actually stored.
  * A plain controlled input there drops keystrokes while the store catches up.
  */
-export function DraftInput({ value, onValue, ...rest }: Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> & { value: string; onValue: (v: string) => void }) {
+export function DraftInput({
+  value,
+  onValue,
+  onLeave,
+  ...rest
+}: Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> & {
+  value: string;
+  onValue?: (v: string) => void;
+  /** Saves when the field is left instead of as it changes — including when its dialog closes with it focused. */
+  onLeave?: (v: string) => void;
+}) {
   const [draft, setDraft] = useState(value);
   const editing = useRef(false);
+  const latest = useRef({ draft, onLeave });
+  latest.current = { draft, onLeave };
   useEffect(() => {
     if (!editing.current) setDraft(value);
   }, [value]);
+  // Unmounted while focused (Escape closed the dialog): no blur comes, so leave now.
+  useEffect(
+    () => () => {
+      if (editing.current) latest.current.onLeave?.(latest.current.draft);
+    },
+    [],
+  );
   return (
     <input
       {...rest}
@@ -276,12 +295,13 @@ export function DraftInput({ value, onValue, ...rest }: Omit<InputHTMLAttributes
       }}
       onBlur={(e) => {
         editing.current = false;
+        onLeave?.(e.currentTarget.value);
         setDraft(value);
         rest.onBlur?.(e);
       }}
       onChange={(e) => {
         setDraft(e.target.value);
-        onValue(e.target.value);
+        onValue?.(e.target.value);
       }}
     />
   );

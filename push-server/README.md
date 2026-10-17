@@ -75,8 +75,10 @@ npx wrangler deploy   # the first deploy creates the KV namespace and binds it
 
 ## Notes
 
-- **Free plan limits.** The worker reads its storage once a minute and writes
-  only when Scrabbler syncs a change, well inside Cloudflare's free allowance.
+- **Free plan limits.** Each minute the worker reads its device list and each
+  device (about 1,440 × (devices + 1) reads a day), and writes only when
+  Scrabbler syncs a change: well inside Cloudflare's free allowance for a few
+  devices.
 - **Timing.** Cron runs once a minute, so an alert can land up to a minute late.
 - **Term dates.** Class alerts follow the term dates in Scrabbler's calendar.
   Fix them there and the worker picks up the change on the next sync.

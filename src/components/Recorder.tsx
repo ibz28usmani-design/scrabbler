@@ -39,14 +39,15 @@ export function Recorder({ folderId }: { folderId: string }) {
   }, [caption]);
 
   const gone = useRef(false);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // Set again on mount: StrictMode mounts, unmounts and mounts once more.
+    gone.current = false;
+    return () => {
       gone.current = true;
       live.current?.stop();
       rec.current?.stop().catch(() => {});
-    },
-    [],
-  );
+    };
+  }, []);
 
   const starting = useRef(false);
   const start = async () => {

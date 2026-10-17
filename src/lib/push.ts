@@ -5,7 +5,7 @@
  */
 import { db, getTermCalendar, uid } from '../db';
 import { getSettings, updateSettings } from './settings';
-import { toast } from './events';
+import { toastError } from './events';
 import { alertTimes, typeInfo, type Reminder } from './reminders';
 import type { Lesson, Subject, TermCalendar } from './timetable';
 
@@ -218,8 +218,8 @@ export async function syncPush(force = false): Promise<void> {
   // Made for another key than the server's now: it could never deliver to it.
   if (s.pushPublicKey && !sameKey(sub, s.pushPublicKey)) {
     updateSettings({ pushEnabled: false });
-    toast('The push server’s key changed, so notifications are off. Turn them on again in Settings.', 'error');
-    return;
+    // Thrown, so a caller such as "Send a test" stops here; background syncs show it.
+    throw new KeyChangedError();
   }
   const [subjects, lessons, calendar, reminders] = await Promise.all([db.subjects.toArray(), db.lessons.toArray(), getTermCalendar(), db.reminders.toArray()]);
   const payload: PushPayload = {
@@ -239,8 +239,19 @@ export async function syncPush(force = false): Promise<void> {
   lastSent = body;
 }
 
+export class KeyChangedError extends Error {
+  constructor() {
+    super('The push server’s key changed, so notifications are off. Turn them on again in Settings.');
+  }
+}
+
+/** Syncs with nobody waiting on it: only a change the user must act on is shown. */
+export function syncInBackground() {
+  return syncPush().catch((e) => (e instanceof KeyChangedError ? toastError(e) : console.warn('Push sync failed', e)));
+}
+
 /** A change happened: sync a moment later, once the edits settle. */
 export function scheduleSync() {
   window.clearTimeout(timer);
-  timer = window.setTimeout(() => syncPush().catch((e) => console.warn('Push sync failed', e)), 2500);
+  timer = window.setTimeout(syncInBackground, 2500);
 }

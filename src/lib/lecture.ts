@@ -1,5 +1,5 @@
 /** Turbo-style pipeline: recording → state-of-the-art transcript → structured notes. */
-import { db, uid, type TranscriptSegment } from '../db';
+import { db, holdJob, uid, type TranscriptSegment } from '../db';
 import { lectureNotes, transcribe, transcriptToText } from './ai';
 import { chunkText } from './retrieval';
 import { hasKey } from './gemini';
@@ -20,6 +20,7 @@ export async function processLecture(noteId: string, opts: { context?: string; l
     await db.notes.update(noteId, { status: 'error', error: 'No Gemini key — saved the recording and live captions only.', content: html, text: live ?? '', updatedAt: Date.now() });
     return;
   }
+  const end = holdJob(noteId);
   try {
     let segs: TranscriptSegment[] | undefined = note.transcript?.length ? note.transcript : undefined;
     if (!segs) {
@@ -47,6 +48,8 @@ export async function processLecture(noteId: string, opts: { context?: string; l
   } catch (e) {
     await db.notes.update(noteId, { status: 'error', error: e instanceof Error ? e.message : String(e) });
     toastError(e);
+  } finally {
+    end();
   }
 }
 

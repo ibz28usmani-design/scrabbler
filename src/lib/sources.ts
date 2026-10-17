@@ -1,5 +1,5 @@
 /** Source ingestion: PDFs, text, websites, YouTube, audio and images. */
-import { db, deleteSource, putBlob, uid, type Source, type SourceKind } from '../db';
+import { db, deleteSource, holdJob, putBlob, uid, type Source, type SourceKind } from '../db';
 import { blobPart, generate, generateGrounded, hasKey, MissingKeyError } from './gemini';
 import { chunkText, type RawPage } from './retrieval';
 import { geminiMime } from './audio';
@@ -7,13 +7,29 @@ import { transcribe } from './ai';
 import { fmtClock } from './dates';
 import { toast, toastError } from './events';
 
+/** The claim on each source being read, ended by finish or fail. */
+const claims = new Map<string, () => void>();
+const endClaim = (id: string) => {
+  claims.get(id)?.();
+  claims.delete(id);
+};
+
 async function create(folderId: string, kind: SourceKind, title: string, extra: Partial<Source> = {}): Promise<Source> {
   const s: Source = { id: uid(), folderId, kind, title, text: '', status: 'processing', enabled: true, createdAt: Date.now(), ...extra };
+  claims.set(s.id, holdJob(s.id));
   await db.sources.add(s);
   return s;
 }
 
 async function finish(s: Source, pages: RawPage[], title?: string) {
+  try {
+    await store(s, pages, title);
+  } finally {
+    endClaim(s.id);
+  }
+}
+
+async function store(s: Source, pages: RawPage[], title?: string) {
   const text = pages.map((p) => p.text).join('\n\n').trim();
   if (!text) throw new Error('No readable text was found in this source.');
   const chunks = chunkText(pages).map((c) => ({ ...c, id: uid(), sourceId: s.id, folderId: s.folderId }));
@@ -27,6 +43,7 @@ async function finish(s: Source, pages: RawPage[], title?: string) {
 }
 
 async function fail(s: Source, e: unknown) {
+  endClaim(s.id);
   await db.sources.update(s.id, { status: 'error', error: e instanceof Error ? e.message : String(e) });
   toastError(e);
 }

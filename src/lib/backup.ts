@@ -17,8 +17,7 @@ export async function exportBackup(): Promise<Blob> {
   data.blobs = blobs.map(({ blob: _, ...meta }) => meta);
   zip.file('backup.json', JSON.stringify(data));
   // Already-compressed media gains nothing from deflate: store it as is.
-  // JSZip reads a Blob itself, one file at a time; without FileReader (tests) hand it the bytes.
-  for (const b of blobs) zip.file(`files/${b.id}`, typeof FileReader === 'undefined' ? await b.blob.arrayBuffer() : b.blob, { compression: 'STORE' });
+  for (const b of blobs) zip.file(`files/${b.id}`, b.blob, { compression: 'STORE' });
   return zip.generateAsync({ type: 'blob', mimeType: 'application/zip', compression: 'DEFLATE', streamFiles: true });
 }
 

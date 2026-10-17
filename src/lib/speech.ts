@@ -35,8 +35,9 @@ export function startLiveCaptions(
     };
     rec.onerror = (e: any) => {
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') stopped = true;
-      // Silence is routine; anything else repeating (offline, mic taken) won't fix itself.
-      else if (e.error !== 'no-speech' && ++failures >= 5) stopped = true;
+      // Silence is routine. Anything else (offline, mic busy) may pass, so keep
+      // trying, but ever more slowly, up to every 8 s.
+      else if (e.error !== 'no-speech') failures = Math.min(failures + 1, 5);
     };
     // Safari ends sessions after silence; restart until the user stops, backing off after errors.
     rec.onend = () => {

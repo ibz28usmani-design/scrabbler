@@ -1,4 +1,4 @@
-import { db, putBlob, uid, type StudioItem } from '../db';
+import { db, holdJob, putBlob, uid, type StudioItem } from '../db';
 import { generateMindMap, generatePodcastScript, generateStudioDoc, renderPodcastAudio, type PodcastLength } from './ai';
 import { toast, toastError } from './events';
 
@@ -17,6 +17,7 @@ const TITLES: Record<StudioItem['kind'], string> = {
 
 export async function runStudio(folderId: string, kind: StudioItem['kind'], opts: { length?: PodcastLength; focus?: string } = {}) {
   const id = uid();
+  const end = holdJob(id);
   await db.studio.add({ id, folderId, kind, title: TITLES[kind], status: 'working', progress: kind === 'podcast' ? 'Writing the script…' : 'Reading your sources…', createdAt: Date.now() });
   try {
     if (kind === 'mindmap') {
@@ -35,6 +36,8 @@ export async function runStudio(folderId: string, kind: StudioItem['kind'], opts
   } catch (e) {
     await patch(id, { status: 'error', error: e instanceof Error ? e.message : String(e) });
     toastError(e);
+  } finally {
+    end();
   }
 }
 
@@ -42,6 +45,7 @@ export async function runStudio(folderId: string, kind: StudioItem['kind'], opts
 export async function renderPodcastVoices(id: string) {
   const item = await db.studio.get(id);
   if (!item?.script) return;
+  const end = holdJob(id);
   await patch(id, { status: 'working', progress: 'Recording voices…', error: undefined });
   try {
     const wav = await renderPodcastAudio(item.script, (done, total) => {
@@ -58,5 +62,7 @@ export async function renderPodcastVoices(id: string) {
       error: `Studio voices unavailable (${e instanceof Error ? e.message : e}). You can play it with your device's voices.`,
     });
     toast('Script ready — studio voices hit a limit, so it will play with device voices.', 'info');
+  } finally {
+    end();
   }
 }

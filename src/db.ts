@@ -292,38 +292,45 @@ const BUSY_NOTE = ['recording', 'transcribing', 'writing'];
 // Typed loosely: Dexie's key-path types recurse on MindNode.
 const studioTable = () => db.studio as any;
 
-/** How many jobs are under way: transcribing or writing a lecture, reading a source, making a studio item. */
-export async function inFlight(): Promise<number> {
-  const [n, s, st] = await Promise.all([db.notes.where('status').anyOf(BUSY_NOTE).count(), db.sources.where('status').equals('processing').count(), studioTable().where('status').equals('working').count()]);
-  return n + s + st;
-}
+const JOB_LOCK = 'scrabbler-job:';
+const locks = () => (typeof navigator !== 'undefined' ? navigator.locks : undefined);
+let jobs = 0;
 
-const TAB_LOCK = 'scrabbler-open';
+/** Long jobs this tab is running now: not the moment to reload for an update. */
+export const runningJobs = () => jobs;
 
 /**
- * Holds a lock for as long as this tab is open, and says whether another tab
- * already held one — whose jobs, then, may well still be running.
+ * Claims a long job (a transcription, a source being read, a studio item) for
+ * this tab while it runs, so another tab starting up leaves it alone. Returns
+ * the function that ends the claim.
  */
-async function otherTabsOpen(): Promise<boolean> {
-  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
-  if (!locks) return false;
-  const { held = [] } = await locks.query();
-  void locks.request(TAB_LOCK, { mode: 'shared' }, () => new Promise(() => {}));
-  return held.some((l) => l.name === TAB_LOCK);
+export function holdJob(id: ID): () => void {
+  jobs++;
+  let release!: () => void;
+  const done = new Promise<void>((r) => (release = r));
+  locks()?.request(JOB_LOCK + id, () => done).catch(() => {});
+  let ended = false;
+  return () => {
+    if (ended) return;
+    ended = true;
+    jobs--;
+    release();
+  };
 }
 
 /**
  * Work the app was doing when it was closed (transcribing, writing notes,
  * reading a source, making a studio item) never finishes. Mark it failed so it
- * offers a retry instead of a spinner for ever — unless another open tab may
- * still be doing it.
+ * offers a retry instead of a spinner for ever — each job, unless a tab still
+ * open holds its claim.
  */
 export async function failInterrupted() {
-  if (await otherTabsOpen()) return;
+  const held = new Set(((await locks()?.query())?.held ?? []).map((l) => l.name));
+  const orphan = (row: { id: ID }) => !held.has(JOB_LOCK + row.id);
   const error = 'Interrupted when the app closed. Try again.';
-  await db.notes.where('status').anyOf(BUSY_NOTE).modify({ status: 'error', error });
-  await db.sources.where('status').equals('processing').modify({ status: 'error', error });
-  await studioTable().where('status').equals('working').modify({ status: 'error', error });
+  await db.notes.where('status').anyOf(BUSY_NOTE).filter(orphan).modify({ status: 'error', error });
+  await db.sources.where('status').equals('processing').filter(orphan).modify({ status: 'error', error });
+  await studioTable().where('status').equals('working').filter(orphan).modify({ status: 'error', error });
 }
 
 export async function getMeta<T>(key: string, fallback: T): Promise<T> {
