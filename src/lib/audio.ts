@@ -24,6 +24,10 @@ export interface RecorderHandle {
   readonly paused: boolean;
 }
 
+let recording = 0;
+/** A recording is running: not the moment to reload the app for an update. */
+export const isRecording = () => recording > 0;
+
 export async function startRecording(onLevel: (level: number) => void): Promise<RecorderHandle> {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
@@ -105,6 +109,8 @@ async function record(stream: MediaStream, ctx: AudioContext, onLevel: (level: n
     /* wake lock unsupported */
   }
 
+  let stopped = false;
+  recording++;
   return {
     get elapsed() {
       return elapsedMs / 1000;
@@ -120,6 +126,9 @@ async function record(stream: MediaStream, ctx: AudioContext, onLevel: (level: n
       lastTick = performance.now();
     },
     async stop() {
+      if (stopped) throw new Error('This recording has already been stopped.');
+      stopped = true;
+      recording--;
       src.disconnect();
       node.disconnect();
       stream.getTracks().forEach((t) => t.stop());

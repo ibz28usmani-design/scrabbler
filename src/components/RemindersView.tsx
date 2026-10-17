@@ -54,14 +54,27 @@ export const updateReminder = (id: string, patch: Partial<Reminder>) =>
   db.reminders.update(id, { ...('due' in patch && !('repeatDay' in patch) ? { repeatDay: undefined } : {}), ...patch, updatedAt: Date.now() });
 
 /** Completing a repeating reminder brings the next one in, as Apple's does. */
-export async function toggleComplete(r: Reminder) {
-  if (r.completed) return updateReminder(r.id, { completed: false, completedAt: undefined });
-  await updateReminder(r.id, { completed: true, completedAt: Date.now() });
-  if (r.repeat && r.due) {
-    const { id: _id, completedAt: _c, ...rest } = r;
-    const repeatDay = r.repeatDay ?? Number(r.due.slice(8));
-    await addReminder({ ...rest, completed: false, due: nextDue(r.due, r.repeat, repeatDay), repeatDay });
+export function toggleComplete(r: Reminder) {
+  // One at a time, reading the row fresh: a quick second tap still holds it as it was before the first.
+  return db.transaction('rw', db.reminders, db.reminderLists, () => toggle(r.id));
+}
+
+async function toggle(id: string) {
+  const now = await db.reminders.get(id);
+  if (!now) return;
+  if (now.completed) {
+    // Undo: the next occurrence it brought in goes, unless it has been touched since.
+    const next = now.nextId ? await db.reminders.get(now.nextId) : undefined;
+    if (next && !next.completed && next.updatedAt === next.createdAt) await db.reminders.delete(next.id);
+    return updateReminder(id, { completed: false, completedAt: undefined, nextId: undefined });
   }
+  if (now.repeat && now.due) {
+    const { id: _id, completedAt: _c, nextId: _n, ...rest } = now;
+    const repeatDay = now.repeatDay ?? Number(now.due.slice(8));
+    const next = await addReminder({ ...rest, completed: false, due: nextDue(now.due, now.repeat, repeatDay), repeatDay });
+    return updateReminder(id, { completed: true, completedAt: Date.now(), nextId: next.id });
+  }
+  await updateReminder(id, { completed: true, completedAt: Date.now() });
 }
 
 // ------------------------------------------------------------------ icons

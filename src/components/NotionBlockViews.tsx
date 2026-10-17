@@ -228,7 +228,8 @@ export async function openNote(id: string) {
 
 function NoteLinkView({ node }: NodeViewProps) {
   const id: string = node.attrs.id;
-  const note = useLiveQuery(() => db.notes.get(id), [id]);
+  // null once looked up and not there; undefined only while loading.
+  const note = useLiveQuery(async () => (await db.notes.get(id)) ?? null, [id]);
   const gone = note === undefined ? false : !note || !!note.deletedAt;
   const title = (note?.title || node.attrs.title || 'Untitled').trim() || 'Untitled';
   return (
@@ -361,7 +362,8 @@ const FILE_GLYPH: Record<string, string> = { pdf: 'PDF', video: 'â–¶', audio: 'â
 
 function AttachmentView({ node, selected, editor, deleteNode }: NodeViewProps) {
   const { blobId, name, mime, size } = node.attrs as { blobId: string; name: string; mime: string; size: number };
-  const stored = useLiveQuery(() => (blobId ? db.blobs.get(blobId) : undefined), [blobId]);
+  // null once looked up and not there; undefined only while loading.
+  const stored = useLiveQuery(async () => (blobId ? ((await db.blobs.get(blobId)) ?? null) : null), [blobId]);
   const missing = stored === undefined ? false : !stored;
   const blob = stored?.blob;
   const url = useObjectUrl(blob);

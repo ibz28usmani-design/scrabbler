@@ -45,14 +45,17 @@ export function AIToolsButton({ editor, note }: { editor: Editor; note: Note }) 
     if (!text.trim()) return toast('Write something first, or select text to transform.', 'info');
     const range = empty ? { from: editor.state.doc.content.size, to: editor.state.doc.content.size } : { from, to };
     const replace = !empty && tool !== 'continue' && tool !== 'actions';
-    setResult({ title: tool === 'custom' ? instruction! : WRITING_TOOLS[tool].label, md: null, replace, range });
-    abort.current = new AbortController();
+    const mine = { title: tool === 'custom' ? instruction! : WRITING_TOOLS[tool].label, md: null, replace, range };
+    setResult(mine);
+    abort.current?.abort();
+    const ctrl = (abort.current = new AbortController());
     try {
-      const md = await runWritingTool(tool, text, instruction, abort.current.signal);
-      setResult((r) => (r ? { ...r, md } : r));
+      const md = await runWritingTool(tool, text, instruction, ctrl.signal);
+      // Only into this run's result: a newer run may have replaced it meanwhile.
+      setResult((r) => (r === mine ? { ...r, md } : r));
     } catch (e) {
       toastError(e);
-      setResult(null);
+      setResult((r) => (r === mine ? null : r));
     }
   };
 

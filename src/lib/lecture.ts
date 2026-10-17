@@ -42,7 +42,7 @@ export async function processLecture(noteId: string, opts: { context?: string; l
       text: plain,
       updatedAt: Date.now(),
     });
-    await addTranscriptSource(note.folderId, title, segs);
+    await addTranscriptSource(note.folderId, noteId, title, segs);
     toast('Lecture notes are ready ✦', 'success');
   } catch (e) {
     await db.notes.update(noteId, { status: 'error', error: e instanceof Error ? e.message : String(e) });
@@ -50,12 +50,16 @@ export async function processLecture(noteId: string, opts: { context?: string; l
   }
 }
 
-async function addTranscriptSource(folderId: string, title: string, segs: TranscriptSegment[]) {
+async function addTranscriptSource(folderId: string, noteId: string, title: string, segs: TranscriptSegment[]) {
   const text = segs.map((s) => `[${fmtClock(s.start)}] ${s.speaker ? s.speaker + ': ' : ''}${s.text}`).join('\n\n');
   const id = uid();
   const chunks = chunkText([{ text }]).map((c) => ({ ...c, id: uid(), sourceId: id, folderId }));
   await db.transaction('rw', db.sources, db.chunks, async () => {
-    await db.sources.add({ id, folderId, kind: 'audio', title: `${title} (transcript)`, text, status: 'ready', enabled: true, createdAt: Date.now() });
+    // Rewriting the notes replaces this lecture's transcript rather than adding another copy.
+    const old = await db.sources.where('folderId').equals(folderId).filter((s) => s.noteId === noteId || (!s.noteId && s.kind === 'audio' && s.text === text)).primaryKeys();
+    await db.chunks.where('sourceId').anyOf(old).delete();
+    await db.sources.bulkDelete(old);
+    await db.sources.add({ id, folderId, noteId, kind: 'audio', title: `${title} (transcript)`, text, status: 'ready', enabled: true, createdAt: Date.now() });
     await db.chunks.bulkAdd(chunks);
   });
 }

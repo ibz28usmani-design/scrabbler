@@ -426,7 +426,8 @@ export function InkToolbar({
   if (asCircle) {
     return (
       <div className={cls} {...place} ref={dock} {...dragProps}>
-        <button className="ink-mini glass" aria-label={`${labelFor(tool.tool)} — show drawing tools`} title="Show drawing tools (drag to move)">
+        {/* A tap on a floating circle is also seen by the drag, which opens it too; the click covers inline sketches and the keyboard. */}
+        <button className="ink-mini glass" onClick={() => setOpen(true)} aria-label={`${labelFor(tool.tool)} — show drawing tools`} title={floating ? 'Show drawing tools (drag to move)' : 'Show drawing tools'}>
           {iconFor(tool.tool)}
           {tool.tool !== 'eraser' && tool.tool !== 'lasso' && <span className="tool-ink" style={{ ['--sw' as string]: swatch }} />}
         </button>

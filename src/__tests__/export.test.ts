@@ -65,6 +65,16 @@ describe('export IR', () => {
     expect(titleOf(blocks, 'x')).toBe('Contract law');
   });
 
+  it('keeps backticks and bracketed links intact in Markdown', () => {
+    const md = toMarkdown([
+      { type: 'paragraph', runs: [{ text: 'a`b', code: true }, { text: ' and ' }, { text: 'Set', href: 'https://en.wikipedia.org/wiki/Set_(mathematics)' }] },
+      { type: 'code', text: 'echo ```' },
+    ] as Block[]);
+    expect(md).toContain('``a`b``');
+    expect(md).toContain('[Set](https://en.wikipedia.org/wiki/Set_%28mathematics%29)');
+    expect(md).toContain('````\necho ```\n````');
+  });
+
   it('writes Markdown, text, HTML and RTF', () => {
     const md = toMarkdown(blocks);
     expect(md).toContain('# Contract law');

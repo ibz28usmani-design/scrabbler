@@ -163,7 +163,13 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
             view === 'deleted'
               ? [
                   { label: 'Recover', onClick: () => restoreNote(menu.note.id) },
-                  { label: 'Delete permanently', danger: true, onClick: () => deleteNotesForever([menu.note.id]) },
+                  {
+                    label: 'Delete permanently',
+                    danger: true,
+                    onClick: async () => {
+                      if (await confirmDialog('Delete this note for good? This can’t be undone.', 'Delete permanently')) await deleteNotesForever([menu.note.id]);
+                    },
+                  },
                 ]
               : [
                   { label: menu.note.pinned ? 'Unpin' : 'Pin', icon: <IPin size={17} />, onClick: () => db.notes.update(menu.note.id, { pinned: !menu.note.pinned }) },

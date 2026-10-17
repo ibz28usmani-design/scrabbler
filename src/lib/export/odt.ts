@@ -74,10 +74,11 @@ class Writer {
           }
           case 'list': {
             const style = b.style === 'ordered' ? 'LNumber' : b.style === 'task' ? 'LTask' : 'LBullet';
+            const first = b.style === 'ordered' && (b.start ?? 1) !== 1 ? ` text:start-value="${b.start}"` : '';
             const items = b.items
-              .map((it) => {
+              .map((it, i) => {
                 const box = b.style === 'task' ? (it.checked ? '☑ ' : '☐ ') : '';
-                return `<text:list-item><text:p text:style-name="${P}">${box}${this.runs(it.runs)}</text:p>${this.blocks(it.children, images, quote)}</text:list-item>`;
+                return `<text:list-item${i === 0 ? first : ''}><text:p text:style-name="${P}">${box}${this.runs(it.runs)}</text:p>${this.blocks(it.children, images, quote)}</text:list-item>`;
               })
               .join('');
             const start = b.style === 'ordered' && (b.start ?? 1) !== 1 ? ` text:continue-numbering="false"` : '';

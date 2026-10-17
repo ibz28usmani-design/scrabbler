@@ -117,10 +117,21 @@ async function turnIntoPage(editor: Editor, host: SlashHost | undefined) {
   const page = await createNote(host.folderId, { title, text: node.textContent, content: { type: 'doc', content: body.map((n) => n.toJSON()) } }, false);
   const link = schema.nodes.noteLink.create({ id: page.id, title });
   const line = schema.nodes.paragraph.create(null, link);
-  const fresh = editor.state.doc.nodeAt(ref.pos);
-  if (!fresh) return;
+  // The document may have moved on while the page was made: find this very
+  // block again (nodes are immutable, so an untouched block is the same object)
+  // rather than replacing whatever now sits at its old position.
+  let at = !editor.isDestroyed && editor.state.doc.nodeAt(ref.pos) === node ? ref.pos : -1;
+  if (at < 0 && !editor.isDestroyed)
+    editor.state.doc.descendants((n, pos) => {
+      if (at >= 0) return false;
+      if (n === node) at = pos;
+    });
+  if (at < 0) {
+    toast('The page was made, but the block changed meanwhile, so it’s still here. Find the page in this folder.', 'info');
+    return;
+  }
   const replacement = isItem ? node.type.create(node.type.name === 'taskItem' ? { checked: false } : null, line) : line;
-  editor.view.dispatch(editor.state.tr.replaceWith(ref.pos, ref.pos + fresh.nodeSize, replacement));
+  editor.view.dispatch(editor.state.tr.replaceWith(at, at + node.nodeSize, replacement));
   toast('Turned into a page — tap the link to open it.', 'success');
 }
 

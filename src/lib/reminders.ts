@@ -36,6 +36,8 @@ export interface Reminder {
   repeat?: Repeat;
   /** The day of the month a monthly or yearly repeat keeps to, so 31 Jan → 28 Feb → 31 Mar. */
   repeatDay?: number;
+  /** The next one completing this repeating reminder brought in, so undoing that takes it away again. */
+  nextId?: string;
   /** Alert this many minutes before the due time as well. */
   early?: number;
   order: number;

@@ -53,14 +53,16 @@ export function InkEditor({ note, narrow, wide }: { note: Note; narrow: boolean;
     timer.current = window.setTimeout(save, 350);
   };
 
-  // Flush unsaved ink when leaving the note.
-  useEffect(
-    () => () => {
+  // Flush unsaved ink when leaving the note, or when the app is put away.
+  useEffect(() => {
+    const onHide = () => document.visibilityState === 'hidden' && timer.current && save();
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
       if (timer.current) save();
-    },
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+  }, []);
 
   const changePaper = (p: Paper) => {
     setPaper(p);

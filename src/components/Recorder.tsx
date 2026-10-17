@@ -7,6 +7,8 @@ import { processLecture } from '../lib/lecture';
 import { closeModal } from '../lib/nav';
 import { fmtClock } from '../lib/dates';
 import { toastError } from '../lib/events';
+import { download } from '../lib/backup';
+import { escapeHtml } from '../lib/markdown';
 import { useSettings, updateSettings } from '../lib/settings';
 import { hasKey } from '../lib/gemini';
 import { Modal, confirmDialog } from './ui';
@@ -44,7 +46,11 @@ export function Recorder({ folderId }: { folderId: string }) {
     [],
   );
 
+  const starting = useRef(false);
   const start = async () => {
+    // A second tap while the mic permission resolves would start a recorder nobody stops.
+    if (starting.current || rec.current) return;
+    starting.current = true;
     try {
       let last = 0;
       rec.current = await startRecording((lvl) => {
@@ -57,38 +63,54 @@ export function Recorder({ folderId }: { folderId: string }) {
       setPhase('recording');
     } catch (e) {
       toastError(new Error(`Microphone unavailable: ${(e as Error).message}. Allow microphone access in Settings › Safari.`));
+    } finally {
+      starting.current = false;
     }
   };
 
   const finish = async () => {
-    if (!rec.current) return;
+    const r = rec.current;
+    if (!r) return;
+    rec.current = null;
     setPhase('saving');
     live.current?.stop();
-    const duration = rec.current.elapsed;
-    const blob = await rec.current.stop();
-    rec.current = null;
+    const duration = r.elapsed;
     const name = title.trim() || `Lecture ${new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
-    const blobId = await putBlob(blob, `${name}.mp3`);
-    const note = await createNote(folderId, {
-      kind: 'lecture',
-      title: name,
-      snippet: `Recording · ${fmtClock(duration)}`,
-      audioBlobId: blobId,
-      status: 'transcribing',
-      content: `<h1>${name.replace(/</g, '&lt;')}</h1><p></p>`,
-    });
-    closeModal();
-    processLecture(note.id, { context: context.trim() || undefined, liveText: caption.final });
+    let blob: Blob | null = null;
+    try {
+      blob = await r.stop();
+      const blobId = await putBlob(blob, `${name}.mp3`);
+      const note = await createNote(folderId, {
+        kind: 'lecture',
+        title: name,
+        snippet: `Recording · ${fmtClock(duration)}`,
+        audioBlobId: blobId,
+        status: 'transcribing',
+        content: `<h1>${escapeHtml(name)}</h1><p></p>`,
+      });
+      closeModal();
+      processLecture(note.id, { context: context.trim() || undefined, liveText: caption.final });
+    } catch (e) {
+      toastError(e);
+      // Storage full, most likely: hand the recording over as a file rather than lose it.
+      if (blob) download(blob, `${name}.mp3`);
+      closeModal();
+    }
   };
 
   const upload = async (file: File) => {
     setPhase('saving');
     const name = title.trim() || file.name.replace(/\.[^.]+$/, '');
-    const typed = new File([file], file.name, { type: geminiMime(file) });
-    const blobId = await putBlob(typed, file.name);
-    const note = await createNote(folderId, { kind: 'lecture', title: name, snippet: 'Uploaded recording', audioBlobId: blobId, status: 'transcribing', content: `<h1>${name.replace(/</g, '&lt;')}</h1><p></p>` });
-    closeModal();
-    processLecture(note.id, { context: context.trim() || undefined });
+    try {
+      const typed = new File([file], file.name, { type: geminiMime(file) });
+      const blobId = await putBlob(typed, file.name);
+      const note = await createNote(folderId, { kind: 'lecture', title: name, snippet: 'Uploaded recording', audioBlobId: blobId, status: 'transcribing', content: `<h1>${escapeHtml(name)}</h1><p></p>` });
+      closeModal();
+      processLecture(note.id, { context: context.trim() || undefined });
+    } catch (e) {
+      toastError(e);
+      setPhase('setup');
+    }
   };
 
   const close = async () => {

@@ -64,6 +64,8 @@ export interface Source {
   title: string;
   text: string;
   url?: string;
+  /** The lecture a transcript source came from, so rewriting its notes replaces it. */
+  noteId?: ID;
   /** What a web-research (Discover) source looked into, so it can be retried. */
   topic?: string;
   blobId?: ID;
@@ -279,6 +281,19 @@ export async function sweepAttachments(now = Date.now()) {
   return orphans.length;
 }
 
+/**
+ * Work the app was doing when it was closed (transcribing, writing notes,
+ * reading a source, making a studio item) never finishes. Mark it failed so it
+ * offers a retry instead of a spinner for ever.
+ */
+export async function failInterrupted() {
+  const error = 'Interrupted when the app closed. Try again.';
+  await db.notes.filter((n) => n.status === 'recording' || n.status === 'transcribing' || n.status === 'writing').modify({ status: 'error', error });
+  await db.sources.filter((s) => s.status === 'processing').modify({ status: 'error', error });
+  // Typed loosely: Dexie's key-path types recurse on MindNode.
+  await (db.studio as any).filter((s: StudioItem) => s.status === 'working').modify({ status: 'error', error });
+}
+
 export async function getMeta<T>(key: string, fallback: T): Promise<T> {
   const row = await db.meta.get(key);
   return (row?.value as T) ?? fallback;
@@ -303,6 +318,7 @@ export async function initDb() {
   if (old.length) await deleteNotesForever(old.map((n) => n.id));
   await migrateHandwrittenNotes();
   await sweepAttachments();
+  await failInterrupted();
   await seedCalendar();
 }
 

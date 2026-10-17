@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { db, type Note } from '../db';
 import { processLecture } from '../lib/lecture';
 import { fmtClock } from '../lib/dates';
-import { Spinner, useObjectUrl } from './ui';
+import { confirmDialog, Spinner, useObjectUrl } from './ui';
 import { IChevD, IChevR, IRefresh, ISparkle, ICopy } from './Icons';
 import { toast } from '../lib/events';
 
@@ -75,7 +75,13 @@ export function LecturePanel({ note }: { note: Note }) {
               <ICopy size={16} />
             </button>
             {!busy && (
-              <button className="icon-btn small" title="Rewrite notes from transcript" onClick={() => processLecture(note.id)}>
+              <button
+                className="icon-btn small"
+                title="Rewrite notes from transcript"
+                onClick={async () => {
+                  if (await confirmDialog('Write the notes again from the transcript? This replaces the note, including any edits you made.', 'Rewrite')) processLecture(note.id);
+                }}
+              >
                 <IRefresh size={16} />
               </button>
             )}

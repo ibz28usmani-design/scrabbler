@@ -101,7 +101,8 @@ function Podcast({ item }: { item: StudioItem }) {
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [deviceIdx, setDeviceIdx] = useState<number | null>(null);
-  const stopRef = useRef(false);
+  /** Which device-voice playback is current; any other loop still awaiting a line stops. */
+  const run = useRef(0);
   const { hostA } = useSettings();
   const lines = item.script ?? [];
   const lineRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -125,7 +126,7 @@ function Podcast({ item }: { item: StudioItem }) {
 
   useEffect(
     () => () => {
-      stopRef.current = true;
+      run.current++;
       if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
     },
     [],
@@ -133,21 +134,21 @@ function Podcast({ item }: { item: StudioItem }) {
 
   const playDevice = async (from = 0) => {
     audio.current?.pause();
-    stopRef.current = false;
+    const me = ++run.current;
     const voices = deviceVoices();
     const vA = voices[0];
     const vB = voices.find((v) => v.name !== vA?.name && v.name.split(' ')[0] !== vA?.name.split(' ')[0]) ?? voices[1] ?? vA;
     for (let i = from; i < lines.length; i++) {
-      if (stopRef.current) break;
+      if (run.current !== me) return;
       setDeviceIdx(i);
       const isA = lines[i].speaker === hostA;
       await speakLine(lines[i].text, isA ? vA : vB, 1.03, isA ? 1 : 1.08);
     }
-    setDeviceIdx(null);
+    if (run.current === me) setDeviceIdx(null);
   };
 
   const stopDevice = () => {
-    stopRef.current = true;
+    run.current++;
     speechSynthesis.cancel();
     setDeviceIdx(null);
   };
@@ -200,7 +201,7 @@ function Podcast({ item }: { item: StudioItem }) {
             onClick={() => {
               if (deviceIdx !== null) {
                 stopDevice();
-                setTimeout(() => playDevice(i), 50);
+                playDevice(i);
               } else if (audio.current && duration) {
                 audio.current.currentTime = offsets[i] * duration;
                 audio.current.play();

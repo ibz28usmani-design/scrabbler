@@ -5,7 +5,7 @@ import { listModels as listCompatModels, looksMultimodal, pickModel, PRESETS, pr
 import { listModels, type ModelInfo } from '../lib/gemini';
 import { download, eraseEverything, exportBackup, importBackup } from '../lib/backup';
 import { toast, toastError } from '../lib/events';
-import { confirmDialog, Modal, Segmented, Spinner } from './ui';
+import { confirmDialog, DraftInput, Modal, Segmented, Spinner } from './ui';
 import { ICheck, IDownload, IUpload } from './Icons';
 import { NotificationSettings } from './NotificationSettings';
 
@@ -239,7 +239,7 @@ export function SettingsModal() {
           <label className="field">
             <span>Host 1</span>
             <div className="row">
-              <input className="input" value={s.hostA} onChange={(e) => updateSettings({ hostA: e.target.value || 'Alex' })} />
+              <DraftInput className="input" value={s.hostA} onValue={(v) => v.trim() && updateSettings({ hostA: v })} />
               <select className="input" value={s.voiceA} onChange={(e) => updateSettings({ voiceA: e.target.value })}>
                 {GEMINI_VOICES.map((v) => (
                   <option key={v}>{v}</option>
@@ -250,7 +250,7 @@ export function SettingsModal() {
           <label className="field">
             <span>Host 2</span>
             <div className="row">
-              <input className="input" value={s.hostB} onChange={(e) => updateSettings({ hostB: e.target.value || 'Sam' })} />
+              <DraftInput className="input" value={s.hostB} onValue={(v) => v.trim() && updateSettings({ hostB: v })} />
               <select className="input" value={s.voiceB} onChange={(e) => updateSettings({ voiceB: e.target.value })}>
                 {GEMINI_VOICES.map((v) => (
                   <option key={v}>{v}</option>
@@ -296,11 +296,11 @@ export function SettingsModal() {
         <div className="grid2">
           <label className="field">
             <span>Daily goal (cards)</span>
-            <input className="input" type="number" min={5} max={500} value={s.dailyGoal} onChange={(e) => updateSettings({ dailyGoal: Math.max(1, Number(e.target.value) || 20) })} />
+            <DraftInput className="input" type="number" min={1} max={500} value={String(s.dailyGoal)} onValue={(v) => Number(v) >= 1 && updateSettings({ dailyGoal: Math.min(500, Math.round(Number(v))) })} />
           </label>
           <label className="field">
             <span>New cards per day</span>
-            <input className="input" type="number" min={0} max={500} value={s.newPerDay} onChange={(e) => updateSettings({ newPerDay: Math.max(0, Number(e.target.value) || 0) })} />
+            <DraftInput className="input" type="number" min={0} max={500} value={String(s.newPerDay)} onValue={(v) => v.trim() !== '' && Number(v) >= 0 && updateSettings({ newPerDay: Math.min(500, Math.round(Number(v))) })} />
           </label>
         </div>
       </section>
@@ -346,7 +346,9 @@ export function SettingsModal() {
               hidden
               onChange={async (e) => {
                 const f = e.target.files?.[0];
+                e.target.value = '';
                 if (!f) return;
+                if (!(await confirmDialog('Restore this backup? Notes, cards and reminders in it replace the versions on this device, even if those are newer.', 'Restore'))) return;
                 try {
                   await importBackup(f);
                   toast('Backup restored', 'success');

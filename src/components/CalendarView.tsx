@@ -14,7 +14,7 @@ import { SYMONDS_CALENDAR_URL } from '../lib/symonds';
 import { toast } from '../lib/events';
 import { MonthPoster, MONTH_NAMES } from './MonthArt';
 import { NextClass } from './NextClass';
-import { confirmDialog, Menu, Modal, Segmented, useMenu } from './ui';
+import { confirmDialog, DraftInput, Menu, Modal, Segmented, useMenu } from './ui';
 import { IChevL, IChevR, IMore, ISidebar } from './Icons';
 import { addReminder, toggleComplete } from './RemindersView';
 
@@ -383,6 +383,12 @@ function DayDetail({ tt, day, today, reminders, onClose }: { tt: Timetable; day:
 
 function TimetableEditor({ tt, onClose }: { tt: Timetable; onClose: () => void }) {
   const update = (id: string, patch: Partial<Lesson>) => db.lessons.update(id, patch);
+  // A cleared picker, or an end before the start, would put a class alert at midnight.
+  const setTimes = (l: Lesson, start: string, end: string) => {
+    if (!start || !end) return;
+    if (end <= start) return toast('A lesson has to end after it starts.', 'error');
+    update(l.id, { start, end });
+  };
   const addLesson = (day: number) => db.lessons.add({ id: uid(), subjectId: tt.subjects[0]?.id ?? '', day, start: '09:00', end: '10:00' });
   const addSubject = async () => {
     const id = uid();
@@ -404,8 +410,8 @@ function TimetableEditor({ tt, onClose }: { tt: Timetable; onClose: () => void }
         {tt.subjects.map((s) => (
           <div key={s.id} className="tt-subject">
             <input type="color" value={s.color} onChange={(e) => db.subjects.update(s.id, { color: e.target.value })} aria-label={`${s.name} colour`} />
-            <input className="input" value={s.name} onChange={(e) => db.subjects.update(s.id, { name: e.target.value })} aria-label="Subject name" />
-            <input className="input short" value={s.short ?? ''} placeholder="Short" onChange={(e) => db.subjects.update(s.id, { short: e.target.value || undefined })} aria-label="Short name" />
+            <DraftInput className="input" value={s.name} onValue={(v) => v.trim() && db.subjects.update(s.id, { name: v })} aria-label="Subject name" />
+            <DraftInput className="input short" value={s.short ?? ''} placeholder="Short" onValue={(v) => db.subjects.update(s.id, { short: v || undefined })} aria-label="Short name" />
             <button className="icon-btn small danger" onClick={() => removeSubject(s)} aria-label={`Delete ${s.name}`}>
               ✕
             </button>
@@ -429,10 +435,10 @@ function TimetableEditor({ tt, onClose }: { tt: Timetable; onClose: () => void }
                     </option>
                   ))}
                 </select>
-                <input className="input time" type="time" value={l.start} onChange={(e) => update(l.id, { start: e.target.value })} aria-label="Starts" />
-                <input className="input time" type="time" value={l.end} onChange={(e) => update(l.id, { end: e.target.value })} aria-label="Ends" />
-                <input className="input" value={l.room ?? ''} placeholder="Room" onChange={(e) => update(l.id, { room: e.target.value })} aria-label="Room" />
-                <input className="input" value={l.teacher ?? ''} placeholder="Teacher" onChange={(e) => update(l.id, { teacher: e.target.value })} aria-label="Teacher" />
+                <DraftInput className="input time" type="time" value={l.start} onValue={(v) => setTimes(l, v, l.end)} aria-label="Starts" />
+                <DraftInput className="input time" type="time" value={l.end} onValue={(v) => setTimes(l, l.start, v)} aria-label="Ends" />
+                <DraftInput className="input" value={l.room ?? ''} placeholder="Room" onValue={(v) => update(l.id, { room: v })} aria-label="Room" />
+                <DraftInput className="input" value={l.teacher ?? ''} placeholder="Teacher" onValue={(v) => update(l.id, { teacher: v })} aria-label="Teacher" />
                 <button className="icon-btn small danger" onClick={() => db.lessons.delete(l.id)} aria-label="Delete lesson">
                   ✕
                 </button>

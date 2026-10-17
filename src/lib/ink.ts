@@ -431,7 +431,8 @@ export function intersects(a: Box, b: Box) {
 export function hitsStroke(st: Stroke, x: number, y: number, r: number) {
   const b = bbox(st);
   if (x < b.x0 - r || x > b.x1 + r || y < b.y0 - r || y > b.y1 + r) return false;
-  const rr = (r + st.s) ** 2;
+  // A highlighter is drawn four times its size wide, so its edge is 2s from the line.
+  const rr = (r + st.s * (st.t === 'marker' ? 2 : 1)) ** 2;
   for (let i = 0; i < st.p.length; i += 3) {
     const dx = st.p[i] - x;
     const dy = st.p[i + 1] - y;

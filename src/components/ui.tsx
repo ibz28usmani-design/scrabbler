@@ -1,7 +1,10 @@
-import { Component, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { Component, useEffect, useLayoutEffect, useRef, useState, type InputHTMLAttributes, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useToasts } from '../lib/events';
 import { IX } from './Icons';
+
+/** Open modals, newest last: Escape closes only the one on top. */
+const modalStack: object[] = [];
 
 export function Modal({
   title,
@@ -18,11 +21,18 @@ export function Modal({
   footer?: ReactNode;
   className?: string;
 }) {
+  const [self] = useState(() => ({}));
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    modalStack.push(self);
+    return () => {
+      modalStack.splice(modalStack.indexOf(self), 1);
+    };
+  }, [self]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && modalStack[modalStack.length - 1] === self && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, self]);
   return createPortal(
     <div className="modal-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className={`modal ${wide ? 'wide' : ''} ${className}`} role="dialog" aria-modal="true">
@@ -161,8 +171,15 @@ export function confirmDialog(message: string, dangerLabel = 'Delete'): Promise<
 
 export function ConfirmHost() {
   const [state, setState] = useState<{ msg: string; label: string; resolve: (v: boolean) => void } | null>(null);
+  const pending = useRef<((v: boolean) => void) | null>(null);
   useEffect(() => {
-    confirmImpl = (msg, label = 'Delete') => new Promise((resolve) => setState({ msg, label, resolve }));
+    confirmImpl = (msg, label = 'Delete') =>
+      new Promise((resolve) => {
+        // A newer question replaces one still open: answer that one "no" rather than leave it hanging.
+        pending.current?.(false);
+        pending.current = resolve;
+        setState({ msg, label, resolve });
+      });
     return () => {
       confirmImpl = null;
     };
@@ -170,6 +187,7 @@ export function ConfirmHost() {
   if (!state) return null;
   const done = (v: boolean) => {
     state.resolve(v);
+    if (pending.current === state.resolve) pending.current = null;
     setState(null);
   };
   return (
@@ -196,8 +214,14 @@ export function promptDialog(title: string, initial = '', placeholder?: string):
 
 export function PromptHost() {
   const [state, setState] = useState<{ title: string; value: string; placeholder?: string; resolve: (v: string | null) => void } | null>(null);
+  const pending = useRef<((v: string | null) => void) | null>(null);
   useEffect(() => {
-    promptImpl = (title, initial, placeholder) => new Promise((resolve) => setState({ title, value: initial, placeholder, resolve }));
+    promptImpl = (title, initial, placeholder) =>
+      new Promise((resolve) => {
+        pending.current?.(null);
+        pending.current = resolve;
+        setState({ title, value: initial, placeholder, resolve });
+      });
     return () => {
       promptImpl = null;
     };
@@ -205,6 +229,7 @@ export function PromptHost() {
   if (!state) return null;
   const done = (v: string | null) => {
     state.resolve(v);
+    if (pending.current === state.resolve) pending.current = null;
     setState(null);
   };
   return (
@@ -226,6 +251,39 @@ export function PromptHost() {
         </div>
       </form>
     </Modal>
+  );
+}
+
+/**
+ * An input over a stored value that catches up asynchronously (a live query),
+ * or that refuses some values (empty, out of range). It shows exactly what is
+ * typed and saves as it goes; once left, it shows what was actually stored.
+ * A plain controlled input there drops keystrokes while the store catches up.
+ */
+export function DraftInput({ value, onValue, ...rest }: Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> & { value: string; onValue: (v: string) => void }) {
+  const [draft, setDraft] = useState(value);
+  const editing = useRef(false);
+  useEffect(() => {
+    if (!editing.current) setDraft(value);
+  }, [value]);
+  return (
+    <input
+      {...rest}
+      value={draft}
+      onFocus={(e) => {
+        editing.current = true;
+        rest.onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        editing.current = false;
+        setDraft(value);
+        rest.onBlur?.(e);
+      }}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        onValue(e.target.value);
+      }}
+    />
   );
 }
 

@@ -6,12 +6,11 @@ import { folderMaterial, generateCards } from '../lib/ai';
 import { hasTextKey } from '../lib/llm';
 import { makeCard } from '../lib/study';
 import { parseAnki, parseDelimited, type ImportedDeck } from '../lib/importers';
-import { takePendingText } from '../lib/studyActions';
 import { toast, toastError } from '../lib/events';
 import { Modal, Segmented, Spinner } from './ui';
 import { ISparkle, IUpload } from './Icons';
 
-type From = { kind: 'note'; noteId: string } | { kind: 'folder'; folderId: string } | { kind: 'text' };
+type From = { kind: 'note'; noteId: string } | { kind: 'folder'; folderId: string } | { kind: 'text'; title?: string; text?: string };
 
 const ALL_TYPES: { t: CardType; label: string }[] = [
   { t: 'basic', label: 'Flashcards' },
@@ -42,9 +41,8 @@ export function GenerateDeckDialog({ from, quiz }: { from: From; quiz?: boolean 
         setMaterial(await folderMaterial(from.folderId));
         setTitle(f?.name ?? 'Notebook deck');
       } else {
-        const p = takePendingText();
-        setMaterial(p?.text ?? '');
-        setTitle(p?.title ?? '');
+        setMaterial(from.text ?? '');
+        setTitle(from.title ?? '');
       }
     })();
   }, [from]);
@@ -185,15 +183,25 @@ export function ImportDeckDialog() {
   const preview = tab === 'text' && text ? parseDelimited(text, termSep, cardSep) : [];
 
   const save = async (decks: ImportedDeck[]) => {
+    if (busy) return;
+    setBusy(true);
     let total = 0;
     let firstId = '';
-    for (const d of decks) {
-      const id = uid();
-      firstId ||= id;
-      await db.decks.add({ id, name: d.name, createdAt: Date.now(), emoji: '📥' });
-      const now = Date.now();
-      await db.cards.bulkAdd(d.cards.map((c, i) => makeCard(id, c, now + i)));
-      total += d.cards.length;
+    try {
+      // All or nothing, so a failure halfway leaves no half-made deck.
+      await db.transaction('rw', db.decks, db.cards, async () => {
+        for (const d of decks) {
+          const id = uid();
+          firstId ||= id;
+          await db.decks.add({ id, name: d.name, createdAt: Date.now(), emoji: '📥' });
+          const now = Date.now();
+          await db.cards.bulkAdd(d.cards.map((c, i) => makeCard(id, c, now + i)));
+          total += d.cards.length;
+        }
+      });
+    } catch (e) {
+      toastError(e);
+      return setBusy(false);
     }
     toast(`Imported ${total} cards into ${decks.length} deck${decks.length === 1 ? '' : 's'}`, 'success');
     closeModal();

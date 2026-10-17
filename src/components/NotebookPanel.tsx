@@ -11,7 +11,7 @@ import { mdToEditorHtml, mdToHtml } from '../lib/markdown';
 import { createNote } from '../lib/notes';
 import { toast, toastError } from '../lib/events';
 import { runStudio } from '../lib/studio';
-import { Empty, Menu, Modal, Segmented, Spinner, confirmDialog, promptDialog } from './ui';
+import { Empty, Menu, Modal, Segmented, Spinner, confirmDialog, promptDialog, useObjectUrl } from './ui';
 import { StudioViewer } from './StudioViewer';
 import {
   IBook, ISearch, ICards, IClock, ICopy, IDoc, IFile, IGrad, IHeadphones, IImage, ILink, IMic, IMind, IMore, IPlus, IQuestion, IRefresh, ISend, ISparkle, IStop, IText, ITrash, IUpload, IX, IYouTube,
@@ -247,6 +247,7 @@ export function SourceViewer({ sourceId, chunkId, onClose }: { sourceId: string;
   const note = useLiveQuery(() => (isNote ? db.notes.get(sourceId.split(':')[1]) : undefined), [sourceId]);
   const chunks = useLiveQuery<Chunk[]>(() => (isNote ? Promise.resolve([]) : db.chunks.where('sourceId').equals(sourceId).sortBy('idx')), [sourceId]) ?? [];
   const blob = useLiveQuery(() => (source?.blobId ? db.blobs.get(source.blobId) : undefined), [source?.blobId]);
+  const blobUrl = useObjectUrl(blob?.blob);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [summary, setSummary] = useState<string | null>(source?.summary ?? null);
   const [busy, setBusy] = useState(false);
@@ -301,8 +302,8 @@ export function SourceViewer({ sourceId, chunkId, onClose }: { sourceId: string;
             <ILink size={15} /> Open link
           </a>
         )}
-        {blob && (
-          <a className="btn small" href={URL.createObjectURL(blob.blob)} target="_blank" rel="noreferrer">
+        {blobUrl && (
+          <a className="btn small" href={blobUrl} target="_blank" rel="noreferrer">
             <IFile size={15} /> Open original
           </a>
         )}
@@ -329,7 +330,20 @@ export function SourceViewer({ sourceId, chunkId, onClose }: { sourceId: string;
 
 function withCitations(html: string, citations: Citation[]): string {
   const known = new Set(citations.map((c) => c.n));
-  return html.replace(/\[(\d+(?:\s*[,–-]\s*\d+)*)\]/g, (m, inner: string) => {
+  // Only in text between tags, and never inside code: `arr[1]` is not a citation.
+  let inCode = 0;
+  return html.replace(/(<[^>]*>)|([^<]+)/g, (_, tag: string | undefined, text: string | undefined) => {
+    if (tag) {
+      if (/^<(code|pre)\b/i.test(tag)) inCode++;
+      else if (/^<\/(code|pre)>/i.test(tag)) inCode = Math.max(0, inCode - 1);
+      return tag;
+    }
+    return inCode ? text! : citeText(text!, known);
+  });
+}
+
+function citeText(text: string, known: Set<number>): string {
+  return text.replace(/\[(\d+(?:\s*[,–-]\s*\d+)*)\]/g, (m, inner: string) => {
     const nums = inner.split(/\s*,\s*/).flatMap((p) => {
       const r = p.split(/[–-]/).map((x) => parseInt(x, 10));
       if (r.length === 2 && r[1] >= r[0] && r[1] - r[0] < 20) return Array.from({ length: r[1] - r[0] + 1 }, (_, i) => r[0] + i);
