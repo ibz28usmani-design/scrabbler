@@ -1,6 +1,6 @@
 /** High-level AI features built on the Gemini client. */
 import { db, type CardType, type Citation, type ChatMessage, type MindNode, type PodcastLine, type StudioKind, type TranscriptSegment } from '../db';
-import { blobPart, S, tts, type Content } from './gemini';
+import { blobPart, INLINE_LIMIT, S, tts, type Content } from './gemini';
 import { generate, generateJSON, imagePart, stream } from './llm';
 import { citedNumbers, chunkText, sampleChunks, selectChunks } from './retrieval';
 import { getSettings } from './settings';
@@ -361,11 +361,13 @@ export async function folderMaterial(folderId: string): Promise<string> {
 }
 
 export async function gradeTyped(question: string, expected: string, given: string): Promise<{ correct: boolean; feedback: string }> {
-  return generateJSON({
+  const r = await generateJSON<{ correct: unknown; feedback: unknown }>({
     prompt: `Flashcard question: ${question}\nExpected answer: ${expected}\nStudent answered: ${given}\n\nIs the student's answer correct in meaning (ignore spelling slips, synonyms and word order)? Give one short sentence of feedback.`,
     schema: S.obj({ correct: S.bool(), feedback: S.str() }),
     temperature: 0,
   });
+  // Models without schema enforcement may answer "false" as a string, which would count as true.
+  return { correct: r?.correct === true || r?.correct === 'true', feedback: typeof r?.feedback === 'string' ? r.feedback : '' };
 }
 
 export async function explainCard(question: string, answer: string, given?: string): Promise<string> {
@@ -421,7 +423,9 @@ export type TranscribeStyle = 'formatted' | 'plain';
  * "plain" returns just the words in paragraphs.
  */
 export async function transcribeHandwriting(pages: Blob[], style: TranscribeStyle, paper: string, signal?: AbortSignal): Promise<string> {
-  const parts = await Promise.all(pages.map((p, i) => imagePart(p, 'image/png', `page-${i + 1}.png`)));
+  // Pages small enough one by one can still pass the request limit together: upload them then.
+  const inline = pages.reduce((n, p) => n + p.size, 0) <= INLINE_LIMIT ? undefined : false;
+  const parts = await Promise.all(pages.map((p, i) => imagePart(p, 'image/png', `page-${i + 1}.png`, signal, inline)));
   const cornell =
     paper === 'cornell'
       ? `\n- These are Cornell notes. Each page has a TOPIC/DATE header, a narrow left CUES column, a wide right NOTES column and a SUMMARY band at the bottom. For each page output "## Cues", "## Notes" and "## Summary" sections (omit any that are empty), and put the topic as a "# " heading when one is written.`

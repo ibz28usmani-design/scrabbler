@@ -18,6 +18,8 @@ async function finish(s: Source, pages: RawPage[], title?: string) {
   if (!text) throw new Error('No readable text was found in this source.');
   const chunks = chunkText(pages).map((c) => ({ ...c, id: uid(), sourceId: s.id, folderId: s.folderId }));
   await db.transaction('rw', db.sources, db.chunks, async () => {
+    // Deleted (or its notebook was) while it was being read.
+    if (!(await db.sources.get(s.id))) return;
     await db.chunks.where('sourceId').equals(s.id).delete();
     await db.chunks.bulkAdd(chunks);
     await db.sources.update(s.id, { text, status: 'ready', error: undefined, ...(title ? { title } : {}) });
@@ -112,7 +114,7 @@ export async function addUrl(folderId: string, rawUrl: string) {
 
 /** NotebookLM-style "Discover": researches a topic on the live web and saves a cited brief as a source. */
 export async function addDiscover(folderId: string, topic: string) {
-  const s = await create(folderId, 'url', `Web research: ${topic.slice(0, 60)}`);
+  const s = await create(folderId, 'url', `Web research: ${topic.slice(0, 60)}`, { topic });
   try {
     if (!hasKey()) throw new MissingKeyError();
     const { text, sources } = await generateGrounded({
@@ -165,17 +167,17 @@ export async function addFile(folderId: string, file: File) {
 }
 
 export async function retrySource(s: Source) {
-  const blob = s.blobId ? (await db.blobs.get(s.blobId))?.blob : undefined;
+  const stored = s.blobId ? await db.blobs.get(s.blobId) : undefined;
+  // Sources from before the topic was kept carry it, perhaps cut short, in the title.
+  const topic = s.topic ?? (s.kind === 'url' && !s.url ? /^Web research: (.+)$/.exec(s.title)?.[1] : undefined);
+  if (!topic && !s.url && !stored) return toast('There’s nothing to retry this from. Add it again.', 'error');
   await deleteSource(s.id);
+  if (topic) return addDiscover(s.folderId, topic);
   if (s.url) return addUrl(s.folderId, s.url);
-  if (blob) return addFile(s.folderId, new File([blob], s.title + extFor(s.kind, blob.type), { type: blob.type }));
-}
-
-function extFor(kind: SourceKind, mime: string) {
-  if (kind === 'pdf') return '.pdf';
-  if (mime.includes('mpeg')) return '.mp3';
-  if (mime.includes('wav')) return '.wav';
-  if (mime.includes('png')) return '.png';
-  if (mime.includes('jpeg')) return '.jpg';
-  return '';
+  const file = new File([stored!.blob], stored!.name || s.title, { type: stored!.mime || stored!.blob.type });
+  // By what it was, not by its file type, which may be blank (an .m4a picked by its name).
+  if (s.kind === 'pdf') return addPdf(s.folderId, file);
+  if (s.kind === 'audio') return addAudio(s.folderId, file);
+  if (s.kind === 'image') return addImage(s.folderId, file);
+  return addFile(s.folderId, file);
 }

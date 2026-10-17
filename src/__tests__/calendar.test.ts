@@ -117,6 +117,8 @@ describe('reminders', () => {
   it('repeats to the right next date', () => {
     expect(nextDue('2026-10-16', 'weekdays')).toBe('2026-10-19');
     expect(nextDue('2027-01-31', 'monthly')).toBe('2027-02-28');
+    // Keeps to the 31st once past a short month.
+    expect(nextDue('2027-02-28', 'monthly', 31)).toBe('2027-03-31');
     expect(nextDue('2028-02-29', 'yearly')).toBe('2029-02-28');
     expect(nextDue('2026-10-12', 'fortnightly')).toBe('2026-10-26');
   });

@@ -49,7 +49,9 @@ export async function addReminder(p: Partial<Reminder> & { title: string }): Pro
   return r;
 }
 
-export const updateReminder = (id: string, patch: Partial<Reminder>) => db.reminders.update(id, { ...patch, updatedAt: Date.now() });
+export const updateReminder = (id: string, patch: Partial<Reminder>) =>
+  // A date picked by hand starts the repeat afresh from its own day.
+  db.reminders.update(id, { ...('due' in patch && !('repeatDay' in patch) ? { repeatDay: undefined } : {}), ...patch, updatedAt: Date.now() });
 
 /** Completing a repeating reminder brings the next one in, as Apple's does. */
 export async function toggleComplete(r: Reminder) {
@@ -57,7 +59,8 @@ export async function toggleComplete(r: Reminder) {
   await updateReminder(r.id, { completed: true, completedAt: Date.now() });
   if (r.repeat && r.due) {
     const { id: _id, completedAt: _c, ...rest } = r;
-    await addReminder({ ...rest, completed: false, due: nextDue(r.due, r.repeat) });
+    const repeatDay = r.repeatDay ?? Number(r.due.slice(8));
+    await addReminder({ ...rest, completed: false, due: nextDue(r.due, r.repeat, repeatDay), repeatDay });
   }
 }
 

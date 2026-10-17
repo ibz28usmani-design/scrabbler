@@ -29,7 +29,7 @@ export function playerUrl(url: string): string | null {
     id = u.searchParams.get('v') ?? /^\/(?:embed|shorts|live)\/([^/?#]+)/.exec(u.pathname)?.[1] ?? null;
   }
   if (id && /^[\w-]{6,}$/.test(id)) {
-    const t = Number.parseInt(u.searchParams.get('t') ?? '', 10);
+    const t = seconds(u.searchParams.get('t') ?? u.searchParams.get('start') ?? '');
     return `https://www.youtube-nocookie.com/embed/${id}${t > 0 ? `?start=${t}` : ''}`;
   }
   const vimeo = host === 'vimeo.com' && /^\/(\d+)/.exec(u.pathname)?.[1];
@@ -39,11 +39,21 @@ export function playerUrl(url: string): string | null {
   return null;
 }
 
+/** YouTube's start time: "90", "90s" or "1h2m30s". */
+function seconds(t: string): number {
+  if (/^\d+$/.test(t)) return Number(t);
+  const m = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(t);
+  return m && t ? Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0) : 0;
+}
+
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v|ogv)(\?|#|$)/i;
 const AUDIO_EXT = /\.(mp3|m4a|wav|ogg|oga|aac|flac|opus)(\?|#|$)/i;
 
 /** How to render a URL: a site's player frame, a bare media file, or a link card. */
-export function embedPlan(url: string, kind: EmbedKind): { as: 'frame' | 'video' | 'audio' | 'card'; src: string } {
+export function embedPlan(raw: string, kind: EmbedKind): { as: 'frame' | 'video' | 'audio' | 'card'; src: string } {
+  // Embeds can arrive in pasted HTML or a backup, not only through the slash command's check.
+  const url = cleanUrl(raw);
+  if (!url) return { as: 'card', src: '' };
   const player = playerUrl(url);
   if (kind === 'bookmark') return { as: 'card', src: url };
   if (player) return { as: 'frame', src: player };

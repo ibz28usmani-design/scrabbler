@@ -73,9 +73,9 @@ function requireGemini(o?: gemini.GenerateOptions): void {
  * may hand a large file to its File API; a compat provider has no such thing,
  * so the bytes always travel inline.
  */
-export async function imagePart(blob: Blob, mimeType: string, name: string, signal?: AbortSignal): Promise<gemini.Part> {
+export async function imagePart(blob: Blob, mimeType: string, name: string, signal?: AbortSignal, inline?: boolean): Promise<gemini.Part> {
   if (compatSeesImages()) return { inlineData: { mimeType, data: await gemini.blobToBase64(blob) } };
-  return gemini.blobPart(blob, mimeType, name, signal);
+  return gemini.blobPart(blob, mimeType, name, signal, inline);
 }
 
 /**
@@ -134,11 +134,9 @@ export async function generateJSON<T>(o: gemini.GenerateOptions & { schema: obje
     if (needsGemini(o)) requireGemini(o);
     return gemini.generateJSON<T>(o);
   }
-  const messages = toMessages(o);
-  messages.unshift({
-    role: 'system',
-    content: `You reply with a single JSON value and nothing else — no prose, no code fences. It must validate against this JSON schema:\n${JSON.stringify(o.schema)}`,
-  });
+  // One system message: some providers reject a second, or read only the first.
+  const rule = `You reply with a single JSON value and nothing else — no prose, no code fences. It must validate against this JSON schema:\n${JSON.stringify(o.schema)}`;
+  const messages = toMessages({ ...o, system: o.system ? `${rule}\n\n${o.system}` : rule });
   const text = await compat.chat({ messages, temperature: o.temperature, maxTokens: o.maxOutputTokens, signal: o.signal });
   return compat.extractJson(text) as T;
 }

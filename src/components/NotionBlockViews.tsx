@@ -9,7 +9,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { db } from '../db';
 import { nav } from '../lib/nav';
-import { embedPlan, type EmbedKind } from '../lib/embeds';
+import { cleanUrl, embedPlan, type EmbedKind } from '../lib/embeds';
 import { promptDialog, Spinner, useObjectUrl } from './ui';
 import { attachmentKind, formatBytes, insertFiles } from '../lib/attachments';
 import { toast, toastError } from '../lib/events';
@@ -270,6 +270,7 @@ export const NoteLink = Node.create({
 function EmbedView({ node, selected, deleteNode }: NodeViewProps) {
   const src: string = node.attrs.src;
   const plan = embedPlan(src, node.attrs.kind);
+  const href = cleanUrl(src) ?? undefined;
   let host = src;
   try {
     host = new URL(src).hostname.replace(/^www\./, '');
@@ -284,7 +285,7 @@ function EmbedView({ node, selected, deleteNode }: NodeViewProps) {
       {plan.as === 'video' && <video src={plan.src} controls playsInline preload="metadata" />}
       {plan.as === 'audio' && <audio src={plan.src} controls preload="metadata" />}
       {plan.as === 'card' ? (
-        <a className="embed-card" href={src} target="_blank" rel="noopener noreferrer">
+        <a className="embed-card" href={href} target="_blank" rel="noopener noreferrer">
           <span className="embed-favicon">🔗</span>
           <span className="embed-card-text">
             <span className="embed-host">{host}</span>
@@ -293,7 +294,7 @@ function EmbedView({ node, selected, deleteNode }: NodeViewProps) {
         </a>
       ) : (
         <div className="embed-foot">
-          <a href={src} target="_blank" rel="noopener noreferrer">
+          <a href={href} target="_blank" rel="noopener noreferrer">
             {host} ↗
           </a>
           {selected && (

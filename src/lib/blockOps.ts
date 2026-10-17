@@ -110,7 +110,8 @@ export function dropBlock(tr: Transaction, ref: BlockRef, target: number): boole
   tr.delete(from, to);
   const at = tr.mapping.map(target);
   tr.replaceRange(at, at, new Slice(Fragment.from(ref.node), 0, 0));
-  const landed = tr.mapping.slice(tr.steps.length - 1).map(at);
+  // The start of what was inserted (the default bias would give its end, the next block).
+  const landed = tr.mapping.slice(tr.steps.length - 1).map(at, -1);
   tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(landed + 1, tr.doc.content.size)), 1));
   return true;
 }
@@ -127,9 +128,12 @@ export function textblockToToggle(tr: Transaction, $pos: ResolvedPos, headingLev
   const index = $pos.index(-1);
   if (!parent.canReplaceWith(index, index + 1, details)) return false;
   const text: PMNode[] = [];
-  $pos.parent.content.forEach((n) => n.isText && text.push(n));
+  let lossy = false;
+  $pos.parent.content.forEach((n) => (n.isText ? text.push(n) : (lossy ||= n.type.name !== 'hardBreak')));
   const summary = schema.nodes.detailsSummary.create(null, text);
-  const body = schema.nodes.detailsContent.create(null, schema.nodes.paragraph.create());
+  // A title holds only text: an equation or link to a note would be lost, so the line goes inside too.
+  const first = lossy ? schema.nodes.paragraph.create(null, $pos.parent.content) : schema.nodes.paragraph.create();
+  const body = schema.nodes.detailsContent.create(null, first);
   // New toggles start open, so Enter after the title lands inside them.
   const node = details.create({ open: true, heading: headingLevel }, [summary, body]);
   const start = $pos.before();

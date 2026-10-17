@@ -80,11 +80,14 @@ describe('blocks', () => {
     const b = blockAtPos(doc, posOf(doc, 'b'))!;
     expect(dropBlock(tr, a, b.pos + b.node.nodeSize)).toBe(true);
     expect(texts(tr.doc)).toEqual(['paragraph:b', 'paragraph:a', 'bulletList:i1i2']);
+    // The cursor follows the block it dropped, not the one after it.
+    expect(tr.selection.$from.parent.textContent).toBe('a');
 
     const tr2 = stateOf(doc).tr;
     const item = blockAtPos(doc, posOf(doc, 'i2'))!;
     expect(dropBlock(tr2, item, 0)).toBe(true);
     expect(texts(tr2.doc)).toEqual(['bulletList:i2', 'paragraph:a', 'paragraph:b', 'bulletList:i1']);
+    expect(tr2.selection.$from.parent.textContent).toBe('i2');
 
     // Dropping a block onto itself does nothing.
     expect(dropBlock(stateOf(doc).tr, a, a.pos)).toBe(false);

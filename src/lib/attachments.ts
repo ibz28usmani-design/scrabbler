@@ -55,8 +55,17 @@ export async function downscaleImage(file: Blob, max = 1600): Promise<string> {
   const c = document.createElement('canvas');
   c.width = Math.round(bmp.width * s);
   c.height = Math.round(bmp.height * s);
-  c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
-  return c.toDataURL('image/jpeg', 0.86);
+  const ctx = c.getContext('2d')!;
+  ctx.drawImage(bmp, 0, 0, c.width, c.height);
+  bmp.close();
+  // JPEG has no transparency, so a diagram's clear background would turn black.
+  return /png|gif|webp/.test(file.type) && hasTransparency(ctx, c.width, c.height) ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.86);
+}
+
+function hasTransparency(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  const px = ctx.getImageData(0, 0, w, h).data;
+  for (let i = 3; i < px.length; i += 4) if (px[i] < 255) return true;
+  return false;
 }
 
 /**

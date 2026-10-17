@@ -64,6 +64,8 @@ export interface Source {
   title: string;
   text: string;
   url?: string;
+  /** What a web-research (Discover) source looked into, so it can be retried. */
+  topic?: string;
   blobId?: ID;
   status: 'processing' | 'ready' | 'error';
   error?: string;
@@ -361,11 +363,18 @@ export function legacyInk(content: unknown): InkDoc | null {
 }
 
 export async function deleteNotesForever(ids: ID[]) {
-  const notes = await db.notes.bulkGet(ids);
-  const blobIds = notes.flatMap((n) => (n ? [...(n.audioBlobId ? [n.audioBlobId] : []), ...attachmentBlobIds(n.content)] : []));
   await db.transaction('rw', db.notes, db.blobs, async () => {
+    const gone = new Set(ids);
+    const notes = await db.notes.bulkGet(ids);
+    const blobIds = new Set(notes.flatMap((n) => (n ? [...(n.audioBlobId ? [n.audioBlobId] : []), ...attachmentBlobIds(n.content)] : [])));
+    // A duplicated or copied block shares its file with another note: keep that one.
+    await db.notes.each((n) => {
+      if (gone.has(n.id)) return;
+      if (n.audioBlobId) blobIds.delete(n.audioBlobId);
+      attachmentBlobIds(n.content).forEach((id) => blobIds.delete(id));
+    });
     await db.notes.bulkDelete(ids);
-    await db.blobs.bulkDelete(blobIds);
+    await db.blobs.bulkDelete([...blobIds]);
   });
 }
 
@@ -382,7 +391,10 @@ export async function deleteFolder(id: ID) {
   const sources = await db.sources.where('folderId').equals(id).toArray();
   for (const s of sources) await deleteSource(s.id);
   const now = Date.now();
-  await db.transaction('rw', [db.notes, db.chats, db.studio, db.folders, db.decks], async () => {
+  await db.transaction('rw', [db.notes, db.chats, db.studio, db.folders, db.decks, db.blobs], async () => {
+    // Audio Overviews' recordings go with their studio items.
+    const audio = (await db.studio.where('folderId').equals(id).toArray()).flatMap((it) => (it.audioBlobId ? [it.audioBlobId] : []));
+    await db.blobs.bulkDelete(audio);
     // Notes go to Recently Deleted rather than vanishing.
     await db.notes.where('folderId').equals(id).modify({ deletedAt: now });
     await db.chats.where('folderId').equals(id).delete();
@@ -393,7 +405,8 @@ export async function deleteFolder(id: ID) {
 }
 
 export async function deleteDeck(id: ID) {
-  await db.transaction('rw', db.decks, db.cards, db.reviews, async () => {
+  // Its reviews stay: they are the streak and activity history.
+  await db.transaction('rw', db.decks, db.cards, async () => {
     await db.cards.where('deckId').equals(id).delete();
     await db.decks.delete(id);
   });

@@ -129,24 +129,25 @@ export async function recordReview(
   mode: 'study' | 'quiz',
 ): Promise<RecordResult> {
   const now = Date.now();
-  let game = await getGame();
-  const xp = game.lives > 0 ? xpFor(rating, correct, combo, mode) : 0;
   const wasNew = card.sched.state === State.New;
   const updated: Card = mode === 'study' ? { ...card, sched: nextSched(card.sched, rating, new Date(now)) } : card;
-  if (!correct && game.lives > 0) {
-    if (game.lives === MAX_LIVES) game.livesAt = now;
-    game.lives -= 1;
-  }
-  game.xp += xp;
-  const entry: ReviewEntry = { id: uid(), cardId: card.id, deckId: card.deckId, rating, correct, xp, at: now, day: dayKey(now), mode, wasNew };
-  await db.transaction('rw', db.cards, db.reviews, db.meta, async () => {
+  // Read and write the game inside one transaction, so two quick reviews can't undo each other's XP and lives.
+  return db.transaction('rw', db.cards, db.reviews, db.meta, async () => {
+    const game = await getGame();
+    const xp = game.lives > 0 ? xpFor(rating, correct, combo, mode) : 0;
+    if (!correct && game.lives > 0) {
+      if (game.lives === MAX_LIVES) game.livesAt = now;
+      game.lives -= 1;
+    }
+    game.xp += xp;
+    const entry: ReviewEntry = { id: uid(), cardId: card.id, deckId: card.deckId, rating, correct, xp, at: now, day: dayKey(now), mode, wasNew };
     if (mode === 'study') await db.cards.put(updated);
     await db.reviews.add(entry);
     const streak = await computeStreak();
     game.bestStreak = Math.max(game.bestStreak, streak.days);
     await setMeta(GAME_KEY, game);
+    return { game, xp, card: updated };
   });
-  return { game, xp, card: updated };
 }
 
 export async function setGame(g: GameState) {

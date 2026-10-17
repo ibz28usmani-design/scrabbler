@@ -330,7 +330,7 @@ export function SettingsModal() {
             className="btn"
             onClick={async () => {
               try {
-                download(await exportBackup(), `scrabbler-backup-${new Date().toISOString().slice(0, 10)}.json`);
+                download(await exportBackup(), `scrabbler-backup-${new Date().toISOString().slice(0, 10)}.zip`);
               } catch (e) {
                 toastError(e);
               }
@@ -342,7 +342,7 @@ export function SettingsModal() {
             <IUpload size={16} /> Import backup
             <input
               type="file"
-              accept="application/json,.json"
+              accept="application/zip,.zip,application/json,.json"
               hidden
               onChange={async (e) => {
                 const f = e.target.files?.[0];
