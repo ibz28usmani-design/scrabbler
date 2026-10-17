@@ -25,10 +25,13 @@ async function lecture(noteId: string, opts: { context?: string; liveText?: stri
   const stored = note.audioBlobId ? await db.blobs.get(note.audioBlobId) : undefined;
   const missing = 'The recording isn’t on this device any more.';
   // Rewriting from a transcript needs no audio; transcribing does.
-  if (!stored && !note.transcript?.length) return void (await db.notes.update(noteId, { status: 'error', error: missing }));
+  if (!stored && !note.transcript?.length) {
+    await db.notes.update(noteId, { status: 'error', error: missing });
+    return toast(missing, 'error');
+  }
   if (!hasKey()) {
-    // A fresh recording gets the on-device live captions as its note; a retry keeps what is there.
-    if (note.status !== 'transcribing') return void (await db.notes.update(noteId, { status: 'error', error: 'Add a free Gemini key in Settings to transcribe this.' }));
+    // A fresh recording gets the on-device live captions as its note; a retry or rewrite leaves the note be.
+    if (note.status !== 'transcribing') return toast('Add a free Gemini key in Settings first.', 'error');
     const live = opts.liveText?.trim();
     const html = `<h1>${escapeHtml(note.title || 'Lecture')}</h1><p><em>Add a free Gemini key in Settings, then tap “Transcribe & write notes” for a full transcript with speakers and AI notes.</em></p>${live ? `<h2>Live captions</h2><p>${escapeHtml(live)}</p>` : ''}`;
     await db.notes.update(noteId, { status: 'error', error: 'No Gemini key — saved the recording and live captions only.', content: html, text: live ?? '', updatedAt: Date.now() });
@@ -37,11 +40,11 @@ async function lecture(noteId: string, opts: { context?: string; liveText?: stri
   try {
     let segs: TranscriptSegment[] | undefined = note.transcript?.length ? note.transcript : undefined;
     if (!segs) {
-      if (!stored) throw new Error(missing);
+      const audio = stored!; // no transcript, so checked above
       await db.notes.update(noteId, { status: 'transcribing', error: undefined });
-      const name = stored.name || 'lecture.mp3';
-      const mime = stored.mime === 'audio/mpeg' ? 'audio/mp3' : stored.mime || 'audio/mp3';
-      segs = await transcribe(stored.blob, mime, name, { context: opts.context, language: getSettings().transcribeLanguage });
+      const name = audio.name || 'lecture.mp3';
+      const mime = audio.mime === 'audio/mpeg' ? 'audio/mp3' : audio.mime || 'audio/mp3';
+      segs = await transcribe(audio.blob, mime, name, { context: opts.context, language: getSettings().transcribeLanguage });
       await db.notes.update(noteId, { transcript: segs });
     }
     await db.notes.update(noteId, { status: 'writing' });

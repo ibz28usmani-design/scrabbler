@@ -113,6 +113,8 @@ export function Recorder({ folderId }: { folderId: string }) {
   const upload = async (file: File) => {
     setPhase('saving');
     const name = title.trim() || file.name.replace(/\.[^.]+$/, '');
+    // As in finish: no update reload while the file is being stored.
+    const end = holdJob(`saving-${Date.now()}`);
     try {
       const typed = new File([file], file.name, { type: geminiMime(file) });
       const blobId = await putBlob(typed, file.name);
@@ -122,6 +124,8 @@ export function Recorder({ folderId }: { folderId: string }) {
     } catch (e) {
       toastError(e);
       setPhase('setup');
+    } finally {
+      end();
     }
   };
 
