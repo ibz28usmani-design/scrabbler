@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db, deleteNotesForever, failInterrupted, putBlob, uid, type Note } from '../db';
 import { anyJobsRunning, holdJob, runningJobs } from '../lib/jobs';
+import { processLecture } from '../lib/lecture';
 import { exportBackup, importBackup } from '../lib/backup';
 import { chunkText } from '../lib/retrieval';
 import { thinkFilter } from '../lib/openaiCompat';
@@ -76,6 +77,23 @@ describe('interrupted work', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('lectures', () => {
+  it('leaves a finished note alone when it can’t be rewritten without a key', async () => {
+    await Promise.all(db.tables.map((t) => t.clear()));
+    const done = note('<p>My notes</p>', { id: 'lec', kind: 'lecture', status: 'ready', transcript: [{ start: 0, text: 'Hello' }] });
+    await db.notes.add(done);
+    await processLecture('lec');
+    expect(await db.notes.get('lec')).toMatchObject({ status: 'ready', content: '<p>My notes</p>' });
+  });
+
+  it('says the recording is gone when there is nothing to transcribe from', async () => {
+    await Promise.all(db.tables.map((t) => t.clear()));
+    await db.notes.add(note('', { id: 'lec', kind: 'lecture', status: 'error', audioBlobId: 'nope' }));
+    await processLecture('lec');
+    expect((await db.notes.get('lec'))?.error).toMatch(/isn’t on this device/);
   });
 });
 

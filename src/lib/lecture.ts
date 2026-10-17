@@ -24,8 +24,9 @@ async function lecture(noteId: string, opts: { context?: string; liveText?: stri
   if (!note) return;
   const stored = note.audioBlobId ? await db.blobs.get(note.audioBlobId) : undefined;
   const missing = 'The recording isn’t on this device any more.';
+  const transcript = note.transcript?.length ? note.transcript : undefined;
   // Rewriting from a transcript needs no audio; transcribing does.
-  if (!stored && !note.transcript?.length) {
+  if (!stored && !transcript) {
     await db.notes.update(noteId, { status: 'error', error: missing });
     return toast(missing, 'error');
   }
@@ -38,9 +39,9 @@ async function lecture(noteId: string, opts: { context?: string; liveText?: stri
     return;
   }
   try {
-    let segs: TranscriptSegment[] | undefined = note.transcript?.length ? note.transcript : undefined;
+    let segs: TranscriptSegment[] | undefined = transcript;
     if (!segs) {
-      const audio = stored!; // no transcript, so checked above
+      const audio = stored!; // no transcript, so there is audio (checked above)
       await db.notes.update(noteId, { status: 'transcribing', error: undefined });
       const name = audio.name || 'lecture.mp3';
       const mime = audio.mime === 'audio/mpeg' ? 'audio/mp3' : audio.mime || 'audio/mp3';

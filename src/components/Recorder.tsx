@@ -75,58 +75,55 @@ export function Recorder({ folderId }: { folderId: string }) {
     }
   };
 
-  const finish = async () => {
-    const r = rec.current;
-    if (!r) return;
-    rec.current = null;
-    // Stopping ends the recording's own claim; until the note exists and its
-    // transcription has claimed it, this one keeps an update from reloading.
+  /**
+   * Stores a lecture's audio, makes its note and starts transcribing it, all
+   * under a claim: until the transcription claims the note, the audio may be
+   * only in memory, and an update mustn't reload then. `audio` may stop the
+   * recorder first; whatever fails goes to `failed`.
+   */
+  const save = async (audio: () => Promise<Blob>, fileName: string, title: string, snippet: string, failed: (e: unknown, blob: Blob | null) => void, liveText?: string) => {
     const end = holdJob(`saving-${Date.now()}`);
-    setPhase('saving');
-    live.current?.stop();
-    const duration = r.elapsed;
-    const name = title.trim() || `Lecture ${new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
     let blob: Blob | null = null;
     try {
-      blob = await r.stop();
-      const blobId = await putBlob(blob, `${name}.mp3`);
-      const note = await createNote(folderId, {
-        kind: 'lecture',
-        title: name,
-        snippet: `Recording · ${fmtClock(duration)}`,
-        audioBlobId: blobId,
-        status: 'transcribing',
-        content: `<h1>${escapeHtml(name)}</h1><p></p>`,
-      });
+      blob = await audio();
+      const blobId = await putBlob(blob, fileName);
+      const note = await createNote(folderId, { kind: 'lecture', title, snippet, audioBlobId: blobId, status: 'transcribing', content: `<h1>${escapeHtml(title)}</h1><p></p>` });
       closeModal();
-      processLecture(note.id, { context: context.trim() || undefined, liveText: caption.final });
+      processLecture(note.id, { context: context.trim() || undefined, liveText });
     } catch (e) {
       toastError(e);
-      // Storage full, most likely: hand the recording over as a file rather than lose it.
-      if (blob) download(blob, `${name}.mp3`);
-      closeModal();
+      failed(e, blob);
     } finally {
       end();
     }
   };
 
+  const finish = async () => {
+    const r = rec.current;
+    if (!r) return;
+    rec.current = null;
+    setPhase('saving');
+    live.current?.stop();
+    const duration = r.elapsed;
+    const name = title.trim() || `Lecture ${new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+    await save(
+      () => r.stop(),
+      `${name}.mp3`,
+      name,
+      `Recording · ${fmtClock(duration)}`,
+      (_, blob) => {
+        // Storage full, most likely: hand the recording over as a file rather than lose it.
+        if (blob) download(blob, `${name}.mp3`);
+        closeModal();
+      },
+      caption.final,
+    );
+  };
+
   const upload = async (file: File) => {
     setPhase('saving');
     const name = title.trim() || file.name.replace(/\.[^.]+$/, '');
-    // As in finish: no update reload while the file is being stored.
-    const end = holdJob(`saving-${Date.now()}`);
-    try {
-      const typed = new File([file], file.name, { type: geminiMime(file) });
-      const blobId = await putBlob(typed, file.name);
-      const note = await createNote(folderId, { kind: 'lecture', title: name, snippet: 'Uploaded recording', audioBlobId: blobId, status: 'transcribing', content: `<h1>${escapeHtml(name)}</h1><p></p>` });
-      closeModal();
-      processLecture(note.id, { context: context.trim() || undefined });
-    } catch (e) {
-      toastError(e);
-      setPhase('setup');
-    } finally {
-      end();
-    }
+    await save(async () => new File([file], file.name, { type: geminiMime(file) }), file.name, name, 'Uploaded recording', () => setPhase('setup'));
   };
 
   const close = async () => {
