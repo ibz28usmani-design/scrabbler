@@ -23,6 +23,7 @@ import { HANDWRITING_TEMPLATES, type Paper } from '../lib/paper';
 import { beginHandoff, endHandoff, handoffActive, moveHandoff } from '../lib/penHandoff';
 import { useStudyPresence } from '../lib/useStudyPresence';
 import { LinksPanel } from './LinksPanel';
+import { AppIcon } from './AppIcon';
 
 export { editorExtensions };
 
@@ -409,7 +410,8 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
           align="right"
           onClose={closeMove}
           items={folders.map((f) => ({
-            label: `${f.emoji} ${f.name}`,
+            label: f.name,
+            icon: <AppIcon name={f.icon ?? f.emoji} size={17} />,
             disabled: f.id === note.folderId,
             onClick: async () => {
               await db.notes.update(note.id, { folderId: f.id });

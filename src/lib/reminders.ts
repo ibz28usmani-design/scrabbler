@@ -46,17 +46,17 @@ export interface Reminder {
 }
 
 export const REMINDER_TYPES = [
-  { id: 'homework', label: 'Homework', emoji: '📝' },
-  { id: 'essay', label: 'Essay', emoji: '✍️' },
-  { id: 'revision', label: 'Revision', emoji: '🔁' },
-  { id: 'exam', label: 'Exam', emoji: '🎓' },
-  { id: 'test', label: 'Test', emoji: '✅' },
-  { id: 'reading', label: 'Reading', emoji: '📖' },
-  { id: 'coursework', label: 'Coursework', emoji: '📂' },
-  { id: 'presentation', label: 'Presentation', emoji: '🎤' },
-  { id: 'deadline', label: 'Deadline', emoji: '⏰' },
-  { id: 'admin', label: 'Admin', emoji: '📋' },
-  { id: 'personal', label: 'Personal', emoji: '🙂' },
+  { id: 'homework', label: 'Homework', icon: 'doc' },
+  { id: 'essay', label: 'Essay', icon: 'pencil' },
+  { id: 'revision', label: 'Revision', icon: 'repeat' },
+  { id: 'exam', label: 'Exam', icon: 'grad' },
+  { id: 'test', label: 'Test', icon: 'check' },
+  { id: 'reading', label: 'Reading', icon: 'book' },
+  { id: 'coursework', label: 'Coursework', icon: 'folder' },
+  { id: 'presentation', label: 'Presentation', icon: 'presentation' },
+  { id: 'deadline', label: 'Deadline', icon: 'clock' },
+  { id: 'admin', label: 'Admin', icon: 'clipboard' },
+  { id: 'personal', label: 'Personal', icon: 'user' },
 ] as const;
 export type ReminderType = (typeof REMINDER_TYPES)[number]['id'];
 export const typeInfo = (t?: string) => REMINDER_TYPES.find((x) => x.id === t);

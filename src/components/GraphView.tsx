@@ -3,16 +3,37 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { db } from '../db';
 import { folderSubject, OTHER_SUBJECT } from '../lib/folders';
 import { anchors, buildGraph, localGraph, tick, type Graph, type GraphNote } from '../lib/graph';
+import { useDark } from '../lib/theme';
 import { nav, useNav } from '../lib/nav';
 import { useSettings } from '../lib/settings';
 import { SERIES, seriesSlot } from '../lib/subjectColors';
 import { PageHead } from './PageHead';
 import { Segmented } from './ui';
 
-/** The plate is charcoal in both themes, so it always uses the dark inks. */
-const PLATE = '#141310';
-const LABEL = '#e9e3d6';
-const TAG_INK = '#b9b2a3';
+/**
+ * The plate's own colours: newsprint and ink by day, charcoal and chalk by
+ * night, each with the subject inks checked for that surface.
+ */
+interface Inks {
+  plate: string;
+  label: string;
+  ink: (group: string) => string;
+}
+
+function plateInks(dark: boolean, revised: string[]): Inks {
+  const series = dark ? SERIES.dark : SERIES.light;
+  const other = dark ? SERIES.otherDark : SERIES.otherLight;
+  const tag = dark ? '#b9b2a3' : '#6b665b';
+  return {
+    plate: dark ? '#141310' : '#f7f3e8',
+    label: dark ? '#e9e3d6' : '#1b1a17',
+    ink: (group) => {
+      if (group === 'tag') return tag;
+      const slot = seriesSlot(group, revised);
+      return slot === null ? other : series[slot];
+    },
+  };
+}
 
 interface View {
   x: number;
@@ -29,7 +50,9 @@ interface View {
 export function GraphView({ narrow, showSidebarToggle }: { narrow: boolean; showSidebarToggle: boolean }) {
   const { graphFocus } = useNav();
   const { revisionSubjects } = useSettings();
+  const dark = useDark();
   const [tags, setTags] = useState(false);
+  const [folders, setFolders] = useState(true);
   const [orphans, setOrphans] = useState(true);
   const [depth, setDepth] = useState(2);
   const [query, setQuery] = useState('');
@@ -52,9 +75,10 @@ export function GraphView({ narrow, showSidebarToggle }: { narrow: boolean; show
       if (!cache.has(folderId)) cache.set(folderId, folderSubject(data.folders, folderId) ?? OTHER_SUBJECT);
       return cache.get(folderId)!;
     };
-    const whole = buildGraph(data.notes, subjectOf, { tags, orphans: graphFocus ? true : orphans });
+    const whole = buildGraph(data.notes, subjectOf, { tags, orphans: graphFocus ? true : orphans, folders: folders ? data.folders : undefined });
     return graphFocus ? localGraph(whole, graphFocus, depth) : whole;
-  }, [data, tags, orphans, graphFocus, depth]);
+  }, [data, tags, folders, orphans, graphFocus, depth]);
+  const inks = plateInks(dark, revisionSubjects);
 
   const focusNote = graphFocus ? data?.notes.find((n) => n.id === graphFocus) : undefined;
   const legend = [...revisionSubjects.slice(0, SERIES.dark.length).map((id) => ({ id, name: data?.subjects.find((s) => s.id === id)?.name ?? id })), { id: OTHER_SUBJECT, name: 'Other' }];
@@ -70,6 +94,9 @@ export function GraphView({ narrow, showSidebarToggle }: { narrow: boolean; show
       </PageHead>
       <div className="graph-filters" role="toolbar" aria-label="Graph filters">
         <input className="graph-search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a note" aria-label="Find a note in the graph" />
+        <label className="check">
+          <input type="checkbox" checked={folders} onChange={(e) => setFolders(e.target.checked)} /> Folders
+        </label>
         <label className="check">
           <input type="checkbox" checked={tags} onChange={(e) => setTags(e.target.checked)} /> Tags
         </label>
@@ -98,18 +125,13 @@ export function GraphView({ narrow, showSidebarToggle }: { narrow: boolean; show
           ]}
         />
       </div>
-      {graph && (asList ? <GraphList graph={graph} legend={legend} revised={revisionSubjects} /> : <Plate graph={graph} legend={legend} revised={revisionSubjects} query={query} focus={graphFocus} />)}
+      {graph && (asList ? <GraphList graph={graph} legend={legend} inks={inks} revised={revisionSubjects} /> : <Plate graph={graph} legend={legend} inks={inks} dark={dark} revised={revisionSubjects} query={query} focus={graphFocus} />)}
     </div>
   );
 }
 
-function inkFor(group: string, revised: string[]) {
-  if (group === 'tag') return TAG_INK;
-  const slot = seriesSlot(group, revised);
-  return slot === null ? SERIES.otherDark : SERIES.dark[slot];
-}
 
-function Plate({ graph, legend, revised, query, focus }: { graph: Graph; legend: { id: string; name: string }[]; revised: string[]; query: string; focus: string | null }) {
+function Plate({ graph, legend, inks, dark, revised, query, focus }: { graph: Graph; legend: { id: string; name: string }[]; inks: Inks; dark: boolean; revised: string[]; query: string; focus: string | null }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const view = useRef<View>({ x: 0, y: 0, k: 1 });
@@ -142,7 +164,7 @@ function Plate({ graph, legend, revised, query, focus }: { graph: Graph; legend:
 
   const toScreen = (x: number, y: number) => ({ x: (x - view.current.x) * view.current.k + size.w / 2, y: (y - view.current.y) * view.current.k + size.h / 2 });
   const toWorld = (sx: number, sy: number) => ({ x: (sx - size.w / 2) / view.current.k + view.current.x, y: (sy - size.h / 2) / view.current.k + view.current.y });
-  const radius = (deg: number, kind: string) => (kind === 'tag' ? 3.2 : 3.6 + Math.sqrt(deg) * 2.2);
+  const radius = (deg: number, kind: string) => (kind === 'tag' ? 3.2 : kind === 'folder' ? 5 + Math.sqrt(deg) * 1.2 : 3.6 + Math.sqrt(deg) * 2.2);
 
   const fit = () => {
     if (!graph.nodes.length || !size.w) return;
@@ -164,30 +186,35 @@ function Plate({ graph, legend, revised, query, focus }: { graph: Graph; legend:
     if (c.height !== Math.round(size.h * dpr)) c.height = Math.round(size.h * dpr);
     const ctx = c.getContext('2d')!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = PLATE;
+    ctx.fillStyle = inks.plate;
     ctx.fillRect(0, 0, size.w, size.h);
     const h = hover.current;
     const near = h !== null ? graph.neighbours[h] : null;
     const match = (i: number) => !q || graph.nodes[i].label.toLowerCase().includes(q);
     const dim = (i: number) => (h !== null && i !== h && !near!.has(i)) || (q && !match(i));
     const k = view.current.k;
-    // Links: fine lines in the source note's ink, like the branches on the poster.
-    ctx.lineWidth = Math.max(0.6, Math.min(1.4, k * 0.8));
-    for (const e of graph.edges) {
-      const a = graph.nodes[e.a];
-      const b = graph.nodes[e.b];
-      const lit = h !== null && (e.a === h || e.b === h);
-      ctx.globalAlpha = lit ? 0.95 : dim(e.a) && dim(e.b) ? 0.06 : 0.5;
-      ctx.strokeStyle = inkFor(a.group === 'tag' ? b.group : a.group, revised);
-      const p = toScreen(a.x, a.y);
-      const r = toScreen(b.x, b.y);
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y);
-      // A slight bow, so dense bundles read as strands rather than a mesh.
-      const mx = (p.x + r.x) / 2 + (r.y - p.y) * 0.08;
-      const my = (p.y + r.y) / 2 - (r.x - p.x) * 0.08;
-      ctx.quadraticCurveTo(mx, my, r.x, r.y);
-      ctx.stroke();
+    // Lines in the ink of the note they leave, like the branches on the poster:
+    // folder branches fine, links you made bolder, and both drawn under the nodes.
+    for (const tree of [true, false]) {
+      ctx.lineWidth = tree ? Math.max(0.7, Math.min(1.3, k * 0.8)) : Math.max(1.2, Math.min(2.4, k * 1.5));
+      for (const e of graph.edges) {
+        if (!!e.tree !== tree) continue;
+        const a = graph.nodes[e.a];
+        const b = graph.nodes[e.b];
+        const lit = h !== null && (e.a === h || e.b === h);
+        ctx.globalAlpha = lit ? 1 : dim(e.a) && dim(e.b) ? 0.08 : tree ? (dark ? 0.42 : 0.5) : dark ? 0.78 : 0.85;
+        ctx.strokeStyle = inks.ink(a.group === 'tag' ? b.group : a.group);
+        const p = toScreen(a.x, a.y);
+        const r = toScreen(b.x, b.y);
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        // A slight bow, so dense bundles read as strands rather than a mesh.
+        const bow = tree ? 0.05 : 0.1;
+        const mx = (p.x + r.x) / 2 + (r.y - p.y) * bow;
+        const my = (p.y + r.y) / 2 - (r.x - p.x) * bow;
+        ctx.quadraticCurveTo(mx, my, r.x, r.y);
+        ctx.stroke();
+      }
     }
     // Nodes, each ringed in the plate's colour so overlaps stay separate.
     graph.nodes.forEach((n, i) => {
@@ -197,14 +224,21 @@ function Plate({ graph, legend, revised, query, focus }: { graph: Graph; legend:
       ctx.globalAlpha = dim(i) ? 0.18 : 1;
       ctx.beginPath();
       ctx.arc(p.x, p.y, rr + 1.5, 0, Math.PI * 2);
-      ctx.fillStyle = PLATE;
+      ctx.fillStyle = inks.plate;
       ctx.fill();
       ctx.beginPath();
       ctx.arc(p.x, p.y, rr, 0, Math.PI * 2);
-      ctx.fillStyle = inkFor(n.group, revised);
-      ctx.fill();
+      // A folder is a hub: a ring in its subject's ink, hollow, so it reads apart from notes.
+      if (n.kind === 'folder') {
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = inks.ink(n.group);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = inks.ink(n.group);
+        ctx.fill();
+      }
       if (n.id === focus) {
-        ctx.strokeStyle = LABEL;
+        ctx.strokeStyle = inks.label;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.arc(p.x, p.y, rr + 4, 0, Math.PI * 2);
@@ -213,17 +247,19 @@ function Plate({ graph, legend, revised, query, focus }: { graph: Graph; legend:
     });
     // Labels: the busiest notes always, the rest as you zoom in or point.
     ctx.globalAlpha = 1;
-    ctx.font = `${Math.round(Math.max(11, Math.min(15, 11 * k)))}px 'Source Serif 4', Georgia, serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    const busy = [...graph.nodes].sort((a, b) => b.degree - a.degree).slice(0, 8).map((n) => n.id);
+    const busy = graph.nodes.filter((n) => n.kind === 'note').sort((a, b) => b.degree - a.degree).slice(0, 8).map((n) => n.id);
+    const size1 = Math.round(Math.max(11, Math.min(15, 11 * k)));
     graph.nodes.forEach((n, i) => {
-      const show = i === h || near?.has(i) || n.id === focus || (q && match(i)) || (h === null && !q && (k > 1.35 || busy.includes(n.id)));
+      const show = i === h || near?.has(i) || n.id === focus || (q && match(i)) || (h === null && !q && (k > 1.35 || busy.includes(n.id) || n.kind === 'folder'));
       if (!show) return;
       const p = toScreen(n.x, n.y);
       const rr = radius(n.degree, n.kind) * Math.max(0.7, Math.min(1.6, k));
       ctx.globalAlpha = dim(i) ? 0.25 : 0.92;
-      ctx.fillStyle = LABEL;
+      ctx.fillStyle = inks.label;
+      // Folders are set in italic, like a section's name over its column.
+      ctx.font = `${n.kind === 'folder' ? 'italic 600 ' : ''}${size1}px 'Source Serif 4', Georgia, serif`;
       const text = n.label.length > 34 ? `${n.label.slice(0, 32)}…` : n.label;
       ctx.fillText(text, p.x, p.y + rr + 4);
     });
@@ -340,6 +376,7 @@ function Plate({ graph, legend, revised, query, focus }: { graph: Graph; legend:
       const n = graph.nodes[g.node];
       if (!g.moved) {
         if (n.kind === 'tag') nav({ view: 'search', query: n.label, pane: 'list' });
+        else if (n.kind === 'folder') nav({ view: 'folder', folderId: n.id.slice('folder:'.length), noteId: null, pane: 'list' });
         else openNote(n.id);
       }
     }
@@ -359,8 +396,10 @@ function Plate({ graph, legend, revised, query, focus }: { graph: Graph; legend:
     view.current.y += before.y - after.y;
   };
 
+  const notes = graph.nodes.filter((n) => n.kind === 'note').length;
+  const links = graph.edges.filter((e) => !e.tree).length;
   return (
-    <div className="graph-plate" ref={wrapRef}>
+    <div className={`graph-plate ${dark ? 'dark' : 'light'}`} ref={wrapRef}>
       <canvas
         ref={canvasRef}
         style={{ width: size.w, height: size.h, touchAction: 'none' }}
@@ -374,7 +413,7 @@ function Plate({ graph, legend, revised, query, focus }: { graph: Graph; legend:
         }}
         onWheel={onWheel}
         role="img"
-        aria-label={`Graph of ${graph.nodes.length} notes and ${graph.edges.length} links. Switch to List for a readable version.`}
+        aria-label={`Graph of ${notes} notes and ${links} links. Switch to List for a readable version.`}
       />
       {tip && (
         <div className="viz-tip plate" style={{ left: tip.x, top: tip.y - 10 }}>
@@ -384,7 +423,7 @@ function Plate({ graph, legend, revised, query, focus }: { graph: Graph; legend:
       <div className="plate-legend">
         <div className="plate-rule" aria-hidden="true">
           {legend.map((l) => (
-            <span key={l.id} style={{ background: inkFor(l.id, revised) }} />
+            <span key={l.id} style={{ background: inks.ink(l.id) }} />
           ))}
         </div>
         <div className="plate-title">
@@ -394,14 +433,14 @@ function Plate({ graph, legend, revised, query, focus }: { graph: Graph; legend:
         <ul className="plate-keys">
           {legend.map((l) => (
             <li key={l.id}>
-              <span className="plate-swatch" style={{ background: inkFor(l.id, revised) }} />
+              <span className="plate-swatch" style={{ background: inks.ink(l.id) }} />
               {l.name}
             </li>
           ))}
         </ul>
         <div className="plate-figures">
-          <span>{String(graph.nodes.filter((n) => n.kind === 'note').length).padStart(2, '0')}</span>
-          <span>{String(graph.edges.length).padStart(2, '0')}</span>
+          <span>{String(notes).padStart(2, '0')}</span>
+          <span>{String(links).padStart(2, '0')}</span>
         </div>
         <div className="plate-figure-labels">notes · links</div>
       </div>
@@ -415,9 +454,15 @@ function Plate({ graph, legend, revised, query, focus }: { graph: Graph; legend:
 }
 
 /** The same graph as a table: every note, its subject and how connected it is. */
-function GraphList({ graph, legend, revised }: { graph: Graph; legend: { id: string; name: string }[]; revised: string[] }) {
+function GraphList({ graph, legend, inks, revised }: { graph: Graph; legend: { id: string; name: string }[]; inks: Inks; revised: string[] }) {
   const name = (g: string) => legend.find((l) => l.id === g)?.name ?? (g === 'tag' ? 'Tag' : 'Other');
-  const rows = graph.nodes.map((n, i) => ({ n, links: [...graph.neighbours[i]].map((j) => graph.nodes[j].label) })).sort((a, b) => b.links.length - a.links.length);
+  // Links you made, not the folder branches the plate draws.
+  const linked = graph.nodes.map(() => [] as string[]);
+  for (const e of graph.edges) if (!e.tree) (linked[e.a].push(graph.nodes[e.b].label), linked[e.b].push(graph.nodes[e.a].label));
+  const rows = graph.nodes
+    .map((n, i) => ({ n, links: linked[i] }))
+    .filter(({ n }) => n.kind !== 'folder')
+    .sort((a, b) => b.links.length - a.links.length);
   return (
     <div className="study-scroll">
       <table className="graph-table">
@@ -445,7 +490,7 @@ function GraphList({ graph, legend, revised }: { graph: Graph; legend: { id: str
                 )}
               </td>
               <td>
-                <span className="plate-swatch" style={{ background: inkFor(n.group, revised) }} /> {name(seriesSlot(n.group, revised) === null && n.group !== 'tag' ? OTHER_SUBJECT : n.group)}
+                <span className="plate-swatch" style={{ background: inks.ink(n.group) }} /> {name(seriesSlot(n.group, revised) === null && n.group !== 'tag' ? OTHER_SUBJECT : n.group)}
               </td>
               <td className="num">{links.length}</td>
               <td className="muted">{links.slice(0, 6).join(', ')}{links.length > 6 ? '…' : ''}</td>

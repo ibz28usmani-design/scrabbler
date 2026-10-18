@@ -28,7 +28,7 @@ export function NotebookPanel({ folderId, overlay }: { folderId: string; overlay
       <div className="nb-head">
         <IBook size={18} />
         <div className="nb-title">
-          {folder?.emoji} {folder?.name} <span className="muted">· Notebook</span>
+          {folder?.name} <span className="muted">· Notebook</span>
         </div>
         <span className="spacer" />
         <button className="icon-btn" onClick={() => nav({ notebookOpen: false, focusPanel: null })} aria-label="Close notebook">
@@ -390,7 +390,7 @@ function ChatTab({ folderId }: { folderId: string }) {
     } catch (e) {
       if ((e as Error).name !== 'AbortError') {
         toastError(e);
-        await db.chats.add({ id: uid(), folderId, role: 'model', text: `⚠️ ${(e as Error).message}`, createdAt: Date.now(), error: true });
+        await db.chats.add({ id: uid(), folderId, role: 'model', text: (e as Error).message, createdAt: Date.now(), error: true });
       }
     } finally {
       setStreaming(null);

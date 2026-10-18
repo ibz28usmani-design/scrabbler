@@ -12,6 +12,7 @@ import { mdToHtml } from '../lib/markdown';
 import { useSettings } from '../lib/settings';
 import { toastError } from '../lib/events';
 import { Spinner } from './ui';
+import { Glyph } from './AppIcon';
 import { IBolt, ICheck, IHeart, ISparkle, IX, IFlame } from './Icons';
 import type { Grade } from 'ts-fsrs';
 
@@ -208,7 +209,9 @@ export function Session({ deckIds, mode }: { deckIds: string[]; mode: Mode }) {
     return (
       <div className="session done">
         <div className="done-card">
-          <div className="done-emoji">{stats.done === 0 ? '🌿' : acc >= 90 ? '🏆' : acc >= 70 ? '🎉' : '💪'}</div>
+          <div className="done-emoji">
+              <Glyph icon={stats.done === 0 ? 'leaf' : acc >= 70 ? 'trophy' : 'check'} size={46} />
+            </div>
           <h2>{stats.done === 0 ? 'All caught up!' : mode === 'quiz' ? `You scored ${acc}%` : 'Session complete'}</h2>
           {stats.done > 0 ? (
             <div className="done-stats">
@@ -284,7 +287,7 @@ export function Session({ deckIds, mode }: { deckIds: string[]; mode: Mode }) {
           )}
         </span>
       </div>
-      {outOfLives && <div className="lives-banner">Out of lives 💔 — keep practising; XP resumes when a life refills ({Math.ceil(nextLifeIn(game!) / 60000)}m).</div>}
+      {outOfLives && <div className="lives-banner">Out of lives — keep practising; XP resumes when a life refills ({Math.ceil(nextLifeIn(game!) / 60000)}m).</div>}
 
       <div className="flash-wrap">
         <div className={`flash ${answered ? (item.kind === 'reveal' ? 'flipped' : isCorrect ? 'right' : 'wrong') : ''}`}>

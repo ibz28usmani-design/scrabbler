@@ -64,7 +64,7 @@ async function recordVoices(id: string) {
     if (item.audioBlobId) await db.blobs.delete(item.audioBlobId);
     const audioBlobId = await putBlob(wav, `${item.title}.wav`);
     await patch(id, { audioBlobId, status: 'ready', progress: undefined });
-    toast('Audio Overview is ready 🎧', 'success');
+    toast('Audio Overview is ready', 'success');
   } catch (e) {
     await patch(id, {
       status: 'ready',

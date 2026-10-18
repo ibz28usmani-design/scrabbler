@@ -262,7 +262,7 @@ function GapCards({ s, gaps }: { s: Setup; gaps: string[] }) {
           const id = uid();
           const now = Date.now();
           await db.transaction('rw', db.decks, db.cards, async () => {
-            await db.decks.add({ id, name: `Gaps: ${s.topic || s.subject}`, createdAt: now, emoji: '🩹', ...(folderId ? { folderId } : {}) });
+            await db.decks.add({ id, name: `Gaps: ${s.topic || s.subject}`, createdAt: now, icon: 'bandage', ...(folderId ? { folderId } : {}) });
             await db.cards.bulkAdd(cards.map((c, i) => makeCard(id, { type: 'basic', ...c }, now + i)));
           });
           setDone(true);

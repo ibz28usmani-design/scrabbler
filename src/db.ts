@@ -10,7 +10,10 @@ export type ID = string;
 export interface Folder {
   id: ID;
   name: string;
-  emoji: string;
+  /** Its icon's name (components/AppIcon.tsx). */
+  icon?: string;
+  /** Before icons: an emoji, read as the icon it maps to. */
+  emoji?: string;
   createdAt: number;
   order: number;
   /** When true, the folder's own notes are used as sources in chat/studio. */
@@ -178,7 +181,10 @@ export interface Deck {
   folderId?: ID;
   noteId?: ID;
   createdAt: number;
-  emoji: string;
+  /** Its icon's name (components/AppIcon.tsx). */
+  icon?: string;
+  /** Before icons: an emoji, read as the icon it maps to. */
+  emoji?: string;
 }
 
 export interface Card {
@@ -403,7 +409,7 @@ export async function initDb() {
   const count = await db.folders.count();
   if (count === 0) {
     const folderId = uid();
-    await db.folders.add({ id: folderId, name: 'Notes', emoji: '🗒️', createdAt: Date.now(), order: 0, notesAsSources: true });
+    await db.folders.add({ id: folderId, name: 'Notes', icon: 'notes', createdAt: Date.now(), order: 0, notesAsSources: true });
     const { welcomeNote } = await import('./lib/welcome');
     await db.notes.add(welcomeNote(folderId));
   }
@@ -424,12 +430,12 @@ export async function seedSubjectFolders() {
   const { getSettings } = await import('./lib/settings');
   const subjects = await db.subjects.toArray();
   const folders = await db.folders.toArray();
-  const emoji: Record<string, string> = { law: '⚖️', economics: '📈', maths: '📐' };
+  const icon: Record<string, string> = { law: 'scales', economics: 'chart', maths: 'maths' };
   let order = folders.length;
   for (const id of getSettings().revisionSubjects) {
     const sub = subjects.find((x) => x.id === id);
     if (!sub || folders.some((f) => f.subjectId === id || f.name.toLowerCase() === sub.name.toLowerCase())) continue;
-    await db.folders.add({ id: uid(), name: sub.name, emoji: emoji[id] ?? '📚', createdAt: Date.now(), order: order++, notesAsSources: true, subjectId: id });
+    await db.folders.add({ id: uid(), name: sub.name, icon: icon[id] ?? 'books', createdAt: Date.now(), order: order++, notesAsSources: true, subjectId: id });
   }
   // A folder already named for a subject is taken to be that subject's.
   for (const f of folders) {

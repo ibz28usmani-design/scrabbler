@@ -15,7 +15,7 @@ import { toast } from '../lib/events';
 import { MonthPoster, MONTH_NAMES } from './MonthArt';
 import { NextClass } from './NextClass';
 import { confirmDialog, DraftInput, Menu, Modal, Segmented, useMenu } from './ui';
-import { IChevL, IChevR, IMore, ISidebar } from './Icons';
+import { IChevL, IChevR, IMore, ISidebar, IX } from './Icons';
 import { addReminder, toggleComplete } from './RemindersView';
 
 const DAY_HEADS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -363,7 +363,7 @@ function DayDetail({ tt, day, today, reminders, onClose }: { tt: Timetable; day:
             <option value="">Any type</option>
             {REMINDER_TYPES.map((t) => (
               <option key={t.id} value={t.id}>
-                {t.emoji} {t.label}
+                {t.label}
               </option>
             ))}
           </select>
@@ -417,7 +417,7 @@ function TimetableEditor({ tt, onClose }: { tt: Timetable; onClose: () => void }
             <DraftInput className="input" value={s.name} onValue={(v) => v.trim() && db.subjects.update(s.id, { name: v })} aria-label="Subject name" />
             <DraftInput className="input short" value={s.short ?? ''} placeholder="Short" onValue={(v) => db.subjects.update(s.id, { short: v || undefined })} aria-label="Short name" />
             <button className="icon-btn small danger" onClick={() => removeSubject(s)} aria-label={`Delete ${s.name}`}>
-              ✕
+              <IX size={15} />
             </button>
           </div>
         ))}
@@ -445,7 +445,7 @@ function TimetableEditor({ tt, onClose }: { tt: Timetable; onClose: () => void }
                 <DraftInput className="input" value={l.room ?? ''} placeholder="Room" onValue={(v) => update(l.id, { room: v })} aria-label="Room" />
                 <DraftInput className="input" value={l.teacher ?? ''} placeholder="Teacher" onValue={(v) => update(l.id, { teacher: v })} aria-label="Teacher" />
                 <button className="icon-btn small danger" onClick={() => db.lessons.delete(l.id)} aria-label="Delete lesson">
-                  ✕
+                  <IX size={15} />
                 </button>
               </div>
             ))}
@@ -481,7 +481,7 @@ function TermsEditor({ calendar, onClose }: { calendar: TermCalendar; onClose: (
             <input type="checkbox" checked={s.confirmed !== false} onChange={(e) => edit(kind, i, { confirmed: e.target.checked })} /> Checked
           </label>
           <button className="icon-btn small danger" onClick={() => setCal((c) => ({ ...c, [kind]: c[kind].filter((_, j) => j !== i) }))} aria-label="Remove">
-            ✕
+            <IX size={15} />
           </button>
         </div>
       ))}

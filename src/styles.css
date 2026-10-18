@@ -716,16 +716,22 @@ select.input {
   font-weight: 700;
   color: #f97316;
 }
-.emoji-pick {
-  font-size: 20px;
-}
-.menu:has(.emoji-pick) {
+.menu.icon-picker {
   display: grid;
   grid-template-columns: repeat(6, 44px);
 }
-.menu:has(.emoji-pick) .menu-item {
+.menu.icon-picker .menu-item {
   justify-content: center;
   padding: 0;
+  height: 44px;
+}
+.side-emoji {
+  display: inline-grid;
+  place-items: center;
+  color: var(--text-2);
+}
+.side-row.on .side-emoji {
+  color: inherit;
 }
 
 /* ------------------------------------------------------------------ note list */
@@ -2700,10 +2706,12 @@ select.input {
   border-radius: var(--radius);
   padding: 9px 12px;
 }
+/* The AI tutor's explanation of a card: set as a sidebar note in ink, not tinted. */
 .tutor {
   margin-top: 12px;
-  background: rgba(139, 92, 246, 0.1);
-  border-radius: var(--radius);
+  background: var(--card);
+  border-left: 3px solid var(--rule);
+  border-radius: 0;
   padding: 10px 14px;
   font-size: 15px;
 }
@@ -4726,7 +4734,8 @@ select.input {
 }
 .note-link-icon {
   margin-right: 3px;
-  font-size: 0.9em;
+  display: inline-flex;
+  vertical-align: -2px;
 }
 .note-link.gone {
   color: var(--muted);
@@ -6817,15 +6826,29 @@ body.block-dragging * {
   height: 28px;
   margin-left: 4px;
 }
-/* The plate: charcoal in both themes, like the poster it is modelled on. */
+/* The plate: newsprint and ink by day, charcoal and chalk by night, like the poster it is modelled on. */
 .graph-plate {
   position: relative;
   flex: 1;
   min-height: 0;
   margin: 0 18px 18px;
-  background: #141310;
   overflow: hidden;
+}
+.graph-plate.dark {
+  background: #141310;
   color: #e9e3d6;
+}
+.graph-plate.light {
+  background: #f7f3e8;
+  color: #1b1a17;
+  box-shadow: inset 0 0 0 1px var(--rule);
+}
+.graph-plate.light .plate-dot {
+  color: #1c8a63;
+}
+.graph-plate.light .viz-tip.plate {
+  background: #1b1a17;
+  color: #f7f3e8;
 }
 .graph-plate canvas {
   display: block;

@@ -1,8 +1,9 @@
 /**
- * The knowledge graph's model and layout: notes (and optionally tags) as
- * nodes, links as edges, laid out by a small force simulation. Notes of a
- * subject are drawn gently toward their own region, so the graph grows in
- * clusters, as a neuron grows its branches.
+ * The knowledge graph's model and layout: notes (and optionally tags and
+ * folders) as nodes, links as edges, laid out by a small force simulation.
+ * Folders are hubs each note branches from, and notes of a subject are drawn
+ * gently toward their own region, so the graph grows in clusters, as a neuron
+ * grows its branches.
  */
 
 export interface GraphNote {
@@ -16,7 +17,7 @@ export interface GraphNote {
 export interface GNode {
   id: string;
   label: string;
-  kind: 'note' | 'tag';
+  kind: 'note' | 'tag' | 'folder';
   /** Subject id, or 'other'. */
   group: string;
   x: number;
@@ -31,6 +32,14 @@ export interface GNode {
 export interface GEdge {
   a: number;
   b: number;
+  /** A branch of the folder tree rather than a link you made. */
+  tree?: boolean;
+}
+
+export interface GraphFolder {
+  id: string;
+  name: string;
+  parentId?: string;
 }
 
 export interface Graph {
@@ -40,7 +49,7 @@ export interface Graph {
   neighbours: Set<number>[];
 }
 
-export function buildGraph(notes: GraphNote[], subjectOf: (folderId: string) => string, opts: { tags: boolean; orphans: boolean }): Graph {
+export function buildGraph(notes: GraphNote[], subjectOf: (folderId: string) => string, opts: { tags: boolean; orphans: boolean; folders?: GraphFolder[] }): Graph {
   const nodes: GNode[] = [];
   const index = new Map<string, number>();
   const add = (id: string, label: string, kind: GNode['kind'], group: string) => {
@@ -56,12 +65,12 @@ export function buildGraph(notes: GraphNote[], subjectOf: (folderId: string) => 
   for (const n of notes) add(n.id, n.title || 'Untitled', 'note', subjectOf(n.folderId));
   const edges: GEdge[] = [];
   const seen = new Set<string>();
-  const link = (a: number, b: number) => {
+  const link = (a: number, b: number, tree = false) => {
     if (a === b) return;
     const key = a < b ? `${a}-${b}` : `${b}-${a}`;
     if (seen.has(key)) return;
     seen.add(key);
-    edges.push({ a, b });
+    edges.push(tree ? { a, b, tree } : { a, b });
     nodes[a].degree++;
     nodes[b].degree++;
   };
@@ -69,6 +78,25 @@ export function buildGraph(notes: GraphNote[], subjectOf: (folderId: string) => 
     const a = index.get(n.id)!;
     for (const to of n.links) if (index.has(to)) link(a, index.get(to)!);
     if (opts.tags) for (const t of n.tags) link(a, add(`tag:${t}`, `#${t}`, 'tag', 'tag'));
+  }
+  if (opts.folders) {
+    const byId = new Map(opts.folders.map((f) => [f.id, f]));
+    const hub = (id: string): number | undefined => {
+      const f = byId.get(id);
+      if (!f) return undefined;
+      const known = index.has(`folder:${id}`);
+      const i = add(`folder:${id}`, f.name, 'folder', subjectOf(id));
+      // Each folder branches from the one it sits in, up to the top.
+      if (!known && f.parentId) {
+        const p = hub(f.parentId);
+        if (p !== undefined) link(p, i, true);
+      }
+      return i;
+    };
+    for (const n of notes) {
+      const h = hub(n.folderId);
+      if (h !== undefined) link(h, index.get(n.id)!, true);
+    }
   }
   let kept = nodes;
   if (!opts.orphans) kept = nodes.filter((n) => n.degree > 0);
@@ -78,7 +106,7 @@ export function buildGraph(notes: GraphNote[], subjectOf: (folderId: string) => 
 function reindex(kept: GNode[], edges: GEdge[], all: GNode[]): Graph {
   const index = new Map<string, number>();
   kept.forEach((n, i) => index.set(n.id, i));
-  const remapped = edges.filter((e) => index.has(all[e.a].id) && index.has(all[e.b].id)).map((e) => ({ a: index.get(all[e.a].id)!, b: index.get(all[e.b].id)! }));
+  const remapped = edges.filter((e) => index.has(all[e.a].id) && index.has(all[e.b].id)).map((e) => ({ ...e, a: index.get(all[e.a].id)!, b: index.get(all[e.b].id)! }));
   const neighbours = kept.map(() => new Set<number>());
   for (const e of remapped) {
     neighbours[e.a].add(e.b);
@@ -145,7 +173,8 @@ export function tick(g: Graph, alpha: number, anchor: Map<string, { x: number; y
     const dx = b.x - a.x;
     const dy = b.y - a.y;
     const d = Math.sqrt(dx * dx + dy * dy) || 1;
-    const f = ((d - 46) / d) * 0.06 * alpha;
+    // Branches are shorter than links, so a folder's notes gather round it.
+    const f = ((d - (e.tree ? 34 : 46)) / d) * 0.06 * alpha;
     a.vx += dx * f;
     a.vy += dy * f;
     b.vx -= dx * f;

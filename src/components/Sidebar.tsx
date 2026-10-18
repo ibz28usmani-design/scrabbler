@@ -6,15 +6,16 @@ import { computeStreak, deckCounts } from '../lib/study';
 import { updateSettings, useSettings } from '../lib/settings';
 import { useDark } from '../lib/theme';
 import { confirmDialog, Menu, promptDialog } from './ui';
-import { ICalendar, ICards, IChecklist, IChevD, IChevR, IFlame, IFolder, IGear, IGraph, IMoon, IMore, IPlus, ISearch, ISun, ITimer, ITrash, ITutor, IX } from './Icons';
+import { ICalendar, ICards, IChecklist, IChevD, IChevR, IFlame, IGear, IGraph, IMoon, IMore, IPlus, ISearch, ISun, ITimer, ITrash, ITutor, IX } from './Icons';
 import { canNest, folderTree, visibleRows } from '../lib/folders';
 import { foldersChanged } from '../lib/studyTime';
 import { useRevisionSummary } from './RevisionView';
+import { AppIcon, FOLDER_ICONS } from './AppIcon';
+import { IconPicker } from './IconPicker';
 import { NextClass } from './NextClass';
 import { inSmartList } from '../lib/reminders';
 import { dateIn } from '../lib/timetable';
 
-const EMOJIS = ['🗒️', '📚', '🧪', '🧠', '💼', '🎓', '🧬', '📐', '🌍', '💡', '🎨', '🩺', '⚖️', '💻', '🎵', '✈️', '🏠', '❤️'];
 
 export function Sidebar() {
   const { view, folderId, query } = useNav();
@@ -38,7 +39,7 @@ export function Sidebar() {
   }, []);
   const streak = useLiveQuery(() => computeStreak(dailyGoal), [dailyGoal]);
   const [menuFor, setMenuFor] = useState<{ folder: Folder; el: HTMLElement } | null>(null);
-  const [emojiFor, setEmojiFor] = useState<{ folder: Folder; el: HTMLElement } | null>(null);
+  const [iconFor, setIconFor] = useState<{ folder: Folder; el: HTMLElement } | null>(null);
   const [subjectFor, setSubjectFor] = useState<{ folder: Folder; el: HTMLElement } | null>(null);
   const [moveFor, setMoveFor] = useState<{ folder: Folder; el: HTMLElement } | null>(null);
   const subjects = useLiveQuery(() => db.subjects.toArray(), []) ?? [];
@@ -64,7 +65,7 @@ export function Sidebar() {
     const name = await promptDialog(parent ? `New Folder in ${parent.name}` : 'New Folder', '', 'Folder name');
     if (!name) return;
     const id = uid();
-    await db.folders.add({ id, name, emoji: EMOJIS[folders.length % EMOJIS.length], createdAt: Date.now(), order: folders.length, notesAsSources: true, ...(parent ? { parentId: parent.id } : {}) });
+    await db.folders.add({ id, name, icon: 'folder', createdAt: Date.now(), order: folders.length, notesAsSources: true, ...(parent ? { parentId: parent.id } : {}) });
     if (parent?.collapsed) await db.folders.update(parent.id, { collapsed: false });
     foldersChanged();
     nav({ view: 'folder', folderId: id, noteId: null, pane: 'list', drawer: false });
@@ -166,7 +167,9 @@ export function Sidebar() {
                 <span className="fold-toggle" />
               )}
               <button className="side-main" onClick={() => nav({ view: 'folder', folderId: f.id, noteId: null, pane: 'list', drawer: false })}>
-                <span className="side-emoji">{f.emoji || <IFolder />}</span>
+                <span className="side-emoji">
+                  <AppIcon name={f.icon ?? f.emoji} />
+                </span>
                 <span className="side-name">{f.name}</span>
                 {sub && <span className="subject-tick" style={{ background: sub.color }} title={`Counts toward ${sub.name}`} />}
                 <span className="side-count">{counts?.map.get(f.id) ?? 0}</span>
@@ -202,7 +205,7 @@ export function Sidebar() {
                 if (name) db.folders.update(menuFor.folder.id, { name });
               },
             },
-            { label: 'Change icon…', onClick: () => setEmojiFor(menuFor) },
+            { label: 'Change icon…', onClick: () => setIconFor(menuFor) },
             { label: 'New folder inside…', onClick: () => newFolder(menuFor.folder) },
             { label: 'Move into…', onClick: () => setMoveFor(menuFor) },
             {
@@ -266,7 +269,8 @@ export function Sidebar() {
             },
             { divider: true, label: '' },
             ...visibleRows(folderTree(folders.map((f) => ({ ...f, collapsed: false })))).map(({ folder: f, depth }) => ({
-              label: `${'\u2003'.repeat(depth)}${f.emoji} ${f.name}`,
+              label: `${'\u2003'.repeat(depth)}${f.name}`,
+              icon: <AppIcon name={f.icon ?? f.emoji} size={17} />,
               disabled: f.id === moveFor.folder.parentId || !canNest(folders, moveFor.folder.id, f.id),
               onClick: async () => {
                 await db.folders.update(moveFor.folder.id, { parentId: f.id });
@@ -276,13 +280,7 @@ export function Sidebar() {
           ]}
         />
       )}
-      {emojiFor && (
-        <Menu
-          anchor={emojiFor.el}
-          onClose={() => setEmojiFor(null)}
-          items={EMOJIS.map((e) => ({ label: <span className="emoji-pick">{e}</span>, onClick: () => db.folders.update(emojiFor.folder.id, { emoji: e }) }))}
-        />
-      )}
+      {iconFor && <IconPicker anchor={iconFor.el} icons={FOLDER_ICONS} onClose={() => setIconFor(null)} onPick={(icon) => db.folders.update(iconFor.folder.id, { icon })} />}
     </aside>
   );
 }

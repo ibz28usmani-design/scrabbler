@@ -33,6 +33,7 @@ import {
 } from '../lib/reminders';
 import { confirmDialog, Menu, Modal, useMenu } from './ui';
 import { IChevL, IMore, IPlus, ISearch, ISidebar, IX } from './Icons';
+import { Glyph as Icon } from './AppIcon';
 
 // ------------------------------------------------------------------ data
 
@@ -436,7 +437,7 @@ function ReminderRow({ r, list, subjects, today, showList, onComplete, onInfo }:
           {(due || subject || kind || r.repeat || (showList && list)) && (
             <div className="rem-meta">
               {due && <span className={due.overdue ? 'late' : ''}>{due.text}</span>}
-              {r.repeat && <span title="Repeats">↻ {REPEATS.find((x) => x.id === r.repeat)?.label}</span>}
+              {r.repeat && <span title="Repeats"><Icon icon="repeat" size={13} /> {REPEATS.find((x) => x.id === r.repeat)?.label}</span>}
               {subject && (
                 <span className="rem-subject" style={{ ['--subject' as string]: subject.color }}>
                   {subject.short ?? subject.name}
@@ -444,7 +445,7 @@ function ReminderRow({ r, list, subjects, today, showList, onComplete, onInfo }:
               )}
               {kind && (
                 <span className="rem-type">
-                  {kind.emoji} {kind.label}
+                  <Icon icon={kind.icon} size={13} /> {kind.label}
                 </span>
               )}
               {showList && list && (
@@ -526,16 +527,16 @@ function NewReminderRow({ defaults, subjects, today, onDone }: { defaults: Parti
         />
         <div className="quickbar">
           <button className={`quick ${due ? 'on' : ''}`} onMouseDown={(e) => e.preventDefault()} onClick={(e) => openDate(e.currentTarget)}>
-            📅 {due ? dueLabel({ due } as Reminder, today)?.text : 'Date'}
+            <Icon icon="calendar" size={15} /> {due ? dueLabel({ due } as Reminder, today)?.text : 'Date'}
           </button>
           <button className={`quick ${subject ? 'on' : ''}`} style={subject ? { ['--subject' as string]: subject.color } : undefined} onMouseDown={(e) => e.preventDefault()} onClick={(e) => openSubj(e.currentTarget)}>
-            {subject ? <span className="quick-dot" /> : '📚'} {subject?.short ?? subject?.name ?? 'Subject'}
+            {subject ? <span className="quick-dot" /> : <Icon icon="books" size={15} />} {subject?.short ?? subject?.name ?? 'Subject'}
           </button>
           <button className={`quick ${kind ? 'on' : ''}`} onMouseDown={(e) => e.preventDefault()} onClick={(e) => openType(e.currentTarget)}>
-            {kind ? `${kind.emoji} ${kind.label}` : '🏷 Type'}
+            <Icon icon={kind?.icon ?? 'tag'} size={15} /> {kind ? kind.label : 'Type'}
           </button>
           <button className={`quick ${flagged ? 'on flag' : ''}`} onMouseDown={(e) => e.preventDefault()} onClick={() => setFlagged(!flagged)} aria-pressed={flagged}>
-            ⚑ Flag
+            <Icon icon="flag" size={15} /> Flag
           </button>
         </div>
       </div>
@@ -563,7 +564,7 @@ function NewReminderRow({ defaults, subjects, today, onDone }: { defaults: Parti
         <Menu
           anchor={typeAnchor}
           onClose={() => (closeType(), input.current?.focus())}
-          items={[{ label: 'No type', onClick: () => setType(undefined) }, { divider: true, label: '' }, ...REMINDER_TYPES.map((t) => ({ label: `${t.emoji} ${t.label}`, onClick: () => setType(t.id) }))]}
+          items={[{ label: 'No type', onClick: () => setType(undefined) }, { divider: true, label: '' }, ...REMINDER_TYPES.map((t) => ({ label: t.label, icon: <Icon icon={t.icon} size={17} />, onClick: () => setType(t.id) }))]}
         />
       )}
     </div>
@@ -615,7 +616,7 @@ function ReminderDetails({ id, lists, subjects, onClose }: { id: string; lists: 
         {r.due && <input className="ios-field picker" type="date" value={r.due} onChange={(e) => e.target.value && set({ due: e.target.value })} aria-label="Due date" />}
         <div className="ios-row">
           <span className="ios-icon">
-            🕑
+            <Icon icon="clock" size={17} />
           </span>
           <span className="ios-label">
             Time
@@ -627,7 +628,7 @@ function ReminderDetails({ id, lists, subjects, onClose }: { id: string; lists: 
         {r.due && (
           <label className="ios-row">
             <span className="ios-icon">
-              ↻
+              <Icon icon="repeat" size={17} />
             </span>
             <span className="ios-label">Repeat</span>
             <select className="ios-select" value={r.repeat ?? ''} onChange={(e) => set({ repeat: (e.target.value || undefined) as Repeat | undefined })}>
@@ -643,7 +644,7 @@ function ReminderDetails({ id, lists, subjects, onClose }: { id: string; lists: 
         {r.time && (
           <label className="ios-row">
             <span className="ios-icon">
-              ⏱
+              <Icon icon="timer" size={17} />
             </span>
             <span className="ios-label">Early Reminder</span>
             <select className="ios-select" value={r.early ?? 0} onChange={(e) => set({ early: Number(e.target.value) || undefined })}>
@@ -660,7 +661,7 @@ function ReminderDetails({ id, lists, subjects, onClose }: { id: string; lists: 
       <div className="ios-group">
         <label className="ios-row">
           <span className="ios-icon">
-            📚
+            <Icon icon="books" size={17} />
           </span>
           <span className="ios-label">Subject</span>
           <select className="ios-select" value={r.subjectId ?? ''} onChange={(e) => set({ subjectId: e.target.value || undefined })}>
@@ -675,7 +676,7 @@ function ReminderDetails({ id, lists, subjects, onClose }: { id: string; lists: 
         <div className="type-picker" role="radiogroup" aria-label="Type">
           {REMINDER_TYPES.map((t) => (
             <button key={t.id} role="radio" aria-checked={r.type === t.id} className={`type-chip ${r.type === t.id ? 'on' : ''}`} onClick={() => set({ type: r.type === t.id ? undefined : t.id })}>
-              {t.emoji} {t.label}
+              <Icon icon={t.icon} size={15} /> {t.label}
             </button>
           ))}
         </div>

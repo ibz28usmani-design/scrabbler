@@ -8,6 +8,10 @@ import { dayKey, prevDay } from '../lib/dates';
 import { confirmDialog, Empty, Menu, Modal, promptDialog, useMenu } from './ui';
 import { ICards, IChevL, IFlame, IHeart, IBolt, IPlus, IMore, ISparkle, IUpload, ITrash, ISidebar } from './Icons';
 import { Session } from './Session';
+import { AppIcon } from './AppIcon';
+import { IconPicker } from './IconPicker';
+
+const DECK_ICONS = ['cards', 'question', 'brain', 'bulb', 'books', 'scales', 'chart', 'maths', 'flask', 'globe', 'inbox', 'bandage', 'trophy', 'grad'];
 import { toast } from '../lib/events';
 
 const TYPE_LABEL: Record<CardType, string> = { basic: 'Flashcard', cloze: 'Cloze', mcq: 'Multiple choice', tf: 'True / False', typed: 'Type answer' };
@@ -62,7 +66,7 @@ export function StatsBar() {
           <div className="stat-num">
             {today}/{dailyGoal}
           </div>
-          <div className="stat-label">{streak?.todayMet ? 'goal met today 🎉' : 'daily goal'}</div>
+          <div className="stat-label">{streak?.todayMet ? 'goal met today' : 'daily goal'}</div>
         </div>
       </div>
       <div className="stat xp">
@@ -125,7 +129,7 @@ function StudyHome({ narrow, showSidebarToggle }: { narrow: boolean; showSidebar
     const name = await promptDialog('New Deck', '', 'Deck name');
     if (!name) return;
     const id = uid();
-    await db.decks.add({ id, name, createdAt: Date.now(), emoji: '🗂️' });
+    await db.decks.add({ id, name, createdAt: Date.now(), icon: 'cards' });
     nav({ deckId: id });
   };
 
@@ -176,7 +180,9 @@ function StudyHome({ narrow, showSidebarToggle }: { narrow: boolean; showSidebar
               return (
                 <div key={d.id} className="deck">
                   <button className="deck-main" onClick={() => nav({ deckId: d.id })}>
-                    <span className="deck-emoji">{d.emoji}</span>
+                    <span className="deck-emoji">
+                      <AppIcon name={d.icon ?? d.emoji} fallback="cards" size={24} />
+                    </span>
                     <span className="deck-name">{d.name}</span>
                     <span className="deck-counts">
                       <span className="due">{c.due} due</span> · <span className="new">{c.fresh} new</span> · {c.total} cards
@@ -217,6 +223,7 @@ function DeckDetail({ deckId }: { deckId: string }) {
   const cards = useLiveQuery(() => db.cards.where('deckId').equals(deckId).sortBy('createdAt'), [deckId]) ?? [];
   const [edit, setEdit] = useState<Card | 'new' | null>(null);
   const [anchor, open, close] = useMenu();
+  const [iconAnchor, setIconAnchor] = useState<HTMLElement | null>(null);
   const counts = deckCounts(cards);
   if (!deck) return null;
   return (
@@ -232,7 +239,9 @@ function DeckDetail({ deckId }: { deckId: string }) {
       </div>
       <div className="study-scroll">
         <div className="deck-hero">
-          <span className="deck-emoji big">{deck.emoji}</span>
+          <span className="deck-emoji big">
+            <AppIcon name={deck.icon ?? deck.emoji} fallback="cards" size={40} />
+          </span>
           <h1>{deck.name}</h1>
           <div className="deck-counts">
             <span className="due">{counts.due} due</span> · <span className="new">{counts.fresh} new</span> · {counts.total} cards
@@ -265,6 +274,7 @@ function DeckDetail({ deckId }: { deckId: string }) {
         </ul>
       </div>
       {edit && <CardEditor deckId={deckId} card={edit === 'new' ? null : edit} onClose={() => setEdit(null)} />}
+      {iconAnchor && <IconPicker anchor={iconAnchor} icons={DECK_ICONS} onClose={() => setIconAnchor(null)} onPick={(icon) => db.decks.update(deckId, { icon })} />}
       {anchor && (
         <Menu
           anchor={anchor}
@@ -280,10 +290,7 @@ function DeckDetail({ deckId }: { deckId: string }) {
             },
             {
               label: 'Change icon…',
-              onClick: async () => {
-                const e = await promptDialog('Deck icon (emoji)', deck.emoji);
-                if (e) db.decks.update(deckId, { emoji: [...e][0] });
-              },
+              onClick: () => setTimeout(() => setIconAnchor(anchor), 0),
             },
             { label: 'Generate more cards with AI…', onClick: () => openModal({ type: 'generateDeck', from: deck.noteId ? { kind: 'note', noteId: deck.noteId } : deck.folderId ? { kind: 'folder', folderId: deck.folderId } : { kind: 'text' } }) },
             {

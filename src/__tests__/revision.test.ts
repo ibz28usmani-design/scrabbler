@@ -236,3 +236,20 @@ describe('Markdown tags', () => {
     expect(toMarkdown([{ type: 'paragraph', runs: [{ text: '# not a heading' }] }]).trim()).toBe('\\# not a heading');
   });
 });
+
+describe('graph folders', () => {
+  it('branches each note from its folder, and folders from theirs, apart from links', async () => {
+    const { buildGraph } = await import('../lib/graph');
+    const g = buildGraph(
+      [
+        { id: 'a', title: 'Offer', folderId: 'contract', links: ['b'], tags: [] },
+        { id: 'b', title: 'Acceptance', folderId: 'contract', links: [], tags: [] },
+      ],
+      () => 'law',
+      { tags: false, orphans: false, folders: [{ id: 'law', name: 'Law' }, { id: 'contract', name: 'Contract', parentId: 'law' }] },
+    );
+    expect(g.nodes.filter((n) => n.kind === 'folder').map((n) => n.label).sort()).toEqual(['Contract', 'Law']);
+    expect(g.edges.filter((e) => !e.tree)).toHaveLength(1);
+    expect(g.edges.filter((e) => e.tree)).toHaveLength(3);
+  });
+});

@@ -70,7 +70,7 @@ export function GenerateDeckDialog({ from, quiz }: { from: From; quiz?: boolean 
           id: deckId,
           name: (title || topic || 'New deck').slice(0, 80) + (quiz ? ' — Quiz' : ''),
           createdAt: Date.now(),
-          emoji: quiz ? '❓' : '🃏',
+          icon: quiz ? 'question' : 'cards',
           noteId: from.kind === 'note' ? from.noteId : undefined,
           folderId: from.kind === 'folder' ? from.folderId : undefined,
         });
@@ -162,7 +162,7 @@ export function GenerateDeckDialog({ from, quiz }: { from: From; quiz?: boolean 
               <option value="new">New deck</option>
               {decks.map((d) => (
                 <option key={d.id} value={d.id}>
-                  {d.emoji} {d.name}
+                  {d.name}
                 </option>
               ))}
             </select>
@@ -196,7 +196,7 @@ export function ImportDeckDialog() {
         for (const d of decks) {
           const id = uid();
           firstId ||= id;
-          await db.decks.add({ id, name: d.name, createdAt: Date.now(), emoji: tab === 'gizmo' ? '🧠' : '📥', ...(folderId ? { folderId } : {}) });
+          await db.decks.add({ id, name: d.name, createdAt: Date.now(), icon: tab === 'gizmo' ? 'brain' : 'inbox', ...(folderId ? { folderId } : {}) });
           const now = Date.now();
           await db.cards.bulkAdd(d.cards.map((c, i) => makeCard(id, c, now + i)));
           total += d.cards.length;
@@ -229,7 +229,7 @@ export function ImportDeckDialog() {
           {visibleRows(folderTree(folders.map((f) => ({ ...f, collapsed: false })))).map(({ folder: f, depth }) => (
             <option key={f.id} value={f.id}>
               {'\u2003'.repeat(depth)}
-              {f.emoji} {f.name}
+              {f.name}
             </option>
           ))}
         </select>

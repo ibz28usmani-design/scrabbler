@@ -160,14 +160,14 @@ export async function importVault(file: File): Promise<VaultImport> {
   const now = Date.now();
   const folders: Folder[] = [];
   const order = await db.folders.count();
-  const root: Folder = { id: uid(), name: safeFileName(file.name.replace(/\.zip$/i, ''), 'Vault'), emoji: '🗃️', createdAt: now, order, notesAsSources: true };
+  const root: Folder = { id: uid(), name: safeFileName(file.name.replace(/\.zip$/i, ''), 'Vault'), icon: 'archive', createdAt: now, order, notesAsSources: true };
   folders.push(root);
   const dirs = new Map<string, string>([['', root.id]]);
   const folderFor = (dir: string): string => {
     if (dirs.has(dir)) return dirs.get(dir)!;
     const parts = dir.split('/');
     const parentId = folderFor(parts.slice(0, -1).join('/'));
-    const f: Folder = { id: uid(), name: parts[parts.length - 1], emoji: '📁', createdAt: now, order: folders.length, notesAsSources: true, parentId };
+    const f: Folder = { id: uid(), name: parts[parts.length - 1], icon: 'folder', createdAt: now, order: folders.length, notesAsSources: true, parentId };
     folders.push(f);
     dirs.set(dir, f.id);
     return f.id;
