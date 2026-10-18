@@ -2,7 +2,7 @@
  * Minimal Gemini REST client that runs entirely in the browser using the
  * user's own (free) AI Studio API key. No server is involved.
  */
-import { getSettings } from './settings';
+import { getSettings, updateSettings } from './settings';
 import { emitStatus, sleep } from './events';
 
 const BASE = 'https://generativelanguage.googleapis.com';
@@ -91,6 +91,58 @@ async function call(url: string, init: RequestInit, signal?: AbortSignal, attemp
   throw lastErr instanceof Error ? lastErr : new Error('Request failed');
 }
 
+type ModelSlot = 'textModel' | 'ttsModel';
+
+/** Google's answer for a model this key can no longer use, as opposed to a bad request. */
+export function isRetiredModel(e: unknown, model: string): boolean {
+  if (!(e instanceof GeminiError)) return false;
+  if (![400, 403, 404].includes(e.status)) return false;
+  return e.message.includes(model) || (/\bmodel/i.test(e.message) && /no longer available|not (?:found|supported|available)/i.test(e.message));
+}
+
+let pendingSwitch: Promise<ReturnType<typeof modelUpgrades>> | null = null;
+
+/**
+ * Moves the settings off a model Google refused, onto the newest one the key
+ * offers. Never onto an older version of the same family: if the newest one
+ * is refused, that is better reported than quietly downgraded.
+ */
+async function replaceModel(failed: string): Promise<ReturnType<typeof modelUpgrades>> {
+  pendingSwitch ??= listModels()
+    .then((list) => {
+      const patch = modelUpgrades(list.map((m) => m.name).filter((n) => n !== failed), getSettings());
+      for (const [slot, next] of Object.entries(patch) as [keyof typeof patch, string][]) {
+        const rx = Object.values(FAMILY).find((r) => r.test(failed) && r.test(next));
+        if (rx && compareFamily(rx, failed, next) < 0) delete patch[slot];
+      }
+      updateSettings(patch);
+      return patch;
+    })
+    .finally(() => (pendingSwitch = null));
+  return pendingSwitch;
+}
+
+/**
+ * Calls a model from settings, and if Google has retired it, switches the
+ * setting to its newest replacement and tries once more. A model the caller
+ * named itself only falls back when it is the one in settings.
+ */
+async function callModel(slot: ModelSlot, explicit: string | undefined, url: (model: string) => string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
+  const configured = getSettings()[slot];
+  const model = explicit || configured;
+  try {
+    return await call(url(model), init, signal);
+  } catch (e) {
+    if (model !== configured || !isRetiredModel(e, model)) throw e;
+    // A request racing this one may already have moved the setting on.
+    if (getSettings()[slot] === model) await replaceModel(model).catch(() => {});
+    const next = getSettings()[slot];
+    if (next === model) throw e;
+    emitStatus(`${model} is no longer available — switched to ${next}.`);
+    return call(url(next), init, signal);
+  }
+}
+
 export interface GenerateOptions {
   model?: string;
   system?: string;
@@ -136,9 +188,10 @@ function extractText(data: any): string {
 }
 
 export async function generate(o: GenerateOptions): Promise<string> {
-  const model = o.model || getSettings().textModel;
-  const res = await call(
-    `${BASE}/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+  const res = await callModel(
+    'textModel',
+    o.model,
+    (model) => `${BASE}/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key() }, body: JSON.stringify(buildBody(o)) },
     o.signal,
   );
@@ -168,9 +221,10 @@ export interface WebSource {
 
 /** Generation grounded in live Google Search results (free-tier daily limit applies). */
 export async function generateGrounded(o: GenerateOptions): Promise<{ text: string; sources: WebSource[] }> {
-  const model = o.model || getSettings().textModel;
-  const res = await call(
-    `${BASE}/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+  const res = await callModel(
+    'textModel',
+    o.model,
+    (model) => `${BASE}/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key() },
@@ -193,9 +247,10 @@ export async function generateGrounded(o: GenerateOptions): Promise<{ text: stri
 
 /** Streams text deltas. */
 export async function* stream(o: GenerateOptions): AsyncGenerator<string> {
-  const model = o.model || getSettings().textModel;
-  const res = await call(
-    `${BASE}/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`,
+  const res = await callModel(
+    'textModel',
+    o.model,
+    (model) => `${BASE}/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`,
     { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key() }, body: JSON.stringify(buildBody(o)) },
     o.signal,
   );
@@ -302,7 +357,6 @@ export interface TTSResult {
 
 /** Multi-speaker text-to-speech. `script` uses "Name: line" format. */
 export async function tts(script: string, speakers: { name: string; voice: string }[], signal?: AbortSignal): Promise<TTSResult> {
-  const model = getSettings().ttsModel;
   const speechConfig =
     speakers.length > 1
       ? {
@@ -314,8 +368,10 @@ export async function tts(script: string, speakers: { name: string; voice: strin
           },
         }
       : { voiceConfig: { prebuiltVoiceConfig: { voiceName: speakers[0].voice } } };
-  const res = await call(
-    `${BASE}/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+  const res = await callModel(
+    'ttsModel',
+    undefined,
+    (model) => `${BASE}/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key() },
@@ -357,6 +413,66 @@ export async function listModels(apiKey?: string): Promise<ModelInfo[]> {
     pageToken = data.nextPageToken;
   }
   return out;
+}
+
+type ModelKind = 'flash' | 'pro' | 'tts';
+
+const FAMILY: Record<ModelKind, RegExp> = {
+  flash: /^gemini-(\d+(?:\.\d+)*)-flash(-preview(?:-[\d-]+)?)?$/,
+  pro: /^gemini-(\d+(?:\.\d+)*)-pro(-preview(?:-[\d-]+)?)?$/,
+  tts: /^gemini-(\d+(?:\.\d+)*)-flash(-preview)?-tts$/,
+};
+
+/** Orders two names of one family: higher version first, then stable before preview. */
+function compareFamily(rx: RegExp, a: string, b: string): number {
+  const [, va, pa] = a.match(rx)!;
+  const [, vb, pb] = b.match(rx)!;
+  const na = va.split('.').map(Number);
+  const nb = vb.split('.').map(Number);
+  for (let i = 0; i < Math.max(na.length, nb.length); i++) {
+    const d = (nb[i] ?? 0) - (na[i] ?? 0);
+    if (d) return d;
+  }
+  return Number(!!pa) - Number(!!pb);
+}
+
+/** The newest model of a family that the key can see, e.g. gemini-3.8-flash over gemini-2.5-flash. */
+export function newestModel(names: string[], kind: ModelKind): string | undefined {
+  const rx = FAMILY[kind];
+  return names.filter((n) => rx.test(n)).sort((a, b) => compareFamily(rx, a, b))[0];
+}
+
+/**
+ * Moves each model slot onto the newest one the key offers. Google keeps
+ * retired models in the list but refuses them to newer keys, so a slot is
+ * moved when its model is missing or is an older version of the same family.
+ * A deliberate pick outside the family (a lite model, say) is left alone.
+ */
+export function modelUpgrades(names: string[], current: { textModel: string; proModel: string; ttsModel: string }) {
+  const patch: Partial<typeof current> = {};
+  const slots = [['textModel', 'flash'], ['proModel', 'pro'], ['ttsModel', 'tts']] as const;
+  for (const [slot, kind] of slots) {
+    const best = newestModel(names, kind);
+    const now = current[slot];
+    if (!best || best === now) continue;
+    const rx = FAMILY[kind];
+    if (!names.includes(now) || (rx.test(now) && compareFamily(rx, now, best) > 0)) patch[slot] = best;
+  }
+  return patch;
+}
+
+/** Asks a model for a single token, so a key that lists a model but can't use it fails here. */
+export async function probeModel(model: string, apiKey?: string): Promise<void> {
+  await call(
+    `${BASE}/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey ?? key() },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Hi' }] }], generationConfig: { maxOutputTokens: 1 } }),
+    },
+    undefined,
+    2,
+  );
 }
 
 /** Schema helpers (OpenAPI subset used by Gemini's responseSchema). */
