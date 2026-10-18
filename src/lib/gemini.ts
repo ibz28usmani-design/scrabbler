@@ -3,7 +3,7 @@
  * user's own (free) AI Studio API key. No server is involved.
  */
 import { getSettings } from './settings';
-import { emitStatus } from './events';
+import { emitStatus, sleep } from './events';
 
 const BASE = 'https://generativelanguage.googleapis.com';
 
@@ -41,14 +41,6 @@ function key() {
   return k;
 }
 
-const sleep = (ms: number, signal?: AbortSignal) =>
-  new Promise<void>((resolve, reject) => {
-    const t = setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => {
-      clearTimeout(t);
-      reject(new DOMException('Aborted', 'AbortError'));
-    });
-  });
 
 function parseRetryDelay(body: any): number | undefined {
   const details: any[] = body?.error?.details ?? [];
@@ -288,11 +280,15 @@ export async function uploadFile(blob: Blob, displayName: string, mimeType: stri
   return { uri: file.uri, mimeType: file.mimeType || mimeType, name: file.name };
 }
 
-const INLINE_LIMIT = 14 * 1024 * 1024;
+/** Inline bytes per request: base64 adds a third, and Gemini takes 20 MB in all. */
+export const INLINE_LIMIT = 14 * 1024 * 1024;
 
-/** Returns a part for a binary blob — inline when small, File API when large. */
-export async function blobPart(blob: Blob, mimeType: string, name: string, signal?: AbortSignal): Promise<Part> {
-  if (blob.size <= INLINE_LIMIT) {
+/**
+ * Returns a part for a binary blob — inline when small, File API when large.
+ * Pass `inline` when several blobs share one request and must fit together.
+ */
+export async function blobPart(blob: Blob, mimeType: string, name: string, signal?: AbortSignal, inline = blob.size <= INLINE_LIMIT): Promise<Part> {
+  if (inline) {
     return { inlineData: { mimeType, data: await blobToBase64(blob) } };
   }
   const f = await uploadFile(blob, name, mimeType, signal);

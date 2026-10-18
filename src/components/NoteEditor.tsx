@@ -69,6 +69,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
       onUpdate: ({ editor }) => {
         window.clearTimeout(saveTimer.current);
         saveTimer.current = window.setTimeout(() => {
+          saveTimer.current = 0;
           const s = summarize(editor);
           setWords(countWords(s.text));
           db.notes.update(noteId, { content: editor.getJSON(), ...s, updatedAt: Date.now() });
@@ -78,14 +79,21 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
     [noteId],
   );
 
-  // Flush pending save when switching notes.
+  // Flush a pending save when switching notes, or when the app is put away (it may not come back).
   useEffect(() => {
-    return () => {
+    const flush = () => {
       if (saveTimer.current && editor && !editor.isDestroyed) {
         window.clearTimeout(saveTimer.current);
+        saveTimer.current = 0;
         const s = summarize(editor);
         db.notes.update(noteId, { content: editor.getJSON(), ...s, updatedAt: Date.now() });
       }
+    };
+    const onHide = () => document.visibilityState === 'hidden' && flush();
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      flush();
     };
   }, [editor, noteId]);
 

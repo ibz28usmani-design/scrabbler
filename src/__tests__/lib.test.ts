@@ -3,7 +3,7 @@ import { bm25, chunkText, citedNumbers, selectChunks } from '../lib/retrieval';
 import { clozeAnswers, clozeBack, clozeFront, levelFor, newSched, nextSched, previewIntervals, Rating, refill, similarity, streakFrom, MAX_LIVES, LIFE_REFILL_MS } from '../lib/study';
 import { parseCsvRows, parseDelimited, stripHtml } from '../lib/importers';
 import { salvageSegments } from '../lib/ai';
-import { parseClock, fmtClock, prevDay } from '../lib/dates';
+import { parseClock, fmtClock, groupLabel, prevDay } from '../lib/dates';
 import { youtubeId } from '../lib/sources';
 
 describe('retrieval', () => {
@@ -127,6 +127,8 @@ describe('misc', () => {
     expect(parseClock('01:30')).toBe(90);
     expect(parseClock('1:02:03')).toBe(3723);
     expect(fmtClock(3723)).toBe('1:02:03');
+    expect(fmtClock(NaN)).toBe('0:00');
+    expect(fmtClock(Infinity)).toBe('0:00');
   });
 
   it('extracts YouTube ids', () => {
@@ -372,5 +374,14 @@ describe('the pixel eraser', () => {
     expect(out).toHaveLength(3);
     expect(out[2]).toBe(other);
     expect(erasePixelsAll([other], 250, 100, 20)).toBeNull();
+  });
+});
+
+describe('date groups', () => {
+  it('counts days by the calendar across a clock change', () => {
+    // Tests run in London time (vite.config.ts): the clocks went back on 25 Oct 2026, a 25-hour day.
+    const now = new Date(2026, 9, 26, 12).getTime();
+    expect(groupLabel(new Date(2026, 9, 25, 0, 30).getTime(), now)).toBe('Yesterday');
+    expect(groupLabel(new Date(2026, 9, 24, 23, 30).getTime(), now)).toBe('Previous 7 Days');
   });
 });

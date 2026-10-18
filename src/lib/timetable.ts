@@ -65,8 +65,16 @@ export function weekday(key: string): number {
   return w === 0 ? 7 : w;
 }
 
+// Building a formatter is slow and the class loops call parts() thousands of times.
+const formatters = new Map<string, Intl.DateTimeFormat>();
+const formatter = (tz: string) => {
+  let f = formatters.get(tz);
+  if (!f) formatters.set(tz, (f = new Intl.DateTimeFormat('en-GB', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })));
+  return f;
+};
+
 const parts = (ms: number, tz: string) => {
-  const f = new Intl.DateTimeFormat('en-GB', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+  const f = formatter(tz);
   const o: Record<string, number> = {};
   for (const p of f.formatToParts(new Date(ms))) if (p.type !== 'literal') o[p.type] = Number(p.value);
   return o as { year: number; month: number; day: number; hour: number; minute: number; second: number };

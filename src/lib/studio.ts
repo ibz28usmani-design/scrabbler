@@ -1,4 +1,5 @@
 import { db, putBlob, uid, type StudioItem } from '../db';
+import { holdJob } from './jobs';
 import { generateMindMap, generatePodcastScript, generateStudioDoc, renderPodcastAudio, type PodcastLength } from './ai';
 import { toast, toastError } from './events';
 
@@ -17,15 +18,17 @@ const TITLES: Record<StudioItem['kind'], string> = {
 
 export async function runStudio(folderId: string, kind: StudioItem['kind'], opts: { length?: PodcastLength; focus?: string } = {}) {
   const id = uid();
-  await db.studio.add({ id, folderId, kind, title: TITLES[kind], status: 'working', progress: kind === 'podcast' ? 'Writing the script…' : 'Reading your sources…', createdAt: Date.now() });
+  const end = holdJob(id);
   try {
+    await db.studio.add({ id, folderId, kind, title: TITLES[kind], status: 'working', progress: kind === 'podcast' ? 'Writing the script…' : 'Reading your sources…', createdAt: Date.now() });
     if (kind === 'mindmap') {
       const mind = await generateMindMap(folderId);
       await patch(id, { mind, title: `Mind Map · ${mind.label}`, status: 'ready' });
     } else if (kind === 'podcast') {
       const { title, lines } = await generatePodcastScript(folderId, opts.length ?? 'default', opts.focus ?? '');
       await patch(id, { script: lines, title: title || 'Audio Overview', progress: 'Recording voices…' });
-      await renderPodcastVoices(id);
+      // Inside this run's claim.
+      await recordVoices(id);
       return;
     } else {
       const { title, markdown } = await generateStudioDoc(folderId, kind);
@@ -35,15 +38,26 @@ export async function runStudio(folderId: string, kind: StudioItem['kind'], opts
   } catch (e) {
     await patch(id, { status: 'error', error: e instanceof Error ? e.message : String(e) });
     toastError(e);
+  } finally {
+    end();
   }
 }
 
 /** Renders studio-quality voices; on failure the script still plays with device voices. */
 export async function renderPodcastVoices(id: string) {
+  const end = holdJob(id);
+  try {
+    await recordVoices(id);
+  } finally {
+    end();
+  }
+}
+
+async function recordVoices(id: string) {
   const item = await db.studio.get(id);
   if (!item?.script) return;
-  await patch(id, { status: 'working', progress: 'Recording voices…', error: undefined });
   try {
+    await patch(id, { status: 'working', progress: 'Recording voices…', error: undefined });
     const wav = await renderPodcastAudio(item.script, (done, total) => {
       patch(id, { progress: `Recording voices ${Math.min(done + 1, total)}/${total}…` });
     });

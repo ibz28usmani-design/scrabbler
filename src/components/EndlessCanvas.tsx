@@ -129,7 +129,13 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
   const [selection, setSelection] = useState<Set<number>>(new Set());
   const [, bump] = useState(0);
   const strokesRef = useRef(strokes);
-  strokesRef.current = strokes;
+  // Follow the state only when it changes: the eraser writes the ref ahead of
+  // the state mid-gesture, and an unrelated render then must not undo that.
+  const seenStrokes = useRef(strokes);
+  if (seenStrokes.current !== strokes) {
+    seenStrokes.current = strokes;
+    strokesRef.current = strokes;
+  }
   const heightRef = useRef(height);
   heightRef.current = height;
   const undo = useRef<Stroke[][]>([]);
@@ -161,6 +167,10 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
   }, []);
 
   const viewLogicalH = box.ch / (scale || 1);
+  // Through a ref: the parent passes a fresh onChange each render, which would
+  // rebuild grow and re-walk every stroke in the effect below on every render.
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   const grow = useCallback(
     (bottom: number, minExtra = 0) => {
@@ -168,10 +178,10 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
       if (next !== heightRef.current) {
         heightRef.current = next;
         setHeight(next);
-        onChange({ height: next });
+        onChangeRef.current({ height: next });
       }
     },
-    [paper, viewLogicalH, onChange],
+    [paper, viewLogicalH],
   );
 
   // A fresh canvas should always offer at least a screenful past the content.
@@ -316,16 +326,24 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
 
   // ---------------------------------------------------------------- zoom
 
-  const zoomAt = useCallback(
-    (z: number, clientX: number, clientY: number) => {
-      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
-      if (Math.abs(next - zoom) < 0.001) return;
-      const sr = sheetRef.current!.getBoundingClientRect();
-      zoomAnchor.current = { lx: (clientX - sr.left) / scale, ly: (clientY - sr.top) / scale, cx: clientX, cy: clientY };
-      onZoom(next);
-    },
-    [zoom, scale, onZoom],
-  );
+  // Gestures read these rather than re-subscribing on every zoom step, which
+  // would reset a pinch's starting point mid-gesture and make it run away.
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
+  const onZoomRef = useRef(onZoom);
+  onZoomRef.current = onZoom;
+  const zoomAt = useCallback((z: number, clientX: number, clientY: number) => {
+    const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+    if (Math.abs(next - zoomRef.current) < 0.001) return;
+    const sr = sheetRef.current!.getBoundingClientRect();
+    const sc = scaleRef.current;
+    zoomAnchor.current = { lx: (clientX - sr.left) / sc, ly: (clientY - sr.top) / sc, cx: clientX, cy: clientY };
+    // Steps before the next render build on this one, not on the last rendered zoom.
+    zoomRef.current = next;
+    onZoomRef.current(next);
+  }, []);
 
   // Keep the point under the fingers fixed while zooming.
   useLayoutEffect(() => {
@@ -340,10 +358,10 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
 
   useEffect(() => {
     const sc = scrollerRef.current!;
-    let start = zoom;
+    let start = zoomRef.current;
     const onGestureStart = (e: any) => {
       e.preventDefault();
-      start = zoom;
+      start = zoomRef.current;
     };
     const onGestureChange = (e: any) => {
       e.preventDefault();
@@ -352,7 +370,7 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
-      zoomAt(zoom * Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY);
+      zoomAt(zoomRef.current * Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY);
     };
     sc.addEventListener('gesturestart', onGestureStart, { passive: false } as AddEventListenerOptions);
     sc.addEventListener('gesturechange', onGestureChange, { passive: false } as AddEventListenerOptions);
@@ -362,7 +380,7 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
       sc.removeEventListener('gesturechange', onGestureChange);
       sc.removeEventListener('wheel', onWheel);
     };
-  }, [zoom, zoomAt]);
+  }, [zoomAt]);
 
   // ---------------------------------------------------------------- touch: palm rejection & two-finger pan
 
@@ -397,7 +415,7 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
         const m = mid(e.touches);
         sc.scrollLeft -= m.x - last.x;
         sc.scrollTop -= m.y - last.y;
-        if (last.d > 0 && Math.abs(m.d / last.d - 1) > 0.01) zoomAt(zoom * (m.d / last.d), m.x, m.y);
+        if (last.d > 0 && Math.abs(m.d / last.d - 1) > 0.01) zoomAt(zoomRef.current * (m.d / last.d), m.x, m.y);
         last = m;
       }
     };
@@ -415,7 +433,7 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
       sc.removeEventListener('touchcancel', onEnd);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fingerDrawing, zoom, zoomAt]);
+  }, [fingerDrawing, zoomAt]);
 
   // ---------------------------------------------------------------- editing
 
@@ -453,7 +471,7 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.closest('input, textarea, [contenteditable="true"]')) return;
+      if ((e.target as HTMLElement)?.closest('input, textarea, select, [contenteditable="true"]')) return;
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key.toLowerCase() === 'z') {
         e.preventDefault();
@@ -684,7 +702,7 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
               <canvas
                 ref={liveRef}
                 className="endless-live"
-                style={{ width: vpW, height: vpH, cursor: tool.tool === 'lasso' ? 'crosshair' : 'crosshair' }}
+                style={{ width: vpW, height: vpH, cursor: 'crosshair' }}
                 onPointerDown={onDown}
                 onPointerMove={onMove}
                 onPointerUp={onUp}

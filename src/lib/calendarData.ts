@@ -3,7 +3,7 @@ import { liveQuery } from 'dexie';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState } from 'react';
 import { db, getTermCalendar, setMeta, TERM_CALENDAR_KEY } from '../db';
-import { scheduleSync, syncPush } from './push';
+import { scheduleSync, syncInBackground } from './push';
 import { getSettings, useSettings } from './settings';
 import type { Lesson, Subject, TermCalendar } from './timetable';
 
@@ -43,7 +43,7 @@ export function usePushSync() {
   useEffect(() => {
     if (!s.pushEnabled) return;
     const sub = liveQuery(async () => [await db.subjects.toArray(), await db.lessons.toArray(), await db.reminders.toArray(), await db.meta.get(TERM_CALENDAR_KEY)]).subscribe({ next: scheduleSync });
-    const onShow = () => document.visibilityState === 'visible' && getSettings().pushEnabled && syncPush().catch(() => {});
+    const onShow = () => document.visibilityState === 'visible' && getSettings().pushEnabled && syncInBackground();
     document.addEventListener('visibilitychange', onShow);
     return () => {
       sub.unsubscribe();

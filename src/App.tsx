@@ -18,7 +18,7 @@ import { StudyView } from './components/StudyView';
 import { Recorder } from './components/Recorder';
 import { SettingsModal } from './components/SettingsModal';
 import { GenerateDeckDialog, ImportDeckDialog } from './components/DeckDialogs';
-import { ConfirmHost, Empty, ErrorBoundary, PromptHost, Toasts, useMediaQuery } from './components/ui';
+import { ConfirmHost, confirmDialog, Empty, ErrorBoundary, PromptHost, Toasts, useMediaQuery } from './components/ui';
 import { ICompose, ISparkle } from './components/Icons';
 import { createNote } from './lib/notes';
 import { mdToHtml } from './lib/markdown';
@@ -195,6 +195,7 @@ function DeletedPreview({ id, title, text }: { id: string; title: string; text: 
         <button
           className="btn small danger"
           onClick={async () => {
+            if (!(await confirmDialog('Delete this note for good? This can’t be undone.', 'Delete permanently'))) return;
             await deleteNotesForever([id]);
             nav({ noteId: null });
           }}

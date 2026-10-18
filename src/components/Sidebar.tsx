@@ -18,15 +18,15 @@ export function Sidebar() {
   const { dailyGoal } = useSettings();
   const dark = useDark();
   const folders = useLiveQuery(() => db.folders.orderBy('order').toArray(), []) ?? [];
+  // From the indexes alone: this re-runs on every note save, and loading each
+  // note's whole content and ink just to count them made typing heavy.
   const counts = useLiveQuery(async () => {
-    const notes = await db.notes.toArray();
+    const gone = new Set(await db.notes.where('deletedAt').above(0).primaryKeys());
     const map = new Map<string, number>();
-    let deleted = 0;
-    for (const n of notes) {
-      if (n.deletedAt) deleted++;
-      else map.set(n.folderId, (map.get(n.folderId) ?? 0) + 1);
-    }
-    return { map, deleted };
+    await db.notes.orderBy('folderId').eachKey((folderId, cursor) => {
+      if (!gone.has(cursor.primaryKey as string)) map.set(folderId as string, (map.get(folderId as string) ?? 0) + 1);
+    });
+    return { map, deleted: gone.size };
   }, []);
   const due = useLiveQuery(async () => deckCounts(await db.cards.toArray()), []);
   const dueToday = useLiveQuery(async () => {
@@ -37,6 +37,10 @@ export function Sidebar() {
   const [menuFor, setMenuFor] = useState<{ folder: Folder; el: HTMLElement } | null>(null);
   const [emojiFor, setEmojiFor] = useState<{ folder: Folder; el: HTMLElement } | null>(null);
   const [q, setQ] = useState(query);
+  // Leaving search another way (a folder, the calendar) leaves the box empty too.
+  useEffect(() => {
+    if (view !== 'search') setQ('');
+  }, [view]);
 
   useEffect(() => {
     const t = setTimeout(() => {

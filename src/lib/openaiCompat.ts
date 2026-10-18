@@ -7,7 +7,7 @@
  * websites, Search grounding, speech) stay on Gemini — see lib/llm.ts.
  */
 import { getSettings } from './settings';
-import { emitStatus } from './events';
+import { emitStatus, sleep } from './events';
 
 export interface Preset {
   id: string;
@@ -94,14 +94,6 @@ function config(overrides?: { baseUrl?: string; key?: string }) {
   return { baseUrl, key };
 }
 
-const sleep = (ms: number, signal?: AbortSignal) =>
-  new Promise<void>((resolve, reject) => {
-    const t = setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => {
-      clearTimeout(t);
-      reject(new DOMException('Aborted', 'AbortError'));
-    });
-  });
 
 function messageFrom(body: any, res: Response): string {
   const e = body?.error;
@@ -231,12 +223,13 @@ export async function* chatStream(o: ChatOptions): AsyncGenerator<string> {
   }
   const reader = res.body.getReader();
   const dec = new TextDecoder();
+  const think = thinkFilter();
   let buf = '';
-  let thinking = false;
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
+  let said = false;
+  for (let done = false; !done; ) {
+    const r = await reader.read();
+    done = r.done;
+    buf += done ? dec.decode() + '\n' : dec.decode(r.value, { stream: true });
     let idx: number;
     while ((idx = buf.indexOf('\n')) >= 0) {
       const line = buf.slice(0, idx).trim();
@@ -244,21 +237,61 @@ export async function* chatStream(o: ChatOptions): AsyncGenerator<string> {
       if (!line.startsWith('data:')) continue;
       const payload = line.slice(5).trim();
       if (!payload || payload === '[DONE]') continue;
+      let frame: any;
       try {
-        const delta = JSON.parse(payload)?.choices?.[0]?.delta?.content;
-        if (typeof delta !== 'string' || !delta) continue;
-        // Drop reasoning spans rather than showing them as the answer.
-        if (delta.includes('<think>')) thinking = true;
-        if (thinking) {
-          if (delta.includes('</think>')) thinking = false;
-          continue;
-        }
-        yield delta;
+        frame = JSON.parse(payload);
       } catch {
-        /* partial frame */
+        continue; // partial frame
+      }
+      // Some providers answer 200, then report the failure inside the stream.
+      if (frame?.error) throw new CompatError(messageFrom(frame, res), 500);
+      const delta = frame?.choices?.[0]?.delta?.content;
+      if (typeof delta !== 'string' || !delta) continue;
+      const text = think.push(delta);
+      if (text) {
+        said = true;
+        yield text;
       }
     }
   }
+  const tail = think.flush();
+  if (tail) yield tail;
+  else if (!said) throw new CompatError('The model returned an empty response.', 500);
+}
+
+/**
+ * Drops <think>…</think> reasoning from a stream of deltas, keeping the answer
+ * around the tags and catching tags split across deltas.
+ */
+export function thinkFilter() {
+  let thinking = false;
+  let held = '';
+  return {
+    push(delta: string): string {
+      let s = held + delta;
+      let out = '';
+      for (;;) {
+        const tag = thinking ? '</think>' : '<think>';
+        const i = s.indexOf(tag);
+        if (i < 0) break;
+        if (!thinking) out += s.slice(0, i);
+        s = s.slice(i + tag.length);
+        thinking = !thinking;
+      }
+      // Hold back a tail that could be the start of the next tag.
+      const tag = thinking ? '</think>' : '<think>';
+      let keep = Math.min(tag.length - 1, s.length);
+      while (keep && !tag.startsWith(s.slice(s.length - keep))) keep--;
+      held = s.slice(s.length - keep);
+      if (!thinking) out += s.slice(0, s.length - keep);
+      return out;
+    },
+    flush(): string {
+      const rest = thinking ? '' : held;
+      held = '';
+      return rest;
+    },
+  };
 }
 
 export async function listModels(overrides?: { baseUrl?: string; key?: string }, signal?: AbortSignal): Promise<string[]> {

@@ -46,7 +46,6 @@ export const SEED_CALENDAR: TermCalendar = {
     { name: 'Summer term', start: '2027-04-12', end: '2027-07-16', confirmed: false },
   ],
   closures: [
-    // Hampshire's half term. The college calendar may start it on Wed 21 Oct.
     { name: 'Autumn half term', start: '2026-10-20', end: '2026-10-30', confirmed: true },
     { name: 'Spring half term', start: '2027-02-15', end: '2027-02-19', confirmed: true },
     { name: 'May bank holiday', start: '2027-05-03', end: '2027-05-03', confirmed: true },

@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { Lesson, Subject, TermCalendar } from './lib/timetable';
 import type { Reminder, ReminderList } from './lib/reminders';
+import { JOB_LOCK, locks } from './lib/jobs';
 
 export type ID = string;
 
@@ -64,6 +65,10 @@ export interface Source {
   title: string;
   text: string;
   url?: string;
+  /** The lecture a transcript source came from, so rewriting its notes replaces it. */
+  noteId?: ID;
+  /** What a web-research (Discover) source looked into, so it can be retried. */
+  topic?: string;
   blobId?: ID;
   status: 'processing' | 'ready' | 'error';
   error?: string;
@@ -234,6 +239,13 @@ db.version(2).stores({
   reminders: 'id, listId',
 });
 
+// Find work in flight (a transcription, a source being read) without loading every note.
+db.version(3).stores({
+  notes: 'id, folderId, updatedAt, pinned, deletedAt, status',
+  sources: 'id, folderId, createdAt, status',
+  studio: 'id, folderId, createdAt, status',
+});
+
 export function uid(): ID {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -277,6 +289,25 @@ export async function sweepAttachments(now = Date.now()) {
   return orphans.length;
 }
 
+const BUSY_NOTE = ['recording', 'transcribing', 'writing'];
+// Typed loosely: Dexie's key-path types recurse on MindNode.
+const studioTable = () => db.studio as any;
+
+/**
+ * Work the app was doing when it was closed (transcribing, writing notes,
+ * reading a source, making a studio item) never finishes. Mark it failed so it
+ * offers a retry instead of a spinner for ever — each job, unless a tab still
+ * open holds its claim.
+ */
+export async function failInterrupted() {
+  const held = new Set(((await locks()?.query())?.held ?? []).map((l) => l.name));
+  const orphan = (row: { id: ID }) => !held.has(JOB_LOCK + row.id);
+  const error = 'Interrupted when the app closed. Try again.';
+  await db.notes.where('status').anyOf(BUSY_NOTE).filter(orphan).modify({ status: 'error', error });
+  await db.sources.where('status').equals('processing').filter(orphan).modify({ status: 'error', error });
+  await studioTable().where('status').equals('working').filter(orphan).modify({ status: 'error', error });
+}
+
 export async function getMeta<T>(key: string, fallback: T): Promise<T> {
   const row = await db.meta.get(key);
   return (row?.value as T) ?? fallback;
@@ -301,6 +332,7 @@ export async function initDb() {
   if (old.length) await deleteNotesForever(old.map((n) => n.id));
   await migrateHandwrittenNotes();
   await sweepAttachments();
+  await failInterrupted();
   await seedCalendar();
 }
 
@@ -361,11 +393,18 @@ export function legacyInk(content: unknown): InkDoc | null {
 }
 
 export async function deleteNotesForever(ids: ID[]) {
-  const notes = await db.notes.bulkGet(ids);
-  const blobIds = notes.flatMap((n) => (n ? [...(n.audioBlobId ? [n.audioBlobId] : []), ...attachmentBlobIds(n.content)] : []));
   await db.transaction('rw', db.notes, db.blobs, async () => {
+    const gone = new Set(ids);
+    const notes = await db.notes.bulkGet(ids);
+    const blobIds = new Set(notes.flatMap((n) => (n ? [...(n.audioBlobId ? [n.audioBlobId] : []), ...attachmentBlobIds(n.content)] : [])));
+    // A duplicated or copied block shares its file with another note: keep that one.
+    await db.notes.each((n) => {
+      if (gone.has(n.id)) return;
+      if (n.audioBlobId) blobIds.delete(n.audioBlobId);
+      attachmentBlobIds(n.content).forEach((id) => blobIds.delete(id));
+    });
     await db.notes.bulkDelete(ids);
-    await db.blobs.bulkDelete(blobIds);
+    await db.blobs.bulkDelete([...blobIds]);
   });
 }
 
@@ -382,7 +421,10 @@ export async function deleteFolder(id: ID) {
   const sources = await db.sources.where('folderId').equals(id).toArray();
   for (const s of sources) await deleteSource(s.id);
   const now = Date.now();
-  await db.transaction('rw', [db.notes, db.chats, db.studio, db.folders, db.decks], async () => {
+  await db.transaction('rw', [db.notes, db.chats, db.studio, db.folders, db.decks, db.blobs], async () => {
+    // Audio Overviews' recordings go with their studio items.
+    const audio = (await db.studio.where('folderId').equals(id).toArray()).flatMap((it) => (it.audioBlobId ? [it.audioBlobId] : []));
+    await db.blobs.bulkDelete(audio);
     // Notes go to Recently Deleted rather than vanishing.
     await db.notes.where('folderId').equals(id).modify({ deletedAt: now });
     await db.chats.where('folderId').equals(id).delete();
@@ -393,7 +435,8 @@ export async function deleteFolder(id: ID) {
 }
 
 export async function deleteDeck(id: ID) {
-  await db.transaction('rw', db.decks, db.cards, db.reviews, async () => {
+  // Its reviews stay: they are the streak and activity history.
+  await db.transaction('rw', db.decks, db.cards, async () => {
     await db.cards.where('deckId').equals(id).delete();
     await db.decks.delete(id);
   });

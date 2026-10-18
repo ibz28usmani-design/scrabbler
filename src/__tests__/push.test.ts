@@ -133,6 +133,31 @@ describe('push server', () => {
     expect(await res.json()).toMatchObject({ ok: false, status: 0 });
   });
 
+  it('stops at a dropped device, and gets past one with bad data', async () => {
+    const e = env();
+    await worker.fetch(req('/vapid'), e);
+    const at = zonedTime('2026-10-13', '16:00');
+    vi.useFakeTimers({ now: at - 3600000, toFake: ['Date'] });
+    for (const id of ['dropped-device-a', 'broken-device-bb', 'healthy-device-c']) {
+      const alerts = [{ at, title: 'Essay', body: '' }, { at: at + 1000, title: 'Essay, early', body: '' }];
+      await worker.fetch(req('/sync', { id, subscription: { ...browser().subscription, endpoint: `https://push.example/${id}` }, subjects: [], lessons: [], calendar: { terms: [], closures: [] }, classAlerts: false, leadMinutes: 0, alerts }), e);
+    }
+    vi.useRealTimers();
+    // Stored before validation was this strict, or written by hand: a lesson with no times.
+    const broken = JSON.parse(e.SCRABBLER.data.get('device:broken-device-bb')!);
+    e.SCRABBLER.data.set('device:broken-device-bb', JSON.stringify({ ...broken, classAlerts: true, lessons: [{ id: 'l', subjectId: 's', day: 2 }], calendar: SEED_CALENDAR }));
+    const hits: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      hits.push(url);
+      return new Response(null, { status: url.includes('dropped') ? 410 : 201 });
+    });
+    const waits: Promise<unknown>[] = [];
+    await worker.scheduled({ scheduledTime: at }, e, { waitUntil: (p) => waits.push(p) });
+    await Promise.all(waits);
+    expect(hits).toEqual(['https://push.example/dropped-device-a', 'https://push.example/healthy-device-c', 'https://push.example/healthy-device-c']);
+    expect(JSON.parse(e.SCRABBLER.data.get('devices')!)).toEqual(['broken-device-bb', 'healthy-device-c']);
+  });
+
   it('sends the first-class heads-up as well as the usual alert, and never twice', () => {
     const d: Device = { id: 'x', subscription: browser().subscription, subjects: SEED_SUBJECTS, lessons: SEED_LESSONS, calendar: SEED_CALENDAR, classAlerts: true, leadMinutes: 10, firstLeadMinutes: 60, updatedAt: 0, alerts: [] };
     expect(dueInMinute(d, zonedTime('2026-10-15', '08:00')).map((x) => [x.msg.title, x.msg.tag])).toEqual([['First class in 1 hour: Law', 'first-thu-1-2026-10-15']]);

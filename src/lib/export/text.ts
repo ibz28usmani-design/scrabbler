@@ -60,11 +60,18 @@ function mdEscape(s: string) {
   return s.replace(/([\\`*_[\]#<>|])/g, '\\$1');
 }
 
+/** A fence longer than any run of backticks inside, as CommonMark requires (a backslash doesn't escape there). */
+const fenceFor = (s: string, min: number) => '`'.repeat(Math.max(min, ...(s.match(/`+/g) ?? []).map((m) => m.length + 1)));
+
 function mdRuns(runs: Run[]): string {
   return runs
     .map((r) => {
       if (r.br) return '  \n';
-      if (r.code) return '`' + r.text.replace(/`/g, '\\`') + '`';
+      if (r.code) {
+        const f = fenceFor(r.text, 1);
+        const pad = /^`|`$/.test(r.text) ? ' ' : '';
+        return f + pad + r.text + pad + f;
+      }
       let t = mdEscape(r.text);
       // Keep surrounding spaces outside emphasis markers, or Markdown ignores them.
       const lead = t.match(/^\s*/)![0];
@@ -75,7 +82,8 @@ function mdRuns(runs: Run[]): string {
       if (r.i) t = `*${t}*`;
       if (r.b) t = `**${t}**`;
       if (r.mark) t = `==${t}==`;
-      if (r.href) t = `[${t}](${r.href})`;
+      // Brackets and spaces would end the link early: Wikipedia's Set_(mathematics), say.
+      if (r.href) t = `[${t}](${r.href.replace(/[()\s<>]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'))})`;
       return lead + t + trail;
     })
     .join('');
@@ -111,7 +119,7 @@ export function toMarkdown(blocks: Block[], depth = 0): string {
         );
         break;
       case 'code':
-        out.push('```', b.text, '```', '');
+        out.push(fenceFor(b.text, 3), b.text, fenceFor(b.text, 3), '');
         break;
       case 'hr':
         out.push('---', '');

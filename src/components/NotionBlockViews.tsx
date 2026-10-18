@@ -9,7 +9,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { db } from '../db';
 import { nav } from '../lib/nav';
-import { embedPlan, type EmbedKind } from '../lib/embeds';
+import { cleanUrl, embedPlan, type EmbedKind } from '../lib/embeds';
 import { promptDialog, Spinner, useObjectUrl } from './ui';
 import { attachmentKind, formatBytes, insertFiles } from '../lib/attachments';
 import { toast, toastError } from '../lib/events';
@@ -228,7 +228,8 @@ export async function openNote(id: string) {
 
 function NoteLinkView({ node }: NodeViewProps) {
   const id: string = node.attrs.id;
-  const note = useLiveQuery(() => db.notes.get(id), [id]);
+  // null once looked up and not there; undefined only while loading.
+  const note = useLiveQuery(async () => (await db.notes.get(id)) ?? null, [id]);
   const gone = note === undefined ? false : !note || !!note.deletedAt;
   const title = (note?.title || node.attrs.title || 'Untitled').trim() || 'Untitled';
   return (
@@ -270,6 +271,7 @@ export const NoteLink = Node.create({
 function EmbedView({ node, selected, deleteNode }: NodeViewProps) {
   const src: string = node.attrs.src;
   const plan = embedPlan(src, node.attrs.kind);
+  const href = cleanUrl(src) ?? undefined;
   let host = src;
   try {
     host = new URL(src).hostname.replace(/^www\./, '');
@@ -284,7 +286,7 @@ function EmbedView({ node, selected, deleteNode }: NodeViewProps) {
       {plan.as === 'video' && <video src={plan.src} controls playsInline preload="metadata" />}
       {plan.as === 'audio' && <audio src={plan.src} controls preload="metadata" />}
       {plan.as === 'card' ? (
-        <a className="embed-card" href={src} target="_blank" rel="noopener noreferrer">
+        <a className="embed-card" href={href} target="_blank" rel="noopener noreferrer">
           <span className="embed-favicon">🔗</span>
           <span className="embed-card-text">
             <span className="embed-host">{host}</span>
@@ -293,7 +295,7 @@ function EmbedView({ node, selected, deleteNode }: NodeViewProps) {
         </a>
       ) : (
         <div className="embed-foot">
-          <a href={src} target="_blank" rel="noopener noreferrer">
+          <a href={href} target="_blank" rel="noopener noreferrer">
             {host} ↗
           </a>
           {selected && (
@@ -360,7 +362,8 @@ const FILE_GLYPH: Record<string, string> = { pdf: 'PDF', video: '▶', audio: '�
 
 function AttachmentView({ node, selected, editor, deleteNode }: NodeViewProps) {
   const { blobId, name, mime, size } = node.attrs as { blobId: string; name: string; mime: string; size: number };
-  const stored = useLiveQuery(() => (blobId ? db.blobs.get(blobId) : undefined), [blobId]);
+  // null once looked up and not there; undefined only while loading.
+  const stored = useLiveQuery(async () => (blobId ? ((await db.blobs.get(blobId)) ?? null) : null), [blobId]);
   const missing = stored === undefined ? false : !stored;
   const blob = stored?.blob;
   const url = useObjectUrl(blob);

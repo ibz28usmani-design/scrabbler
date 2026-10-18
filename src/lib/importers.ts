@@ -86,11 +86,12 @@ export function stripHtml(html: string): string {
     .replace(/\[sound:[^\]]+\]/g, '')
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
+    // Last, so "&amp;lt;" (a literal "&lt;") isn't decoded twice.
+    .replace(/&amp;/g, '&')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }

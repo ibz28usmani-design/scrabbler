@@ -100,8 +100,15 @@ export function Session({ deckIds, mode }: { deckIds: string[]; mode: Mode }) {
     setExplain(null);
   };
 
+  // One review per card: a double tap or a held key mustn't record it twice and skip the next.
+  const committing = useRef(false);
+  // Which card is showing, for answers that arrive after the user has moved on.
+  const posRef = useRef(pos);
+  posRef.current = pos;
+
   const commit = async (rating: Grade, correct: boolean) => {
-    if (!item) return;
+    if (!item || committing.current) return;
+    committing.current = true;
     try {
       const nextCombo = correct ? combo + 1 : 0;
       const res = await recordReview(item.card, rating, correct, nextCombo, mode);
@@ -118,6 +125,11 @@ export function Session({ deckIds, mode }: { deckIds: string[]; mode: Mode }) {
     }
     advance();
   };
+  // Free again once the next card is actually showing, not before: a held key
+  // can still reach the old card's handler until then.
+  useEffect(() => {
+    committing.current = false;
+  }, [pos]);
 
   const checkTyped = async () => {
     if (!item || verdict) return;
@@ -127,12 +139,15 @@ export function Session({ deckIds, mode }: { deckIds: string[]; mode: Mode }) {
     if (!typed.trim()) return setVerdict({ correct: false });
     if (!hasTextKey()) return setVerdict({ correct: false, self: true });
     setVerdict({ correct: false, pending: true });
+    const at = pos;
+    let next: { correct: boolean; feedback?: string; self?: boolean };
     try {
       const r = await gradeTyped(item.prompt, expected, typed);
-      setVerdict({ correct: r.correct, feedback: r.feedback });
+      next = { correct: r.correct, feedback: r.feedback };
     } catch {
-      setVerdict({ correct: false, self: true });
+      next = { correct: false, self: true };
     }
+    if (posRef.current === at) setVerdict(next);
   };
 
   const doExplain = async () => {
@@ -161,7 +176,7 @@ export function Session({ deckIds, mode }: { deckIds: string[]; mode: Mode }) {
       } else if ((item.kind === 'mcq' || item.kind === 'tf') && picked === null && ['1', '2', '3', '4'].includes(e.key)) {
         const i = Number(e.key) - 1;
         if (item.options && i < item.options.length) setPicked(i);
-      } else if (verdict || picked !== null) {
+      } else if ((verdict && !verdict.pending) || picked !== null) {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           continueAfter();
@@ -232,7 +247,7 @@ export function Session({ deckIds, mode }: { deckIds: string[]; mode: Mode }) {
 
   function continueAfter() {
     if (!item) return;
-    if (item.kind === 'typed' && verdict?.self) return;
+    if (item.kind === 'typed' && (verdict?.self || verdict?.pending)) return;
     commit(isCorrect ? Rating.Good : Rating.Again, isCorrect);
   }
 

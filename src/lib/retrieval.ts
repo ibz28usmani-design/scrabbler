@@ -32,7 +32,8 @@ export function chunkText(pages: RawPage[]): ChunkDraft[] {
       if (para.length > MAX) {
         flush();
         // Split very long paragraphs on sentence boundaries.
-        const sentences = para.match(/[^.!?]+[.!?]+["')\]]*\s*|.+$/g) ?? [para];
+        // Every character lands in some piece: an unpunctuated tail keeps its line breaks.
+        const sentences = para.match(/[^.!?]*[.!?]+["')\]]*\s*|[^.!?]+$/g) ?? [para];
         for (const s of sentences) {
           if (buf.length + s.length > TARGET && buf) flush();
           buf += s;

@@ -11,7 +11,7 @@ export type ModalState =
   | null
   | { type: 'settings' }
   | { type: 'recorder'; folderId: string }
-  | { type: 'generateDeck'; from: { kind: 'note'; noteId: string } | { kind: 'folder'; folderId: string } | { kind: 'text' }; quiz?: boolean }
+  | { type: 'generateDeck'; from: { kind: 'note'; noteId: string } | { kind: 'folder'; folderId: string } | { kind: 'text'; title?: string; text?: string }; quiz?: boolean }
   | { type: 'importDeck' }
   | { type: 'source'; sourceId: string; chunkId?: string };
 

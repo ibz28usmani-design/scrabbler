@@ -15,6 +15,7 @@ export function startLiveCaptions(
   const Ctor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
   if (!Ctor) return null;
   let stopped = false;
+  let failures = 0;
   let finalText = '';
   let rec: any;
   const begin = () => {
@@ -23,6 +24,7 @@ export function startLiveCaptions(
     rec.interimResults = true;
     rec.lang = lang;
     rec.onresult = (e: any) => {
+      failures = 0;
       let interim = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
@@ -32,11 +34,15 @@ export function startLiveCaptions(
       onUpdate(finalText, interim);
     };
     rec.onerror = (e: any) => {
-      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') stopped = true;
+      // These won't change by trying again.
+      if (['not-allowed', 'service-not-allowed', 'language-not-supported', 'bad-grammar'].includes(e.error)) stopped = true;
+      // Silence is routine. Anything else (offline, mic busy) may pass, so keep
+      // trying, but ever more slowly, up to every 8 s.
+      else if (e.error !== 'no-speech') failures = Math.min(failures + 1, 5);
     };
-    // Safari ends sessions after silence; restart until the user stops.
+    // Safari ends sessions after silence; restart until the user stops, backing off after errors.
     rec.onend = () => {
-      if (!stopped) setTimeout(() => !stopped && safeStart(), 250);
+      if (!stopped) setTimeout(() => !stopped && safeStart(), 250 * 2 ** failures);
     };
     safeStart();
   };

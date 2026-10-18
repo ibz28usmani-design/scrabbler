@@ -20,7 +20,15 @@ export async function extractPdf(file: Blob): Promise<{ pages: RawPage[]; title?
   const worker = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
   pdfjs.GlobalWorkerOptions.workerSrc = worker;
   const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
-  const doc = await task.promise;
+  try {
+    return await readPdf(await task.promise);
+  } finally {
+    // Also when a page fails to read: otherwise the document and its worker stay alive.
+    await task.destroy();
+  }
+}
+
+async function readPdf(doc: import('pdfjs-dist').PDFDocumentProxy): Promise<{ pages: RawPage[]; title?: string }> {
   const pages: RawPage[] = [];
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i);
@@ -48,7 +56,6 @@ export async function extractPdf(file: Blob): Promise<{ pages: RawPage[]; title?
   } catch {
     /* no metadata */
   }
-  await task.destroy();
   return { pages, title };
 }
 

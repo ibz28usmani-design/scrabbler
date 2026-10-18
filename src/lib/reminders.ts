@@ -34,6 +34,10 @@ export interface Reminder {
   subjectId?: string;
   type?: ReminderType;
   repeat?: Repeat;
+  /** The day of the month a monthly or yearly repeat keeps to, so 31 Jan → 28 Feb → 31 Mar. */
+  repeatDay?: number;
+  /** The next one completing this repeating reminder brought in, so undoing that takes it away again. */
+  nextId?: string;
   /** Alert this many minutes before the due time as well. */
   early?: number;
   order: number;
@@ -170,9 +174,10 @@ export function dueLabel(r: Reminder, today: string): { text: string; overdue: b
   return { text, overdue: !r.completed && r.due < today };
 }
 
-/** The next due date of a repeating reminder. */
-export function nextDue(due: string, repeat: Repeat): string {
-  const [y, m, d] = due.split('-').map(Number);
+/** The next due date of a repeating reminder; `day` is the day of the month it keeps to. */
+export function nextDue(due: string, repeat: Repeat, day?: number): string {
+  const [y, m, dueDay] = due.split('-').map(Number);
+  const d = day ?? dueDay;
   switch (repeat) {
     case 'daily':
       return addDays(due, 1);
@@ -186,7 +191,7 @@ export function nextDue(due: string, repeat: Repeat): string {
     case 'fortnightly':
       return addDays(due, 14);
     case 'monthly': {
-      // 31 Jan → 28/29 Feb, not 3 March.
+      // 31 Jan → 28/29 Feb, not 3 March; and back to the 31st after.
       const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
       return ymd(y, m + 1, Math.min(d, last));
     }

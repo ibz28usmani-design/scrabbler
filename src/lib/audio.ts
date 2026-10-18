@@ -2,6 +2,7 @@
  * Lecture recorder: captures the mic as PCM and encodes 16 kHz mono MP3 on the
  * fly (~14 MB/hour) — compact to store and a format Gemini accepts directly.
  */
+import { holdJob } from './jobs';
 
 const TARGET_RATE = 16000;
 
@@ -28,8 +29,19 @@ export async function startRecording(onLevel: (level: number) => void): Promise<
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
   });
+  let ctx: AudioContext | undefined;
+  try {
+    return await record(stream, (ctx = new AudioContext()), onLevel);
+  } catch (e) {
+    // Set-up failed after the mic was granted: let the mic go.
+    stream.getTracks().forEach((t) => t.stop());
+    await ctx?.close().catch(() => {});
+    throw e;
+  }
+}
+
+async function record(stream: MediaStream, ctx: AudioContext, onLevel: (level: number) => void): Promise<RecorderHandle> {
   const { Mp3Encoder } = await import('@breezystack/lamejs');
-  const ctx = new AudioContext();
   await ctx.resume();
   const src = ctx.createMediaStreamSource(stream);
   const encoder = new Mp3Encoder(1, TARGET_RATE, 32);
@@ -94,6 +106,9 @@ export async function startRecording(onLevel: (level: number) => void): Promise<
     /* wake lock unsupported */
   }
 
+  let stopped = false;
+  // Claimed like any long job, so an update from another tab won't reload this one mid-lecture.
+  const end = holdJob(`recording-${Math.random().toString(36).slice(2)}`);
   return {
     get elapsed() {
       return elapsedMs / 1000;
@@ -109,6 +124,9 @@ export async function startRecording(onLevel: (level: number) => void): Promise<
       lastTick = performance.now();
     },
     async stop() {
+      if (stopped) throw new Error('This recording has already been stopped.');
+      stopped = true;
+      end();
       src.disconnect();
       node.disconnect();
       stream.getTracks().forEach((t) => t.stop());

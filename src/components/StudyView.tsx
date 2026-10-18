@@ -325,12 +325,18 @@ function CardEditor({ deckId, card, onClose }: { deckId: string; card: Card | nu
   const save = async () => {
     if (!front.trim()) return toast('The front can’t be empty.', 'error');
     if (type === 'cloze' && !/\{\{c\d+::/.test(front)) return toast('Wrap the hidden part like {{c1::answer}}.', 'error');
+    // Blank options are dropped, so the answer's index has to follow its option.
+    const filled = options.map((o) => o.trim());
+    const kept = filled.filter(Boolean);
+    if (type === 'mcq' && !filled[answer]) return toast('The correct answer can’t be blank.', 'error');
+    if (type === 'mcq' && kept.length < 2) return toast('Give at least two options.', 'error');
+    const mcqAnswer = filled.slice(0, answer).filter(Boolean).length;
     const patch: Partial<Card> = {
       type,
       front: front.trim(),
-      back: type === 'mcq' ? options[answer] ?? '' : type === 'tf' ? (answer ? 'True' : 'False') : back.trim(),
-      options: type === 'mcq' ? options.map((o) => o.trim()).filter(Boolean) : undefined,
-      answer: type === 'mcq' || type === 'tf' ? answer : undefined,
+      back: type === 'mcq' ? filled[answer] : type === 'tf' ? (answer ? 'True' : 'False') : back.trim(),
+      options: type === 'mcq' ? kept : undefined,
+      answer: type === 'mcq' ? mcqAnswer : type === 'tf' ? answer : undefined,
       explanation: explanation.trim() || undefined,
     };
     if (card) await db.cards.update(card.id, patch);

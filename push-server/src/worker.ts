@@ -10,7 +10,7 @@
  *   - a secret named PASSWORD (also typed into Scrabbler's Settings)
  *   - a Cron Trigger: * * * * *
  */
-import { authorised, CORS, deviceIds, fail, json, knownOrigin, MAX_BODY, runMinute, send, validDevice, vapidKeys, type Device, type Env } from './alerts';
+import { authorised, CORS, deviceIds, fail, forget, json, knownOrigin, MAX_BODY, runMinute, send, validDevice, vapidKeys, type Device, type Env } from './alerts';
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -78,8 +78,7 @@ export default {
 
     if (url.pathname === '/unsubscribe') {
       if (typeof body.id !== 'string') return fail('Which device?', 400);
-      await kv.delete(`device:${body.id}`);
-      await kv.put('devices', JSON.stringify((await deviceIds(kv)).filter((id) => id !== body.id)));
+      await forget(kv, body.id);
       return json({ ok: true });
     }
 

@@ -7,6 +7,9 @@ import { processLecture } from '../lib/lecture';
 import { closeModal } from '../lib/nav';
 import { fmtClock } from '../lib/dates';
 import { toastError } from '../lib/events';
+import { download } from '../lib/backup';
+import { escapeHtml } from '../lib/markdown';
+import { holdJob } from '../lib/jobs';
 import { useSettings, updateSettings } from '../lib/settings';
 import { hasKey } from '../lib/gemini';
 import { Modal, confirmDialog } from './ui';
@@ -36,59 +39,91 @@ export function Recorder({ folderId }: { folderId: string }) {
     captionBox.current?.scrollTo({ top: captionBox.current.scrollHeight });
   }, [caption]);
 
-  useEffect(
-    () => () => {
+  const gone = useRef(false);
+  useEffect(() => {
+    // Set again on mount: StrictMode mounts, unmounts and mounts once more.
+    gone.current = false;
+    return () => {
+      gone.current = true;
       live.current?.stop();
       rec.current?.stop().catch(() => {});
-    },
-    [],
-  );
+    };
+  }, []);
 
+  const starting = useRef(false);
   const start = async () => {
+    // A second tap while the mic permission resolves would start a recorder nobody stops.
+    if (starting.current || rec.current) return;
+    starting.current = true;
     try {
       let last = 0;
-      rec.current = await startRecording((lvl) => {
+      const handle = await startRecording((lvl) => {
         const now = performance.now();
         if (now - last < 60) return;
         last = now;
         setLevels((l) => [...l.slice(1), lvl]);
       });
+      // Closed while the permission sheet was up: nothing would ever stop it.
+      if (gone.current) return void handle.stop().catch(() => {});
+      rec.current = handle;
       if (liveCaptions && speechSupported()) live.current = startLiveCaptions((final, interim) => setCaption({ final, interim }));
       setPhase('recording');
     } catch (e) {
       toastError(new Error(`Microphone unavailable: ${(e as Error).message}. Allow microphone access in Settings › Safari.`));
+    } finally {
+      starting.current = false;
+    }
+  };
+
+  /**
+   * Stores a lecture's audio, makes its note and starts transcribing it, all
+   * under a claim: until the transcription claims the note, the audio may be
+   * only in memory, and an update mustn't reload then. `audio` may stop the
+   * recorder first; whatever fails goes to `failed`.
+   */
+  const save = async (audio: () => Promise<Blob>, fileName: string, title: string, snippet: string, failed: (e: unknown, blob: Blob | null) => void, liveText?: string) => {
+    const end = holdJob(`saving-${Date.now()}`);
+    let blob: Blob | null = null;
+    try {
+      blob = await audio();
+      const blobId = await putBlob(blob, fileName);
+      const note = await createNote(folderId, { kind: 'lecture', title, snippet, audioBlobId: blobId, status: 'transcribing', content: `<h1>${escapeHtml(title)}</h1><p></p>` });
+      closeModal();
+      processLecture(note.id, { context: context.trim() || undefined, liveText });
+    } catch (e) {
+      toastError(e);
+      failed(e, blob);
+    } finally {
+      end();
     }
   };
 
   const finish = async () => {
-    if (!rec.current) return;
+    const r = rec.current;
+    if (!r) return;
+    rec.current = null;
     setPhase('saving');
     live.current?.stop();
-    const duration = rec.current.elapsed;
-    const blob = await rec.current.stop();
-    rec.current = null;
+    const duration = r.elapsed;
     const name = title.trim() || `Lecture ${new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
-    const blobId = await putBlob(blob, `${name}.mp3`);
-    const note = await createNote(folderId, {
-      kind: 'lecture',
-      title: name,
-      snippet: `Recording · ${fmtClock(duration)}`,
-      audioBlobId: blobId,
-      status: 'transcribing',
-      content: `<h1>${name.replace(/</g, '&lt;')}</h1><p></p>`,
-    });
-    closeModal();
-    processLecture(note.id, { context: context.trim() || undefined, liveText: caption.final });
+    await save(
+      () => r.stop(),
+      `${name}.mp3`,
+      name,
+      `Recording · ${fmtClock(duration)}`,
+      (_, blob) => {
+        // Storage full, most likely: hand the recording over as a file rather than lose it.
+        if (blob) download(blob, `${name}.mp3`);
+        closeModal();
+      },
+      caption.final,
+    );
   };
 
   const upload = async (file: File) => {
     setPhase('saving');
     const name = title.trim() || file.name.replace(/\.[^.]+$/, '');
-    const typed = new File([file], file.name, { type: geminiMime(file) });
-    const blobId = await putBlob(typed, file.name);
-    const note = await createNote(folderId, { kind: 'lecture', title: name, snippet: 'Uploaded recording', audioBlobId: blobId, status: 'transcribing', content: `<h1>${name.replace(/</g, '&lt;')}</h1><p></p>` });
-    closeModal();
-    processLecture(note.id, { context: context.trim() || undefined });
+    await save(async () => new File([file], file.name, { type: geminiMime(file) }), file.name, name, 'Uploaded recording', () => setPhase('setup'));
   };
 
   const close = async () => {

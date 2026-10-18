@@ -5,6 +5,7 @@
  */
 import { db, getTermCalendar, uid } from '../db';
 import { getSettings, updateSettings } from './settings';
+import { toastError } from './events';
 import { alertTimes, typeInfo, type Reminder } from './reminders';
 import type { Lesson, Subject, TermCalendar } from './timetable';
 
@@ -31,10 +32,10 @@ export function pushBlocker(): string | null {
 
 const base = () => getSettings().pushUrl.trim().replace(/\/+$/, '');
 
-async function call<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${base()}${path}`, {
+async function call<T>(path: string, body: unknown, server = { url: base(), password: getSettings().pushPassword }): Promise<T> {
+  const res = await fetch(`${server.url}${path}`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${getSettings().pushPassword}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${server.password}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
@@ -115,10 +116,16 @@ export async function enablePush(): Promise<void> {
       sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
     } catch (e) {
       const err = e as Error;
+      const old = Notification.permission === 'granted' ? await reg.pushManager.getSubscription() : null;
       // Subscribed before with an old server key: swap it (no prompt needed once allowed).
-      if (Notification.permission === 'granted') {
-        await (await reg.pushManager.getSubscription())?.unsubscribe();
+      if (old && !sameKey(old, key)) {
+        await old.unsubscribe();
         sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
+      } else if (Notification.permission === 'granted') {
+        // Safari can fail the first try even when allowed: once more, then say so.
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) }).catch(() => {
+          throw new Error(`Couldn’t subscribe this device (${err.name}: ${err.message}). Try again in a moment.`);
+        });
       } else {
         throw new Error(refusedMessage(before, `${err.name}: ${err.message}`));
       }
@@ -140,6 +147,7 @@ export async function enablePush(): Promise<void> {
   if (!getSettings().pushDeviceId) updateSettings({ pushDeviceId: `device-${uid().replace(/[^\w-]/g, '').slice(0, 24)}` });
   updateSettings({ pushEnabled: true });
   lastSent = '';
+  keyChanged = false;
   await syncPush(true);
 }
 
@@ -151,13 +159,15 @@ function sameKey(sub: PushSubscription, key: string) {
   return a.length === b.length && a.every((x, i) => x === b[i]);
 }
 
+/** Turns notifications off here and tells the server — the one set now, even if the address changes meanwhile. */
 export async function disablePush() {
-  const id = getSettings().pushDeviceId;
+  const s = getSettings();
+  const server = { url: base(), password: s.pushPassword };
   updateSettings({ pushEnabled: false });
   try {
     const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
     await sub?.unsubscribe();
-    if (id && base()) await call('/unsubscribe', { id });
+    if (s.pushDeviceId && server.url) await call('/unsubscribe', { id: s.pushDeviceId }, server);
   } catch {
     /* already gone */
   }
@@ -199,6 +209,8 @@ export function reminderAlerts(reminders: Reminder[], subjects: Subject[], now =
 
 let lastSent = '';
 let timer = 0;
+/** Notifications were turned off because the server's key no longer matched. */
+let keyChanged = false;
 
 /** Sends the server what it needs, if it changed since last time. */
 export async function syncPush(force = false): Promise<void> {
@@ -206,6 +218,17 @@ export async function syncPush(force = false): Promise<void> {
   if (!s.pushEnabled || !s.pushDeviceId || !base() || pushBlocker()) return;
   const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
   if (!sub) return;
+  // Made for another key than the server's now: it could never deliver to it.
+  if (s.pushPublicKey && !sameKey(sub, s.pushPublicKey)) {
+    // Thrown, so a caller such as "Send a test" stops here. Only the sync that
+    // turned notifications off has news to show; another may have got there
+    // first. Turned off some other way meanwhile (by the user), there's no news.
+    const first = getSettings().pushEnabled;
+    if (!first && !keyChanged) return;
+    keyChanged = true;
+    updateSettings({ pushEnabled: false });
+    throw new KeyChangedError(first);
+  }
   const [subjects, lessons, calendar, reminders] = await Promise.all([db.subjects.toArray(), db.lessons.toArray(), getTermCalendar(), db.reminders.toArray()]);
   const payload: PushPayload = {
     id: s.pushDeviceId,
@@ -224,8 +247,19 @@ export async function syncPush(force = false): Promise<void> {
   lastSent = body;
 }
 
+export class KeyChangedError extends Error {
+  constructor(readonly first: boolean) {
+    super('The push server’s key changed, so notifications are off. Turn them on again in Settings.');
+  }
+}
+
+/** Syncs with nobody waiting on it: only a change the user must act on is shown. */
+export function syncInBackground() {
+  return syncPush().catch((e) => (e instanceof KeyChangedError ? e.first && toastError(e) : console.warn('Push sync failed', e)));
+}
+
 /** A change happened: sync a moment later, once the edits settle. */
 export function scheduleSync() {
   window.clearTimeout(timer);
-  timer = window.setTimeout(() => syncPush().catch((e) => console.warn('Push sync failed', e)), 2500);
+  timer = window.setTimeout(syncInBackground, 2500);
 }

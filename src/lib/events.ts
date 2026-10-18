@@ -39,3 +39,19 @@ export function useToasts() {
   }, []);
   return [toasts, (id: number) => setToasts((ts) => ts.filter((x) => x.id !== id))] as const;
 }
+
+/** Waits, or rejects with an AbortError as soon as the signal aborts (at once if it already has). */
+export function sleep(ms: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const abort = () => {
+      clearTimeout(t);
+      reject(new DOMException('Aborted', 'AbortError'));
+    };
+    const t = setTimeout(() => {
+      signal?.removeEventListener('abort', abort);
+      resolve();
+    }, ms);
+    if (signal?.aborted) abort();
+    else signal?.addEventListener('abort', abort, { once: true });
+  });
+}

@@ -334,9 +334,12 @@ export function InkCanvas({ strokes, height, paper, active, onChange, onHeight, 
             const up = () => {
               window.removeEventListener('pointermove', move);
               window.removeEventListener('pointerup', up);
+              window.removeEventListener('pointercancel', up);
             };
             window.addEventListener('pointermove', move);
             window.addEventListener('pointerup', up);
+            // A system gesture can take the pointer away without an up.
+            window.addEventListener('pointercancel', up);
           }}
         >
           <span />

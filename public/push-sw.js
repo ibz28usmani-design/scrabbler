@@ -19,7 +19,9 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = new URL((event.notification.data && event.notification.data.url) || './', self.registration.scope).href;
+  let url = new URL((event.notification.data && event.notification.data.url) || './', self.registration.scope).href;
+  // Only ever into the app: a push payload can't send a tap off to another site.
+  if (!url.startsWith(self.registration.scope)) url = self.registration.scope;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
       for (const w of windows) {
