@@ -163,3 +163,30 @@ describe('Obsidian vaults', () => {
     expect(toMarkdown(blocks).trim()).toBe('See [[Offer]]');
   });
 });
+
+describe('pasted cards (Gizmo has no export)', () => {
+  it('reads every shape a copy comes in', async () => {
+    const { parseLoose } = await import('../lib/importers');
+    const pairs = (s: string) => parseLoose(s).map((c) => [c.front, c.back]);
+    expect(pairs('Q: What is offer?\nA: A definite promise\nQ: Acceptance?\nA: Unqualified agreement')).toEqual([
+      ['What is offer?', 'A definite promise'],
+      ['Acceptance?', 'Unqualified agreement'],
+    ]);
+    expect(pairs('Offer\tA definite promise\nAcceptance → Unqualified agreement')).toEqual([
+      ['Offer', 'A definite promise'],
+      ['Acceptance', 'Unqualified agreement'],
+    ]);
+    expect(pairs('What is PED?\nResponsiveness of demand to price\n\nWhat is YED?\nResponsiveness to income\nusually positive')).toEqual([
+      ['What is PED?', 'Responsiveness of demand to price'],
+      ['What is YED?', 'Responsiveness to income\nusually positive'],
+    ]);
+    expect(pairs('1. Offer — a definite promise\n2. Consideration: something of value')).toEqual([
+      ['Offer', 'a definite promise'],
+      ['Consideration', 'something of value'],
+    ]);
+    expect(pairs('Offer\nA definite promise\nAcceptance\nUnqualified agreement')).toEqual([
+      ['Offer', 'A definite promise'],
+      ['Acceptance', 'Unqualified agreement'],
+    ]);
+  });
+});

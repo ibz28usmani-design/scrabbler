@@ -5,7 +5,8 @@ import { closeModal, nav } from '../lib/nav';
 import { folderMaterial, generateCards } from '../lib/ai';
 import { hasTextKey } from '../lib/llm';
 import { makeCard } from '../lib/study';
-import { parseAnki, parseDelimited, type ImportedDeck } from '../lib/importers';
+import { parseAnki, parseDelimited, parseLoose, type ImportedDeck } from '../lib/importers';
+import { folderTree, visibleRows } from '../lib/folders';
 import { toast, toastError } from '../lib/events';
 import { Modal, Segmented, Spinner } from './ui';
 import { ISparkle, IUpload } from './Icons';
@@ -173,14 +174,16 @@ export function GenerateDeckDialog({ from, quiz }: { from: From; quiz?: boolean 
 }
 
 export function ImportDeckDialog() {
-  const [tab, setTab] = useState<'anki' | 'text'>('anki');
+  const [tab, setTab] = useState<'anki' | 'gizmo' | 'text'>('anki');
+  const [folderId, setFolderId] = useState('');
+  const folders = useLiveQuery(() => db.folders.toArray(), []) ?? [];
   const [found, setFound] = useState<ImportedDeck[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [text, setText] = useState('');
   const [termSep, setTermSep] = useState('\\t');
   const [cardSep, setCardSep] = useState('\\n');
   const [name, setName] = useState('Imported deck');
-  const preview = tab === 'text' && text ? parseDelimited(text, termSep, cardSep) : [];
+  const preview = !text ? [] : tab === 'text' ? parseDelimited(text, termSep, cardSep) : tab === 'gizmo' ? parseLoose(text) : [];
 
   const save = async (decks: ImportedDeck[]) => {
     if (busy) return;
@@ -193,7 +196,7 @@ export function ImportDeckDialog() {
         for (const d of decks) {
           const id = uid();
           firstId ||= id;
-          await db.decks.add({ id, name: d.name, createdAt: Date.now(), emoji: '📥' });
+          await db.decks.add({ id, name: d.name, createdAt: Date.now(), emoji: tab === 'gizmo' ? '🧠' : '📥', ...(folderId ? { folderId } : {}) });
           const now = Date.now();
           await db.cards.bulkAdd(d.cards.map((c, i) => makeCard(id, c, now + i)));
           total += d.cards.length;
@@ -215,9 +218,22 @@ export function ImportDeckDialog() {
         onChange={setTab}
         options={[
           { value: 'anki', label: 'Anki (.apkg)' },
-          { value: 'text', label: 'Quizlet / CSV / text' },
+          { value: 'gizmo', label: 'Gizmo' },
+          { value: 'text', label: 'Quizlet / CSV' },
         ]}
       />
+      <label className="field">
+        <span>Folder — its subject gets the revision time</span>
+        <select className="input" value={folderId} onChange={(e) => setFolderId(e.target.value)}>
+          <option value="">No folder</option>
+          {visibleRows(folderTree(folders.map((f) => ({ ...f, collapsed: false })))).map(({ folder: f, depth }) => (
+            <option key={f.id} value={f.id}>
+              {'\u2003'.repeat(depth)}
+              {f.emoji} {f.name}
+            </option>
+          ))}
+        </select>
+      </label>
       {tab === 'anki' ? (
         <div className="import-pane">
           <p className="muted">In Anki: File → Export → “Anki Deck Package (.apkg)”. Text, cloze and basic cards import; images and audio are skipped.</p>
@@ -258,6 +274,31 @@ export function ImportDeckDialog() {
               )}
             </div>
           )}
+        </div>
+      ) : tab === 'gizmo' ? (
+        <div className="import-pane">
+          <p className="muted">
+            Gizmo has no export yet. Open your set in Gizmo, select its cards, copy and paste them here, or paste a CSV made with a Gizmo-to-CSV converter. Questions and answers are
+            recognised in most shapes: “Q: … A: …”, one card a line, or question and answer on alternate lines.
+          </p>
+          <label className="field">
+            <span>Deck name</span>
+            <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
+          </label>
+          <textarea className="input" rows={8} placeholder={'Q: What is consideration?\nA: Something of value given in exchange for a promise'} value={text} onChange={(e) => setText(e.target.value)} />
+          <label className="btn small">
+            <IUpload size={14} /> Load CSV or text
+            <input type="file" accept=".csv,.tsv,.txt" hidden onChange={async (e) => e.target.files?.[0] && setText(await e.target.files[0].text())} />
+          </label>
+          <div className="muted">{preview.length} cards recognised</div>
+          {preview.slice(0, 3).map((c, i) => (
+            <div key={i} className="found-row">
+              <strong>{c.front}</strong> → {c.back}
+            </div>
+          ))}
+          <button className="btn primary" disabled={!preview.length || busy} onClick={() => save([{ name: name || 'Gizmo deck', cards: preview }])}>
+            Import {preview.length} cards
+          </button>
         </div>
       ) : (
         <div className="import-pane">

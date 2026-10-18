@@ -1,4 +1,6 @@
+import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useStudyPresence } from '../lib/useStudyPresence';
 import { db, type Card } from '../db';
 import { nav } from '../lib/nav';
 import {
@@ -85,6 +87,9 @@ export function Session({ deckIds, mode }: { deckIds: string[]; mode: Mode }) {
   }, []);
 
   const item = queue?.[pos];
+  // Cards count toward the subject of their deck's folder.
+  const deck = useLiveQuery(() => (item ? db.decks.get(item.card.deckId) : undefined), [item?.card.deckId]);
+  useStudyPresence(mode === 'quiz' ? 'quiz' : 'cards', { folderId: deck?.folderId });
   const intervals = useMemo(() => (item && mode === 'study' ? previewIntervals(item.card.sched) : null), [item, mode]);
 
   useEffect(() => {

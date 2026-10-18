@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useStudyPresence } from '../lib/useStudyPresence';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { db, deleteSource, uid, type Chunk, type ChatMessage, type Citation, type Source, type StudioItem } from '../db';
 import { nav, openModal, useNav, type NotebookTab } from '../lib/nav';
@@ -20,6 +21,7 @@ import {
 export function NotebookPanel({ folderId, overlay }: { folderId: string; overlay: boolean }) {
   const { notebookTab } = useNav();
   const folder = useLiveQuery(() => db.folders.get(folderId), [folderId]);
+  useStudyPresence('notebook', { folderId });
   const sourceCount = useLiveQuery(() => db.sources.where('folderId').equals(folderId).count(), [folderId]) ?? 0;
   return (
     <aside className={`notebook ${overlay ? 'overlay' : ''}`}>
