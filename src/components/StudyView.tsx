@@ -265,7 +265,7 @@ function DeckDetail({ deckId }: { deckId: string }) {
         <ul className="card-list">
           {cards.map((c) => (
             <li key={c.id} className={`card-row ${c.suspended ? 'suspended' : ''}`} onClick={() => setEdit(c)}>
-              <span className={`type-badge ${c.type}`}>{TYPE_LABEL[c.type]}</span>
+              <span className="type-badge">{TYPE_LABEL[c.type]}</span>
               <span className="card-front">{c.type === 'cloze' ? clozeFront(c.front) : c.front}</span>
               <span className="card-back">{c.type === 'mcq' ? c.options?.[c.answer ?? 0] : c.type === 'tf' ? (c.answer ? 'True' : 'False') : c.back}</span>
               <span className="card-due">{c.suspended ? 'suspended' : c.sched.state === State.New ? 'new' : new Date(c.sched.due).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
