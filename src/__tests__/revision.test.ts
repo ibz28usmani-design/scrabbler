@@ -209,3 +209,30 @@ describe('revision plan', () => {
     expect(plan.find((b) => b.subjectId === 'law')?.topic).toBe('Offer');
   });
 });
+
+describe('shape recognition', () => {
+  const flat = (pts: number[][]) => pts.flatMap(([x, y]) => [x, y, 0.5]);
+  it('straightens a wobbly line and rounds a rough circle', async () => {
+    const { recognizeShape } = await import('../lib/shapes');
+    const line = flat(Array.from({ length: 30 }, (_, i) => [100 + i * 10, 200 + Math.sin(i) * 2]));
+    expect(recognizeShape(line)?.kind).toBe('line');
+    const circle = flat(Array.from({ length: 60 }, (_, i) => [300 + 80 * Math.cos((i / 59) * Math.PI * 2) + (i % 3), 300 + 80 * Math.sin((i / 59) * Math.PI * 2)]));
+    expect(recognizeShape(circle)?.kind).toBe('ellipse');
+  });
+  it('squares up a box and leaves handwriting alone', async () => {
+    const { recognizeShape } = await import('../lib/shapes');
+    const side = (a: number[], b: number[]) => Array.from({ length: 15 }, (_, i) => [a[0] + ((b[0] - a[0]) * i) / 15 + (i % 2), a[1] + ((b[1] - a[1]) * i) / 15]);
+    const box = flat([...side([100, 100], [300, 102]), ...side([300, 102], [302, 250]), ...side([302, 250], [99, 248]), ...side([99, 248], [101, 103]), [101, 103]]);
+    expect(recognizeShape(box)?.kind).toBe('rectangle');
+    const scribble = flat(Array.from({ length: 50 }, (_, i) => [100 + i * 4, 100 + ((i * 37) % 23)]));
+    expect(recognizeShape(scribble)).toBeNull();
+  });
+});
+
+describe('Markdown tags', () => {
+  it('keeps #tags as tags, and still escapes what would be a heading', async () => {
+    const { toMarkdown } = await import('../lib/export/text');
+    expect(toMarkdown([{ type: 'paragraph', runs: [{ text: 'Revise #contract law' }] }]).trim()).toBe('Revise #contract law');
+    expect(toMarkdown([{ type: 'paragraph', runs: [{ text: '# not a heading' }] }]).trim()).toBe('\\# not a heading');
+  });
+});

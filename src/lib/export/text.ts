@@ -57,7 +57,8 @@ export function toText(blocks: Block[], depth = 0): string {
 // ---------------------------------------------------------------- markdown
 
 function mdEscape(s: string) {
-  return s.replace(/([\\`*_[\]#<>|])/g, '\\$1');
+  // A # only starts a heading before a space; before a letter it's a #tag, which Obsidian must see as one.
+  return s.replace(/([\\`*_[\]<>|])/g, '\\$1').replace(/#(?=[\s#]|$)/g, '\\#');
 }
 
 /** A fence longer than any run of backticks inside, as CommonMark requires (a backslash doesn't escape there). */

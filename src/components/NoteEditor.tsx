@@ -45,6 +45,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
   const [words, setWords] = useState(() => countWords(note.text ?? ''));
   // Below this the row cannot hold every action without pushing some off-screen.
   const paneRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   // Shed the secondary actions first; only hide the primary ones when the pane
   // is genuinely too small, rather than emptying the row all at once.
   const paneW = useElementWidth(paneRef);
@@ -122,6 +123,15 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
     if (lastStatus.current !== note.status && note.status === 'ready') editor.commands.setContent(note.content as any);
     lastStatus.current = note.status;
   }, [contentVersion, editor, note.content, note.status]);
+
+  // While a Pencil stroke is being handed to a new sketch, it must not scroll the note.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const hold = (e: TouchEvent) => handoffActive() && Array.from(e.touches).some((t: any) => t.touchType === 'stylus') && e.preventDefault();
+    el.addEventListener('touchmove', hold, { passive: false });
+    return () => el.removeEventListener('touchmove', hold);
+  }, [editor]);
 
   // What the / menu needs from this screen.
   useEffect(() => {
@@ -284,6 +294,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
       {note.kind === 'lecture' && <LecturePanel note={note} />}
 
       <div
+        ref={scrollRef}
         className={`editor-scroll doc font-${note.font ?? 'serif'} paper-${paper}${paper === 'lines' || paper === 'cornell' ? ' lined' : ''}`}
         onPointerDown={onPenDown}
         onPointerMove={(e) => e.pointerType === 'pen' && handoffActive() && moveHandoff(e.nativeEvent)}

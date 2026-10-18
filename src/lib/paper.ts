@@ -151,14 +151,3 @@ export const HANDWRITING_TEMPLATES: HandwritingTemplate[] = [
   { paper: 'grid', label: 'Square grid', description: 'Graph paper' },
   { paper: 'cornell', label: 'Cornell', description: 'Cues, notes & summary' },
 ];
-
-export function paperLabel(paper: Paper): string {
-  return HANDWRITING_TEMPLATES.find((t) => t.paper === paper)?.label ?? 'Dotted';
-}
-
-// ---- legacy inline sketches -------------------------------------------------
-
-/** Cornell guides for inline sketches created before handwritten notes existed. */
-export function cornellGuides(height: number) {
-  return { cueX: 260, summaryY: Math.max(240, height - 170) };
-}

@@ -149,10 +149,11 @@ function Plate({ graph, legend, revised, query, focus }: { graph: Graph; legend:
     const xs = graph.nodes.map((n) => n.x);
     const ys = graph.nodes.map((n) => n.y);
     const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-    // Leave the legend's corner clear when the plate is wide enough to.
+    // Leave the legend clear: its corner on a wide plate, its strip along the bottom on a phone.
     const side = size.w > 700 ? 230 : 0;
-    const k = Math.min(2.2, Math.min((size.w - side) / (x1 - x0 + 120), size.h / (y1 - y0 + 120)));
-    view.current = { x: (x0 + x1) / 2 - side / 2 / k, y: (y0 + y1) / 2, k };
+    const foot = size.w > 700 ? 0 : 70;
+    const k = Math.min(2.2, Math.min((size.w - side) / (x1 - x0 + 120), (size.h - foot) / (y1 - y0 + 120)));
+    view.current = { x: (x0 + x1) / 2 - side / 2 / k, y: (y0 + y1) / 2 + foot / 2 / k, k };
   };
 
   const draw = () => {

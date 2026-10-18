@@ -1121,17 +1121,6 @@ select.input {
   border-radius: var(--radius);
   position: relative;
 }
-.drawing-node .ink-surface {
-  border-radius: var(--radius);
-  border: 1px solid transparent;
-}
-.drawing-node:not(.is-active) .ink-surface {
-  border-color: var(--line);
-}
-.drawing-node.is-active .ink-surface {
-  border-color: var(--accent-fill);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
 .drawing-head {
   display: flex;
   align-items: center;
@@ -1146,40 +1135,6 @@ select.input {
   height: 30px;
   padding: 0 8px;
   font-size: 13.5px;
-}
-.ink-surface {
-  position: relative;
-  width: 100%;
-  overflow: hidden;
-  background-color: var(--card);
-}
-.ink-surface canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
-}
-.ink-hint {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  color: var(--muted);
-  font-size: 14px;
-  pointer-events: none;
-}
-.cornell-label {
-  position: absolute;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--accent);
-  opacity: 0.6;
-  pointer-events: none;
 }
 .ink-dock {
   position: sticky;
@@ -3120,7 +3075,6 @@ select.input {
 }
 .brand-tag,
 .dateline,
-.cornell-label,
 .seg-speaker,
 .page-marker,
 .pspeaker,
@@ -6969,16 +6923,33 @@ body.block-dragging * {
   text-align: right;
   font-variant-numeric: tabular-nums lining-nums;
 }
+/* On a phone the legend is one strip along the foot of the plate. */
 @media (max-width: 699px) {
   .graph-plate {
     margin: 0;
   }
   .plate-legend {
-    left: 14px;
-    bottom: 14px;
+    left: 12px;
+    right: 12px;
+    bottom: 10px;
+    max-width: none;
   }
-  .plate-figures {
-    font-size: 26px;
+  .plate-rule {
+    width: 100%;
+    height: 4px;
+    margin-bottom: 6px;
+  }
+  .plate-title,
+  .plate-figures,
+  .plate-figure-labels {
+    display: none;
+  }
+  .plate-keys {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 12px;
+    margin: 0;
+    font-size: 12px;
   }
 }
 
