@@ -204,7 +204,7 @@ export const SLASH_ITEMS: SlashItem[] = [
   { id: 'ai', title: 'Ask AI', icon: '✦', group: 'Scrabbler', aliases: ['ai', 'ask', 'askai', 'writingtools', 'summarize', 'summarise', 'rewrite', 'proofread'], hint: 'Summarise, rewrite, explain or ask anything.', run: ({ host }) => host?.openAI() },
   { id: 'draw', title: 'Drawing', icon: '✎', group: 'Scrabbler', aliases: ['draw', 'drawing', 'sketch', 'pencil', 'ink', 'handwriting'], hint: 'Sketch with Apple Pencil.', run: ({ editor }) => {
       freshLine(editor);
-      editor.chain().focus().insertDrawing({ paper: 'blank' }).run();
+      editor.chain().focus().insertDrawing().run();
     } },
   { id: 'record', title: 'Record lecture', icon: '🎙', group: 'Scrabbler', aliases: ['record', 'lecture', 'mic', 'transcribe', 'voice'], hint: 'Record and transcribe into a new note.', run: ({ host }) => host && openModal({ type: 'recorder', folderId: host.folderId }) },
   { id: 'flashcards', title: 'Make flashcards', icon: '🗂', group: 'Scrabbler', aliases: ['flashcards', 'cards', 'deck', 'anki'], hint: 'Turn this note into a study deck.', run: ({ host }) => host && openModal({ type: 'generateDeck', from: { kind: 'note', noteId: host.noteId } }) },

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   bbox,
   contentBottom,
@@ -26,44 +27,55 @@ import {
   type Stroke,
   type Tool,
 } from '../lib/ink';
-import { drawTemplate, endlessHeight, templateColors, type Paper } from '../lib/paper';
+import { drawTemplate, endlessHeight, RULE, templateColors, type Paper } from '../lib/paper';
+import { recognizeShape } from '../lib/shapes';
+import { claimHandoff } from '../lib/penHandoff';
 import { useSettings } from '../lib/settings';
 import { InkToolbar } from './InkToolbar';
 
 /**
- * An endless handwriting surface, like Apple Notes' handwriting pages.
+ * The one handwriting surface, as in Apple Notes: a sketch that sits in a
+ * note's text, from a doodle between paragraphs to a whole page of writing.
  *
- * Rendering is virtualised: two canvases the size of the *visible* area stick to
- * the viewport while a tall sheet scrolls beneath them, and only strokes in view
- * are painted. A single canvas the height of a long note would exceed Safari's
- * ~16 MP canvas limit on iPad and render blank.
+ * Rendering is virtualised: two canvases the size of the *visible* part stick
+ * to the note's scroller while the tall sheet scrolls beneath them, and only
+ * strokes in view are painted. A single canvas the height of a long page would
+ * exceed Safari's ~16 MP canvas limit on iPad and render blank.
  *
- *  - Apple Pencil draws; fingers scroll (palm rejection) unless finger drawing is on.
- *  - Pinch (or ⌘/Ctrl + scroll) zooms around the gesture point.
- *  - The page extends itself as you write or scroll toward the end.
+ *  - Apple Pencil always draws, and fingers scroll the note (palm rejection),
+ *    unless finger drawing is on. The mouse draws once the sketch is selected.
+ *  - Hold the Pencil still at the end of a line, circle, triangle or box and
+ *    it snaps into a clean shape.
+ *  - The sketch grows as you write toward its bottom; a page grows a page at a time.
  */
 
-const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 3;
-const MAX_PAGE_PX = 1100;
+const SNAP_HOLD_MS = 550;
+/** Below this the drag handle won't shrink a sketch. */
+const MIN_H = 160;
 
-export interface EndlessCanvasProps {
+export interface SketchCanvasProps {
   paper: Paper;
   strokes: Stroke[];
   height: number;
   dark: boolean;
-  zoom: number;
-  onZoom: (z: number) => void;
+  /** Selected: its tools are out, and the mouse and fingers draw. */
+  active: boolean;
+  onActivate: () => void;
   onChange: (patch: { strokes?: Stroke[]; height?: number }) => void;
+  /** A whole page of handwriting: no frame, grows by pages. */
+  page?: boolean;
+  /** Take the Pencil stroke that made this sketch (lib/penHandoff). */
+  adoptPen?: boolean;
   toolbarExtra?: ReactNode;
 }
 
 type Gesture =
-  | { kind: 'stroke'; id: number; stroke: Stroke; ruled: boolean }
+  | { kind: 'stroke'; id: number; stroke: Stroke; ruled: boolean; snapped: boolean }
   | { kind: 'erase'; id: number; erased: boolean; lx: number; ly: number }
   | { kind: 'lasso'; id: number; poly: number[][] }
   | { kind: 'move'; id: number; x: number; y: number; dx: number; dy: number }
-  | { kind: 'ruler'; id: number; mode: 'move' | 'rotate'; x: number; y: number; flip: boolean };
+  | { kind: 'ruler'; id: number; mode: 'move' | 'rotate'; x: number; y: number; flip: boolean }
+  | { kind: 'resize'; id: number; y: number; h: number };
 
 /** The straightedge itself: a translucent blade, ticks, and its angle. */
 function paintRuler(ctx: CanvasRenderingContext2D, r: Ruler, dark: boolean, scale: number) {
@@ -108,12 +120,15 @@ function paintRuler(ctx: CanvasRenderingContext2D, r: Ruler, dark: boolean, scal
   ctx.restore();
 }
 
-export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, dark, zoom, onZoom, onChange, toolbarExtra }: EndlessCanvasProps) {
-  const scrollerRef = useRef<HTMLDivElement>(null);
+export function SketchCanvas({ paper, strokes: initial, height: initialHeight, dark, active, onActivate, onChange, page = false, adoptPen = false, toolbarExtra }: SketchCanvasProps) {
+  const wrapRef = useRef<HTMLDivElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
   const vpRef = useRef<HTMLDivElement>(null);
   const baseRef = useRef<HTMLCanvasElement>(null);
   const liveRef = useRef<HTMLCanvasElement>(null);
+  /** The note's scroller, which the visible window of the sketch follows. */
+  const scrollerRef = useRef<HTMLElement | null>(null);
+  const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null);
   const tool = useTool();
   const ruler = useRuler();
   // The pointer handlers are rebuilt every render, but `draw` is memoised and
@@ -141,53 +156,59 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
   const undo = useRef<Stroke[][]>([]);
   const redo = useRef<Stroke[][]>([]);
   const gesture = useRef<Gesture | null>(null);
-  const touchPointers = useRef(new Set<number>());
-  const zoomAnchor = useRef<{ lx: number; ly: number; cx: number; cy: number } | null>(null);
+  const holdTimer = useRef(0);
   const frame = useRef(0);
 
-  const gutter = box.cw < 700 ? 6 : 28;
-  const topPad = 84;
-  const baseW = Math.max(280, Math.min(box.cw - gutter * 2, MAX_PAGE_PX));
-  const sheetW = baseW * zoom;
+  // The note changed it from outside (its own undo, a restore): follow it.
+  useEffect(() => {
+    if (initial !== strokesRef.current && !gesture.current) setStrokes(initial);
+  }, [initial]);
+  useEffect(() => {
+    if (initialHeight !== heightRef.current && !gesture.current) setHeight(initialHeight);
+  }, [initialHeight]);
+
+  const sheetW = box.cw;
   const scale = sheetW / W;
   const sheetH = height * scale;
-  const vpW = Math.min(sheetW, box.cw);
-  const vpH = Math.min(sheetH, box.ch);
-  const padW = Math.max(box.cw, sheetW + gutter * 2);
+  const vpW = sheetW;
+  const vpH = Math.min(sheetH, box.ch || sheetH);
 
   // ---------------------------------------------------------------- sizing
 
   useLayoutEffect(() => {
-    const el = scrollerRef.current!;
-    const measure = () => setBox({ cw: el.clientWidth, ch: el.clientHeight });
+    const wrap = wrapRef.current!;
+    const scroller = (wrap.closest('.editor-scroll') as HTMLElement | null) ?? document.documentElement;
+    scrollerRef.current = scroller;
+    setToolbarHost(wrap.closest('.editor-pane') as HTMLElement | null);
+    const measure = () => setBox({ cw: wrap.clientWidth, ch: scroller.clientHeight });
     const ro = new ResizeObserver(measure);
-    ro.observe(el);
+    ro.observe(wrap);
+    ro.observe(scroller);
     measure();
     return () => ro.disconnect();
   }, []);
 
-  const viewLogicalH = box.ch / (scale || 1);
-  // Through a ref: the parent passes a fresh onChange each render, which would
-  // rebuild grow and re-walk every stroke in the effect below on every render.
+  // Through a ref: the parent passes a fresh onChange each render.
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
+  /** Room below what is written: a page a step of ruling at a time, a sketch a little. */
   const grow = useCallback(
-    (bottom: number, minExtra = 0) => {
-      const next = endlessHeight(paper, bottom, Math.max(viewLogicalH, 600), heightRef.current + minExtra);
+    (bottom: number) => {
+      const next = page ? endlessHeight(paper, bottom, 600, heightRef.current) : Math.max(heightRef.current, Math.ceil((bottom + 96) / RULE) * RULE);
       if (next !== heightRef.current) {
         heightRef.current = next;
         setHeight(next);
         onChangeRef.current({ height: next });
       }
     },
-    [paper, viewLogicalH],
+    [paper, page],
   );
 
-  // A fresh canvas should always offer at least a screenful past the content.
+  // A page always offers room past its writing.
   useEffect(() => {
-    if (box.ch) grow(contentBottom(strokesRef.current));
-  }, [box.ch, grow]);
+    if (page) grow(contentBottom(strokesRef.current));
+  }, [page, grow]);
 
   // ---------------------------------------------------------------- rendering
 
@@ -211,8 +232,8 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
   };
 
   /**
-   * Repaint the page. With a `clip` only that patch of it is touched, which
-   * is what the eraser wants: rubbing changes a nib's worth of page, and
+   * Repaint what is in view. With a `clip` only that patch of it is touched,
+   * which is what the eraser wants: rubbing changes a nib's worth of page, and
    * redrawing all of it per frame cost 26ms a frame on a busy one.
    */
   const draw = useCallback((clip?: { x0: number; y0: number; x1: number; y1: number }) => {
@@ -244,7 +265,7 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
         paintStroke(ctx, shifted, dark, false);
       } else if (intersects(bbox(st), view)) paintStroke(ctx, st, dark);
     });
-    if (rulerRef.current.on) paintRuler(ctx, rulerRef.current, dark, scale);
+    if (active && rulerRef.current.on) paintRuler(ctx, rulerRef.current, dark, scale);
     const sel = selection.size ? unionBox(strokesRef.current, selection) : null;
     if (sel) {
       ctx.save();
@@ -256,7 +277,7 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
     }
     ctx.restore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paper, dark, scale, selection, ruler]);
+  }, [paper, dark, scale, selection, ruler, active]);
 
   /** Pending clip for the next frame; several nudges in one frame merge. */
   const clipRef = useRef<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
@@ -324,116 +345,35 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
     }
   };
 
-  // ---------------------------------------------------------------- zoom
-
-  // Gestures read these rather than re-subscribing on every zoom step, which
-  // would reset a pinch's starting point mid-gesture and make it run away.
-  const zoomRef = useRef(zoom);
-  zoomRef.current = zoom;
-  const scaleRef = useRef(scale);
-  scaleRef.current = scale;
-  const onZoomRef = useRef(onZoom);
-  onZoomRef.current = onZoom;
-  const zoomAt = useCallback((z: number, clientX: number, clientY: number) => {
-    const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
-    if (Math.abs(next - zoomRef.current) < 0.001) return;
-    const sr = sheetRef.current!.getBoundingClientRect();
-    const sc = scaleRef.current;
-    zoomAnchor.current = { lx: (clientX - sr.left) / sc, ly: (clientY - sr.top) / sc, cx: clientX, cy: clientY };
-    // Steps before the next render build on this one, not on the last rendered zoom.
-    zoomRef.current = next;
-    onZoomRef.current(next);
-  }, []);
-
-  // Keep the point under the fingers fixed while zooming.
-  useLayoutEffect(() => {
-    const a = zoomAnchor.current;
-    if (!a) return;
-    zoomAnchor.current = null;
-    const sc = scrollerRef.current!;
-    const sr = sheetRef.current!.getBoundingClientRect();
-    sc.scrollLeft += sr.left + a.lx * scale - a.cx;
-    sc.scrollTop += sr.top + a.ly * scale - a.cy;
-  }, [scale]);
-
+  // Repaint as the note scrolls the sketch through the window.
   useEffect(() => {
-    const sc = scrollerRef.current!;
-    let start = zoomRef.current;
-    const onGestureStart = (e: any) => {
-      e.preventDefault();
-      start = zoomRef.current;
+    const sc = scrollerRef.current;
+    if (!sc) return;
+    const onScroll = () => {
+      schedule();
+      if (!gesture.current) drawLive(null);
     };
-    const onGestureChange = (e: any) => {
-      e.preventDefault();
-      zoomAt(start * e.scale, e.clientX, e.clientY);
-    };
-    const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return;
-      e.preventDefault();
-      zoomAt(zoomRef.current * Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY);
-    };
-    sc.addEventListener('gesturestart', onGestureStart, { passive: false } as AddEventListenerOptions);
-    sc.addEventListener('gesturechange', onGestureChange, { passive: false } as AddEventListenerOptions);
-    sc.addEventListener('wheel', onWheel, { passive: false });
-    return () => {
-      sc.removeEventListener('gesturestart', onGestureStart);
-      sc.removeEventListener('gesturechange', onGestureChange);
-      sc.removeEventListener('wheel', onWheel);
-    };
-  }, [zoomAt]);
-
-  // ---------------------------------------------------------------- touch: palm rejection & two-finger pan
-
-  useEffect(() => {
-    const sc = scrollerRef.current!;
-    let last: { x: number; y: number; d: number } | null = null;
-    const mid = (t: TouchList) => {
-      const a = t[0];
-      const b = t[1];
-      return { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2, d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) };
-    };
-    const onStart = (e: TouchEvent) => {
-      const stylus = Array.from(e.changedTouches).some((t: any) => t.touchType === 'stylus');
-      if (stylus) return e.preventDefault();
-      if (!fingerDrawing) return; // native one-finger scrolling
-      e.preventDefault();
-      if (e.touches.length >= 2) {
-        last = mid(e.touches);
-        // A second finger means "navigate", so abandon a stroke the first finger began.
-        if (gesture.current?.kind === 'stroke') {
-          gesture.current = null;
-          drawLive(null);
-        }
-      }
-    };
-    const onMove = (e: TouchEvent) => {
-      const stylus = Array.from(e.changedTouches).some((t: any) => t.touchType === 'stylus');
-      if (stylus) return e.preventDefault();
-      if (!fingerDrawing) return;
-      e.preventDefault();
-      if (e.touches.length >= 2 && last) {
-        const m = mid(e.touches);
-        sc.scrollLeft -= m.x - last.x;
-        sc.scrollTop -= m.y - last.y;
-        if (last.d > 0 && Math.abs(m.d / last.d - 1) > 0.01) zoomAt(zoomRef.current * (m.d / last.d), m.x, m.y);
-        last = m;
-      }
-    };
-    const onEnd = (e: TouchEvent) => {
-      if (e.touches.length < 2) last = null;
-    };
-    sc.addEventListener('touchstart', onStart, { passive: false });
-    sc.addEventListener('touchmove', onMove, { passive: false });
-    sc.addEventListener('touchend', onEnd);
-    sc.addEventListener('touchcancel', onEnd);
-    return () => {
-      sc.removeEventListener('touchstart', onStart);
-      sc.removeEventListener('touchmove', onMove);
-      sc.removeEventListener('touchend', onEnd);
-      sc.removeEventListener('touchcancel', onEnd);
-    };
+    sc.addEventListener('scroll', onScroll, { passive: true });
+    return () => sc.removeEventListener('scroll', onScroll);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fingerDrawing, zoomAt]);
+  }, [schedule]);
+
+  // ---------------------------------------------------------------- touch: palm rejection
+
+  useEffect(() => {
+    const el = liveRef.current!;
+    const block = (e: TouchEvent) => {
+      const stylus = Array.from(e.changedTouches).some((t: any) => t.touchType === 'stylus');
+      // The Pencil never scrolls the note; a finger does unless it is drawing here.
+      if (stylus || (fingerDrawing && active && e.touches.length === 1)) e.preventDefault();
+    };
+    el.addEventListener('touchstart', block, { passive: false });
+    el.addEventListener('touchmove', block, { passive: false });
+    return () => {
+      el.removeEventListener('touchstart', block);
+      el.removeEventListener('touchmove', block);
+    };
+  }, [fingerDrawing, active]);
 
   // ---------------------------------------------------------------- editing
 
@@ -466,25 +406,30 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
   };
 
   useEffect(() => {
-    if (tool.tool !== 'lasso') setSelection(new Set());
-  }, [tool.tool]);
+    if (tool.tool !== 'lasso' || !active) setSelection(new Set());
+  }, [tool.tool, active]);
 
+  // While selected, ⌘Z belongs to the sketch, not to the note around it.
   useEffect(() => {
+    if (!active) return;
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if ((e.target as HTMLElement)?.closest('input, textarea, select')) return;
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key.toLowerCase() === 'z') {
         e.preventDefault();
+        e.stopPropagation();
         if (e.shiftKey) doRedo();
         else doUndo();
       }
       if ((e.key === 'Backspace' || e.key === 'Delete') && selection.size) {
+        e.preventDefault();
+        e.stopPropagation();
         commit(strokesRef.current.filter((_, i) => !selection.has(i)));
         setSelection(new Set());
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   });
 
   const pos = (e: { clientX: number; clientY: number }) => {
@@ -494,7 +439,7 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
   const pressureOf = (e: PointerEvent) => (e.pointerType === 'pen' ? Math.max(0.05, e.pressure || 0.5) : 0.5);
 
   /** The eraser's reach, in page units. Object mode stays a fingertip. */
-  const eraserR = tool.eraserMode === 'pixel' ? tool.eraserSize : 10 / Math.max(zoom, 0.75);
+  const eraserR = tool.eraserMode === 'pixel' ? tool.eraserSize : 10;
 
   const eraseAt = (g: Extract<Gesture, { kind: 'erase' }>, x: number, y: number) => {
     // A pointer reports far more often than the nib moves anywhere new, and
@@ -520,46 +465,97 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
       redo.current = [];
       g.erased = true;
     }
-    // Straight to the ref and a frame-coalesced repaint. Going through React
-    // for every sample meant a render, a save and a walk of every point on the
-    // page per sample: 26ms a frame on a busy page, and visibly dropped ones.
-    // The state catches up once, when the hand lifts.
+    // Straight to the ref and a frame-coalesced repaint; the state catches up
+    // once, when the hand lifts.
     strokesRef.current = next;
-    // Only the patch the nib swept since the last sample has changed. Pad it
-    // by the widest stroke so a half-drawn cap cannot be left behind.
     const pad = eraserR + 24;
     schedule({ x0: Math.min(x, px) - pad, y0: Math.min(y, py) - pad, x1: Math.max(x, px) + pad, y1: Math.max(y, py) + pad });
   };
 
+  /** Hold the Pencil still at the end of a shape and it snaps clean. */
+  const armSnap = (g: Extract<Gesture, { kind: 'stroke' }>) => {
+    window.clearTimeout(holdTimer.current);
+    if (g.ruled || g.snapped || g.stroke.t === 'marker') return;
+    holdTimer.current = window.setTimeout(() => {
+      if (gesture.current !== g) return;
+      const shape = recognizeShape(g.stroke.p);
+      if (!shape) return;
+      g.stroke.p = shape.p;
+      g.snapped = true;
+      drawLive(g.stroke);
+    }, SNAP_HOLD_MS);
+  };
+
+  const startStroke = (id: number, x: number, y: number, pressure: number) => {
+    const onRuler = active && rulerCatches(ruler, x, y);
+    const p0 = onRuler ? snapToRuler(ruler, x, y) : { x, y };
+    const stroke: Stroke = { t: tool.ink, c: tool.color, s: tool.size, p: [round(p0.x), round(p0.y), pressure] };
+    const g: Gesture = { kind: 'stroke', id, stroke, ruled: onRuler, snapped: false };
+    gesture.current = g;
+    drawLive(stroke);
+    armSnap(g);
+    return g;
+  };
+
+  const extendStroke = (g: Extract<Gesture, { kind: 'stroke' }>, x: number, y: number, pressure: number) => {
+    if (g.snapped) return;
+    const n = g.stroke.p.length;
+    const q = g.ruled ? snapToRuler(ruler, x, y) : { x, y };
+    // Only real movement resets the hold that snaps a shape.
+    if (Math.hypot(q.x - g.stroke.p[n - 3], q.y - g.stroke.p[n - 2]) > 1.5) armSnap(g);
+    g.stroke.p.push(round(q.x), round(q.y), pressure);
+  };
+
+  const endStroke = (g: Extract<Gesture, { kind: 'stroke' }>) => {
+    window.clearTimeout(holdTimer.current);
+    gesture.current = null;
+    if (g.stroke.p.length >= 3) commit([...strokesRef.current, g.stroke]);
+    drawLive(null);
+  };
+
+  // The Pencil stroke that made this sketch, carried over from the note.
+  useEffect(() => {
+    if (!adoptPen || !scale) return;
+    let g: Extract<Gesture, { kind: 'stroke' }> | null = null;
+    let used = 0;
+    return claimHandoff((points, done) => {
+      for (; used < points.length; used++) {
+        const { x, y } = pos({ clientX: points[used].x, clientY: points[used].y });
+        if (!g) g = startStroke(-1, x, y, points[used].p);
+        else extendStroke(g, x, y, points[used].p);
+      }
+      if (g) drawLive(g.stroke);
+      if (done && g) endStroke(g);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adoptPen, !!scale]);
+
   const onDown = (e: React.PointerEvent) => {
-    if (e.pointerType === 'touch') touchPointers.current.add(e.pointerId);
     if (gesture.current) return; // a palm or second contact while drawing
     if (e.button > 0 && e.pointerType === 'mouse') return;
+    // The Pencil always draws. The mouse and a finger first select the sketch,
+    // so a finger can still scroll past it and a click can still place the caret.
+    if (e.pointerType !== 'pen' && !active) {
+      onActivate();
+      return;
+    }
+    if (e.pointerType === 'pen' && !active) onActivate();
     const here = pos(e);
     // The ruler is laid about with a finger or the mouse while the Pencil
     // keeps drawing — the same division of labour as the rest of the canvas.
-    // A second finger is a pinch, not a grab.
-    if (e.pointerType !== 'pen' && !(e.pointerType === 'touch' && touchPointers.current.size > 1)) {
+    if (e.pointerType !== 'pen' && active) {
       const grab = rulerGrab(ruler, here.x, here.y);
       if (grab) {
         e.preventDefault();
-        try {
-          liveRef.current!.setPointerCapture(e.pointerId);
-        } catch {
-          /* synthetic or already-released pointer */
-        }
+        capture(e);
         gesture.current = { kind: 'ruler', id: e.pointerId, mode: grab, x: here.x, y: here.y, flip: rulerFrame(ruler, here.x, here.y).t < 0 };
         return;
       }
     }
-    if (e.pointerType === 'touch' && (!fingerDrawing || touchPointers.current.size > 1)) return;
+    if (e.pointerType === 'touch' && !fingerDrawing) return;
     e.preventDefault();
-    try {
-      liveRef.current!.setPointerCapture(e.pointerId);
-    } catch {
-      /* synthetic or already-released pointer */
-    }
-    const { x, y } = pos(e);
+    capture(e);
+    const { x, y } = here;
     // Barrel button / eraser end on styluses that have one.
     const t: Tool = e.buttons === 32 || e.button === 5 ? 'eraser' : tool.tool;
     if (t === 'eraser') {
@@ -578,11 +574,15 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
       }
       return;
     }
-    const onRuler = rulerCatches(ruler, x, y);
-    const p0 = onRuler ? snapToRuler(ruler, x, y) : { x, y };
-    const stroke: Stroke = { t: tool.ink, c: tool.color, s: tool.size, p: [round(p0.x), round(p0.y), pressureOf(e.nativeEvent)] };
-    gesture.current = { kind: 'stroke', id: e.pointerId, stroke, ruled: onRuler };
-    drawLive(stroke);
+    startStroke(e.pointerId, x, y, pressureOf(e.nativeEvent));
+  };
+
+  const capture = (e: React.PointerEvent) => {
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* synthetic or already-released pointer */
+    }
   };
 
   const onMove = (e: React.PointerEvent) => {
@@ -594,6 +594,13 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
     if (e.pointerId !== g.id) return;
     const coalesced: PointerEvent[] = (e.nativeEvent as any).getCoalescedEvents?.() ?? [];
     const list = coalesced.length ? coalesced : [e.nativeEvent];
+    if (g.kind === 'resize') {
+      const min = Math.max(MIN_H, contentBottom(strokesRef.current) + 24);
+      const next = Math.max(min, Math.round(g.h + (e.clientY - g.y) / scale));
+      heightRef.current = next;
+      setHeight(next);
+      return;
+    }
     if (g.kind === 'move') {
       const { x, y } = pos(e);
       g.dx = x - g.x;
@@ -633,20 +640,19 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
     }
     for (const ev of list) {
       const { x, y } = pos(ev);
-      const q = g.ruled ? snapToRuler(ruler, x, y) : { x, y };
-      g.stroke.p.push(round(q.x), round(q.y), pressureOf(ev));
+      extendStroke(g, x, y, pressureOf(ev));
     }
     drawLive(g.stroke);
     const y = g.stroke.p[g.stroke.p.length - 2];
-    if (y > heightRef.current - viewLogicalH * 0.35) grow(y, viewLogicalH * 0.5);
+    if (y > heightRef.current - 80) grow(y + 160);
   };
 
   const onUp = (e: React.PointerEvent) => {
-    if (e.pointerType === 'touch') touchPointers.current.delete(e.pointerId);
     const g = gesture.current;
     if (!g || e.pointerId !== g.id) return;
+    if (g.kind === 'stroke') return endStroke(g);
     gesture.current = null;
-    if (g.kind === 'stroke' && g.stroke.p.length >= 3) commit([...strokesRef.current, g.stroke]);
+    if (g.kind === 'resize') onChange({ height: heightRef.current });
     if (g.kind === 'lasso' && g.poly.length > 3) setSelection(lassoSelect(strokesRef.current, g.poly));
     if (g.kind === 'move' && (g.dx || g.dy)) commit(translateStrokes(strokesRef.current, selection, g.dx, g.dy));
     // The erase ran on the ref alone; tell React and the store about it now.
@@ -656,65 +662,55 @@ export function EndlessCanvas({ paper, strokes: initial, height: initialHeight, 
     bump((n) => n + 1);
   };
 
-  const onScroll = () => {
-    schedule();
-    if (!gesture.current) drawLive(null);
-    const sc = scrollerRef.current!;
-    // Endless: approaching the end adds more paper.
-    if (sc.scrollTop + sc.clientHeight > sc.scrollHeight - sc.clientHeight * 0.6) grow(contentBottom(strokesRef.current), viewLogicalH);
+  const onResizeDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    capture(e);
+    gesture.current = { kind: 'resize', id: e.pointerId, y: e.clientY, h: heightRef.current };
   };
 
   return (
-    <div className={`endless ${dark ? 'dark' : ''}`}>
-      <InkToolbar
-        floating
-        onUndo={doUndo}
-        onRedo={doRedo}
-        canUndo={undo.current.length > 0}
-        canRedo={redo.current.length > 0}
-        onDeleteSelection={
-          selection.size
-            ? () => {
-                commit(strokesRef.current.filter((_, i) => !selection.has(i)));
-                setSelection(new Set());
-              }
-            : undefined
-        }
-      >
-        {toolbarExtra}
-      </InkToolbar>
-      <div
-        className="endless-scroller"
-        ref={scrollerRef}
-        onScroll={onScroll}
-        style={{ touchAction: fingerDrawing ? 'none' : 'pan-x pan-y' }}
-        data-testid="endless-scroller"
-      >
-        <div className="endless-pad" style={{ width: padW, height: sheetH + topPad + 48 }}>
-          <div
-            className={`endless-sheet paper-${paper}`}
-            ref={sheetRef}
-            style={{ width: sheetW, height: sheetH, marginLeft: (padW - sheetW) / 2, marginTop: topPad }}
-            data-paper={paper}
+    <div className={`sketch ${page ? 'page' : ''} ${active ? 'is-active' : ''} ${dark ? 'dark' : ''}`} ref={wrapRef}>
+      {active &&
+        toolbarHost &&
+        createPortal(
+          <InkToolbar
+            floating
+            onUndo={doUndo}
+            onRedo={doRedo}
+            canUndo={undo.current.length > 0}
+            canRedo={redo.current.length > 0}
+            onDeleteSelection={
+              selection.size
+                ? () => {
+                    commit(strokesRef.current.filter((_, i) => !selection.has(i)));
+                    setSelection(new Set());
+                  }
+                : undefined
+            }
           >
-            <div className="endless-viewport" ref={vpRef} style={{ width: vpW, height: vpH }}>
-              <canvas ref={baseRef} className="endless-base" style={{ width: vpW, height: vpH }} />
-              <canvas
-                ref={liveRef}
-                className="endless-live"
-                style={{ width: vpW, height: vpH, cursor: 'crosshair' }}
-                onPointerDown={onDown}
-                onPointerMove={onMove}
-                onPointerUp={onUp}
-                onPointerCancel={onUp}
-                onPointerLeave={() => !gesture.current && drawLive(null)}
-                data-testid="endless-live"
-              />
-            </div>
-          </div>
+            {toolbarExtra}
+          </InkToolbar>,
+          toolbarHost,
+        )}
+      <div className={`sketch-sheet paper-${paper}`} ref={sheetRef} style={{ height: sheetH }} data-paper={paper}>
+        <div className="sketch-viewport" ref={vpRef} style={{ width: vpW, height: vpH }}>
+          <canvas ref={baseRef} className="sketch-base" style={{ width: vpW, height: vpH }} />
+          <canvas
+            ref={liveRef}
+            className="sketch-live"
+            style={{ width: vpW, height: vpH, cursor: active ? 'crosshair' : 'default', touchAction: fingerDrawing && active ? 'none' : 'pan-x pan-y' }}
+            onPointerDown={onDown}
+            onPointerMove={onMove}
+            onPointerUp={onUp}
+            onPointerCancel={onUp}
+            onPointerLeave={() => !gesture.current && drawLive(null)}
+            data-testid="sketch-live"
+          />
         </div>
+        {strokes.length === 0 && <div className="sketch-hint">{page ? 'Write anywhere with Apple Pencil — the page keeps going.' : 'Draw here with Apple Pencil'}</div>}
       </div>
-      {strokes.length === 0 && <div className="endless-hint">Write anywhere with Apple Pencil — the page keeps going.</div>}
+      {active && !page && <div className="sketch-resize" onPointerDown={onResizeDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} role="separator" aria-label="Drag to resize the sketch" />}
     </div>
   );
 }

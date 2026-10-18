@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { db, type Note } from '../db';
+import type { Stroke } from '../lib/ink';
+import type { Paper } from '../lib/paper';
 import { transcribeHandwriting, type TranscribeStyle } from '../lib/ai';
 import { renderInkPages } from '../lib/inkRender';
 import { canReadImages } from '../lib/llm';
@@ -24,17 +25,24 @@ function mdPlain(md: string): string {
     .trim();
 }
 
-/** Turns a handwritten note into text — as plain words or with its structure kept. */
-export function TranscribeDialog({ note, onClose }: { note: Note; onClose: () => void }) {
+export interface TranscribeTarget {
+  strokes: Stroke[];
+  paper: Paper;
+  /** The note it's in: its title and folder for a typed copy. */
+  title: string;
+  folderId: string;
+}
+
+/** Turns a sketch's handwriting into text — as plain words or with its structure kept. */
+export function TranscribeDialog({ target, onInsert, onRead, onClose }: { target: TranscribeTarget; onInsert?: (markdown: string) => void; onRead?: (plain: string) => void; onClose: () => void }) {
   const [style, setStyle] = useState<TranscribeStyle>('formatted');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
 
   const run = async () => {
-    const fresh = await db.notes.get(note.id);
-    const ink = fresh?.ink;
-    if (!ink?.strokes.length) return toast('There is no handwriting on this page yet.', 'info');
+    const ink = target;
+    if (!ink.strokes.length) return toast('There is no handwriting here yet.', 'info');
     setBusy(true);
     setResult(null);
     abort.current = new AbortController();
@@ -45,7 +53,7 @@ export function TranscribeDialog({ note, onClose }: { note: Note; onClose: () =>
       const text = await transcribeHandwriting(pages, style, ink.paper, abort.current.signal);
       setResult(text.trim());
       // Make the handwriting searchable and usable as a notebook source.
-      await db.notes.update(note.id, { text: mdPlain(text).replace(/\s+/g, ' ').trim() });
+      onRead?.(mdPlain(text).replace(/\s+/g, ' ').trim());
     } catch (e) {
       toastError(e);
     } finally {
@@ -55,7 +63,7 @@ export function TranscribeDialog({ note, onClose }: { note: Note; onClose: () =>
 
   const toTypedNote = async () => {
     if (!result) return;
-    const title = `${note.title || 'Handwritten note'} — typed`;
+    const title = `${target.title || 'Handwritten note'} — typed`;
     const plain = mdPlain(result);
     // Keep the writer's own title when the transcription starts with one.
     const ownTitle = style === 'formatted' && /^#\s/.test(result);
@@ -66,7 +74,7 @@ export function TranscribeDialog({ note, onClose }: { note: Note; onClose: () =>
             .split(/\n{2,}/)
             .map((p) => `<p>${escapeHtml(p).replace(/\n/g, '<br>')}</p>`)
             .join('');
-    await createNote(note.folderId, {
+    await createNote(target.folderId, {
       title: ownTitle ? plain.split('\n')[0] : title,
       content: ownTitle ? html : `<h1>${escapeHtml(title)}</h1>${html}`,
       text: plain,
@@ -104,6 +112,17 @@ export function TranscribeDialog({ note, onClose }: { note: Note; onClose: () =>
             <button className="btn" onClick={run} disabled={busy}>
               Again
             </button>
+            {onInsert && (
+              <button
+                className="btn"
+                onClick={() => {
+                  onInsert(style === 'formatted' ? result : result.split(/\n{2,}/).join('\n\n'));
+                  onClose();
+                }}
+              >
+                Insert below
+              </button>
+            )}
             <button className="btn primary" onClick={toTypedNote}>
               <ICompose size={16} /> Create typed note
             </button>

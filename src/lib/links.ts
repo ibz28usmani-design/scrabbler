@@ -95,3 +95,39 @@ export function mentionsTitle(text: string, title: string): boolean {
   const esc = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
   return new RegExp(`(^|[^\\p{L}\\p{N}])${esc}($|[^\\p{L}\\p{N}])`, 'iu').test(text);
 }
+
+/**
+ * Turns the first plain-text mention of `title` in a TipTap document into a
+ * link to the note — Obsidian's "Link" on an unlinked mention. Returns null
+ * when there is nothing to link (or the content is HTML, not a document).
+ */
+export function linkFirstMention(content: unknown, title: string, targetId: string): unknown | null {
+  if (!content || typeof content !== 'object') return null;
+  const t = title.trim();
+  const esc = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  const re = new RegExp(`(^|[^\\p{L}\\p{N}])(${esc})($|[^\\p{L}\\p{N}])`, 'iu');
+  let done = false;
+  const walk = (n: any): any => {
+    if (done || !n || typeof n !== 'object' || !Array.isArray(n.content)) return n;
+    const out: any[] = [];
+    for (const child of n.content) {
+      if (!done && child.type === 'text' && typeof child.text === 'string' && !(child.marks ?? []).some((m: any) => m.type === 'link' || m.type === 'code')) {
+        const m = re.exec(child.text);
+        if (m) {
+          const at = m.index + m[1].length;
+          const before = child.text.slice(0, at);
+          const after = child.text.slice(at + m[2].length);
+          if (before) out.push({ ...child, text: before });
+          out.push({ type: 'noteLink', attrs: { id: targetId, title: t } });
+          if (after) out.push({ ...child, text: after });
+          done = true;
+          continue;
+        }
+      }
+      out.push(walk(child));
+    }
+    return { ...n, content: out };
+  };
+  const next = walk(content);
+  return done ? next : null;
+}

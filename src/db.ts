@@ -492,15 +492,21 @@ export function inkToNote(n: Note): Partial<Note> {
   return { kind: 'note', content, paper: ink.paper, ink: undefined, text: title, snippet: n.snippet };
 }
 
+/** A note that is all handwriting, which exports as pages rather than a typed document. */
+export function handwrittenPage(note: Note): InkDoc | null {
+  if (note.kind === 'ink' && note.ink) return note.ink;
+  return legacyInk(note.content, note.paper ?? (note.lined ? 'lines' : 'blank'));
+}
+
 /** A handwritten page: [heading?] + one drawing + [empty paragraph]. Exports it as pages rather than a typed document. */
-export function legacyInk(content: unknown): InkDoc | null {
+export function legacyInk(content: unknown, notePaper: Paper = 'blank'): InkDoc | null {
   const blocks = ((content as { content?: any[] })?.content ?? []).filter((b) => !(b.type === 'paragraph' && !b.content?.length));
   const drawings = blocks.filter((b) => b.type === 'drawing');
   const others = blocks.filter((b) => b.type !== 'drawing');
   if (drawings.length !== 1 || others.length > 1) return null;
   if (others.length === 1 && others[0].type !== 'heading') return null;
   const a = drawings[0].attrs ?? {};
-  return { paper: a.paper ?? 'blank', strokes: Array.isArray(a.strokes) ? a.strokes : [], height: Number(a.height) || 1414 };
+  return { paper: a.paper ?? notePaper, strokes: Array.isArray(a.strokes) ? a.strokes : [], height: Number(a.height) || 1414 };
 }
 
 export async function deleteNotesForever(ids: ID[]) {

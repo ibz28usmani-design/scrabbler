@@ -79,7 +79,7 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
             <button className="icon-btn rec" onClick={() => openModal({ type: 'recorder', folderId })} aria-label="Record lecture" title="Record lecture">
               <IMic />
             </button>
-            <button className="icon-btn" aria-label="New handwritten note" title="New handwritten note" onClick={(e) => openTpl(e.currentTarget)}>
+            <button className="icon-btn" aria-label="New note to write by hand" title="New note to write by hand" onClick={(e) => openTpl(e.currentTarget)}>
               <IHandwriting />
             </button>
             <button className="icon-btn accent" onClick={() => createNote(folderId)} aria-label="New note" title="New typed note">
@@ -108,7 +108,7 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
       <div className="list-scroll">
         {notes.length === 0 && (
           <Empty title={view === 'search' ? 'No results' : view === 'deleted' ? 'Nothing here' : 'No notes yet'}>
-            {view === 'folder' && 'Type a note, start a handwritten page for Apple Pencil, or record a lecture.'}
+            {view === 'folder' && 'Type a note, write one by hand with Apple Pencil, or record a lecture.'}
           </Empty>
         )}
         {groups.map((g) => (
@@ -129,8 +129,7 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
                 >
                   <div className="note-title">
                     {n.kind === 'lecture' && <IMic size={14} className="note-kind" />}
-                    {n.kind === 'ink' && <IHandwriting size={14} className="note-kind" />}
-                    {n.title || (n.kind === 'ink' ? 'Handwritten note' : 'New Note')}
+                    {n.title || 'New Note'}
                   </div>
                   <div className="note-meta">
                     <span className="note-date">{shortDate(view === 'deleted' ? n.deletedAt! : n.updatedAt)}</span>

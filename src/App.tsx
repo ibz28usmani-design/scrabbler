@@ -11,7 +11,6 @@ import { hasTextKey } from './lib/llm';
 import { Sidebar } from './components/Sidebar';
 import { NoteList } from './components/NoteList';
 import { NoteEditor } from './components/NoteEditor';
-import { InkEditor } from './components/InkEditor';
 import { FocusChrome, useFocusShortcuts } from './components/FocusMode';
 import { NotebookPanel, SourceViewer } from './components/NotebookPanel';
 import { StudyView } from './components/StudyView';
@@ -113,11 +112,7 @@ export default function App() {
         <main className="main">
           <ErrorBoundary label="the editor" key={s.noteId ?? 'none'}>
           {note && !note.deletedAt ? (
-            note.kind === 'ink' ? (
-              <InkEditor key={note.id} note={note} narrow={narrow && !focus} wide={focus || showSidebar || showList} />
-            ) : (
-              <NoteEditor key={note.id} note={note} narrow={narrow && !focus} wide={focus || showSidebar || showList} />
-            )
+            <NoteEditor key={note.id} note={note} narrow={narrow && !focus} wide={focus || showSidebar || showList} />
           ) : note?.deletedAt ? (
             <DeletedPreview id={note.id} title={note.title} text={note.text} />
           ) : (

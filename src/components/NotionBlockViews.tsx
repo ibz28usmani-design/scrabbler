@@ -234,7 +234,7 @@ function NoteLinkView({ node }: NodeViewProps) {
   const title = (note?.title || node.attrs.title || 'Untitled').trim() || 'Untitled';
   return (
     <NodeViewWrapper as="span" className={`note-link ${gone ? 'gone' : ''}`} contentEditable={false} onClick={() => !gone && openNote(id)} title={gone ? 'This note was deleted' : 'Open note'}>
-      <span className="note-link-icon">{note?.kind === 'ink' ? '✎' : note?.kind === 'lecture' ? '🎙' : '📄'}</span>
+      <span className="note-link-icon">{note?.kind === 'lecture' ? '🎙' : '📄'}</span>
       {title}
     </NodeViewWrapper>
   );

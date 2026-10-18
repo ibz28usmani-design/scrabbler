@@ -125,3 +125,13 @@ describe('revision time', () => {
     expect(rows.map((r) => r.source).sort()).toEqual(['manual', 'timer']);
   });
 });
+
+describe('unlinked mentions', () => {
+  it('links the first plain mention and keeps the text around it', async () => {
+    const { linkFirstMention } = await import('../lib/links');
+    const doc = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'An offer, then acceptance.' }] }] };
+    const next = linkFirstMention(doc, 'Offer', 'n1') as any;
+    expect(next.content[0].content.map((c: any) => c.type === 'text' ? c.text : `[${c.attrs.id}]`)).toEqual(['An ', '[n1]', ', then acceptance.']);
+    expect(linkFirstMention(doc, 'Consideration', 'n2')).toBeNull();
+  });
+});
