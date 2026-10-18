@@ -16,6 +16,8 @@ export interface Run {
   href?: string;
   /** A hard line break inside a paragraph. */
   br?: boolean;
+  /** A link to another note: [[Title]] in Markdown, underlined elsewhere. */
+  wiki?: boolean;
 }
 
 export type Align = 'left' | 'center' | 'right' | 'justify';
@@ -35,7 +37,7 @@ export type Block =
   | { type: 'hr' }
   | { type: 'table'; rows: { header: boolean; cells: Run[][] }[] }
   | { type: 'image'; src: string }
-  | { type: 'drawing'; strokes: Stroke[]; height: number };
+  | { type: 'drawing'; strokes: Stroke[]; height: number; paper?: string; ocr?: string };
 
 interface JNode {
   type?: string;
@@ -57,7 +59,7 @@ function runsOf(nodes: JNode[] | undefined): Run[] {
       continue;
     }
     if (n.type === 'noteLink') {
-      out.push({ text: n.attrs?.title || 'Untitled', u: true });
+      out.push({ text: n.attrs?.title || 'Untitled', u: true, wiki: true });
       continue;
     }
     if (n.type !== 'text' || !n.text) continue;
@@ -166,7 +168,8 @@ export function toBlocks(doc: JNode): Block[] {
         if (n.attrs?.name) out.push({ type: 'paragraph', runs: [{ text: `Attached file: ${n.attrs.name}`, i: true }] });
         break;
       case 'drawing':
-        if (Array.isArray(n.attrs?.strokes) && n.attrs!.strokes.length) out.push({ type: 'drawing', strokes: n.attrs!.strokes, height: Number(n.attrs!.height) || 420 });
+        if (Array.isArray(n.attrs?.strokes) && n.attrs!.strokes.length)
+          out.push({ type: 'drawing', strokes: n.attrs!.strokes, height: Number(n.attrs!.height) || 420, paper: n.attrs!.paper || undefined, ocr: n.attrs!.ocr || undefined });
         break;
       default:
         if (n.content) out.push(...toBlocks(n));

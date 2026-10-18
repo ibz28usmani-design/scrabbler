@@ -72,6 +72,7 @@ function mdRuns(runs: Run[]): string {
         const pad = /^`|`$/.test(r.text) ? ' ' : '';
         return f + pad + r.text + pad + f;
       }
+      if (r.wiki) return `[[${r.text.replace(/[[\]|#]/g, ' ').trim()}]]`;
       let t = mdEscape(r.text);
       // Keep surrounding spaces outside emphasis markers, or Markdown ignores them.
       const lead = t.match(/^\s*/)![0];
@@ -89,7 +90,12 @@ function mdRuns(runs: Run[]): string {
     .join('');
 }
 
-export function toMarkdown(blocks: Block[], depth = 0): string {
+export interface MarkdownOptions {
+  /** Markdown for a sketch — an embed of its image, say. Without it, a placeholder. */
+  sketch?: (b: Extract<Block, { type: 'drawing' }>) => string;
+}
+
+export function toMarkdown(blocks: Block[], depth = 0, opts: MarkdownOptions = {}): string {
   const pad = '  '.repeat(depth);
   const out: string[] = [];
   for (const b of blocks) {
@@ -104,13 +110,13 @@ export function toMarkdown(blocks: Block[], depth = 0): string {
         b.items.forEach((it, i) => {
           const marker = b.style === 'task' ? `- [${it.checked ? 'x' : ' '}] ` : b.style === 'ordered' ? `${(b.start ?? 1) + i}. ` : '- ';
           out.push(pad + marker + mdRuns(it.runs));
-          if (it.children.length) out.push(toMarkdown(it.children, depth + 1).trimEnd());
+          if (it.children.length) out.push(toMarkdown(it.children, depth + 1, opts).trimEnd());
         });
         out.push('');
         break;
       case 'quote':
         out.push(
-          toMarkdown(b.blocks)
+          toMarkdown(b.blocks, 0, opts)
             .trimEnd()
             .split('\n')
             .map((l) => `> ${l}`)
@@ -135,7 +141,7 @@ export function toMarkdown(blocks: Block[], depth = 0): string {
         out.push(b.src.startsWith('data:') ? '![image](embedded-image)' : `![image](${b.src})`, '');
         break;
       case 'drawing':
-        out.push('*[sketch]*', '');
+        out.push(opts.sketch ? opts.sketch(b) : '*[sketch]*', '');
         break;
     }
   }

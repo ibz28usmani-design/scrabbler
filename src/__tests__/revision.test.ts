@@ -135,3 +135,31 @@ describe('unlinked mentions', () => {
     expect(linkFirstMention(doc, 'Consideration', 'n2')).toBeNull();
   });
 });
+
+describe('Obsidian vaults', () => {
+  it('reads and writes frontmatter properties', async () => {
+    const { frontmatter, parseFrontmatter } = await import('../lib/vault');
+    const head = frontmatter({ subject: 'Law', tags: ['contract', 'exam'], created: '2026-10-18T10:00:00.000Z', type: undefined });
+    const { props, body } = parseFrontmatter(`${head}Body text`);
+    expect(props).toEqual({ subject: 'Law', tags: ['contract', 'exam'], created: '2026-10-18T10:00:00.000Z' });
+    expect(body).toBe('Body text');
+    expect(parseFrontmatter('---\ntags: [a, "b c"]\n---\nx').props.tags).toEqual(['a', 'b c']);
+  });
+
+  it('keeps [[links]] safe from the Markdown parser, aliases included', async () => {
+    const { protectWikiLinks } = await import('../lib/vault');
+    const { md, links } = protectWikiLinks('See [[Offer]] and [[Acceptance|accepting]] but not ![[pic.png]]');
+    expect(md).toBe('See WIKILINK0X and WIKILINK1X but not ![[pic.png]]');
+    expect(links).toEqual([
+      { target: 'Offer', label: 'Offer' },
+      { target: 'Acceptance', label: 'accepting' },
+    ]);
+  });
+
+  it('writes note links as [[Title]] in Markdown', async () => {
+    const { toBlocks } = await import('../lib/export/ir');
+    const { toMarkdown } = await import('../lib/export/text');
+    const blocks = toBlocks({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'See ' }, { type: 'noteLink', attrs: { id: 'x', title: 'Offer' } }] }] } as never);
+    expect(toMarkdown(blocks).trim()).toBe('See [[Offer]]');
+  });
+});

@@ -8,6 +8,9 @@ import { toast, toastError } from '../lib/events';
 import { confirmDialog, DraftInput, Modal, Segmented, Spinner } from './ui';
 import { ICheck, IDownload, IUpload } from './Icons';
 import { NotificationSettings } from './NotificationSettings';
+import { exportVault, importVault } from '../lib/vault';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../db';
 
 export function SettingsModal() {
   const s = useSettings();
@@ -20,6 +23,7 @@ export function SettingsModal() {
   const [compatModels, setCompatModels] = useState<string[] | null>(null);
   const [compatBusy, setCompatBusy] = useState(false);
   const preset = presetById(s.compatPreset);
+  const subjects = useLiveQuery(() => db.subjects.toArray(), []) ?? [];
   const proxied = isProxyBase(s.compatBaseUrl);
 
   useEffect(() => {
@@ -284,6 +288,10 @@ export function SettingsModal() {
           <input type="checkbox" checked={s.fingerDrawing} onChange={(e) => updateSettings({ fingerDrawing: e.target.checked })} />
           Draw with finger (off = only Apple Pencil draws; fingers scroll — best palm rejection)
         </label>
+        <label className="check">
+          <input type="checkbox" checked={s.autoOcr} onChange={(e) => updateSettings({ autoOcr: e.target.checked })} />
+          Read handwriting as you go, so it’s searchable and its [[links]] and #tags count (one AI request per sketch you change)
+        </label>
       </section>
 
       <section className="set-section">
@@ -296,6 +304,39 @@ export function SettingsModal() {
           <label className="field">
             <span>New cards per day</span>
             <DraftInput className="input" type="number" min={0} max={500} value={String(s.newPerDay)} onValue={(v) => v.trim() !== '' && Number(v) >= 0 && updateSettings({ newPerDay: Math.min(500, Math.round(Number(v))) })} />
+          </label>
+        </div>
+      </section>
+
+      <section className="set-section">
+        <h3>Revision</h3>
+        <div className="field">
+          <span>Subjects with a weekly target and streak (up to three get their own chart colour)</span>
+          <div className="row wrap">
+            {subjects.map((x) => (
+              <label key={x.id} className="check">
+                <input
+                  type="checkbox"
+                  checked={s.revisionSubjects.includes(x.id)}
+                  onChange={(e) => updateSettings({ revisionSubjects: e.target.checked ? [...s.revisionSubjects, x.id] : s.revisionSubjects.filter((id) => id !== x.id) })}
+                />
+                {x.name}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="grid2">
+          <label className="field">
+            <span>Hours a week per subject</span>
+            <DraftInput className="input" type="number" min={1} max={40} value={String(s.weeklyTargetHours)} onValue={(v) => Number(v) >= 0.5 && updateSettings({ weeklyTargetHours: Math.min(40, Number(v)) })} />
+          </label>
+          <label className="field">
+            <span>Minutes a day to keep a streak</span>
+            <DraftInput className="input" type="number" min={1} max={240} value={String(s.streakMinMinutes)} onValue={(v) => Number(v) >= 1 && updateSettings({ streakMinMinutes: Math.min(240, Math.round(Number(v))) })} />
+          </label>
+          <label className="field">
+            <span>Stop counting after idle (minutes)</span>
+            <DraftInput className="input" type="number" min={1} max={15} value={String(s.idleMinutes)} onValue={(v) => Number(v) >= 1 && updateSettings({ idleMinutes: Math.min(15, Math.round(Number(v))) })} />
           </label>
         </div>
       </section>
@@ -347,6 +388,38 @@ export function SettingsModal() {
                 try {
                   await importBackup(f);
                   toast('Backup restored', 'success');
+                } catch (err) {
+                  toastError(err);
+                }
+              }}
+            />
+          </label>
+          <button
+            className="btn"
+            onClick={async () => {
+              try {
+                download(await exportVault(), `Scrabbler vault ${new Date().toISOString().slice(0, 10)}.zip`);
+              } catch (e) {
+                toastError(e);
+              }
+            }}
+            title="Markdown files in your folders, with [[links]], tags and sketches — unzip into Obsidian"
+          >
+            <IDownload size={16} /> Export Obsidian vault
+          </button>
+          <label className="btn" title="A zipped Obsidian vault comes in as a folder of its own">
+            <IUpload size={16} /> Import Obsidian vault
+            <input
+              type="file"
+              accept="application/zip,.zip"
+              hidden
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (!f) return;
+                try {
+                  const r = await importVault(f);
+                  toast(`Imported ${r.notes} notes into ${r.folders} folders`, 'success');
                 } catch (err) {
                   toastError(err);
                 }
