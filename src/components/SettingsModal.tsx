@@ -2,19 +2,12 @@ import { useEffect, useState } from 'react';
 import { closeModal } from '../lib/nav';
 import { GEMINI_VOICES, updateSettings, useSettings } from '../lib/settings';
 import { listModels as listCompatModels, looksMultimodal, pickModel, PRESETS, presetById, isProxyBase } from '../lib/openaiCompat';
-import { listModels, type ModelInfo } from '../lib/gemini';
+import { listModels, modelUpgrades, probeModel, type ModelInfo } from '../lib/gemini';
 import { download, eraseEverything, exportBackup, importBackup } from '../lib/backup';
 import { toast, toastError } from '../lib/events';
 import { confirmDialog, DraftInput, Modal, Segmented, Spinner } from './ui';
 import { ICheck, IDownload, IUpload } from './Icons';
 import { NotificationSettings } from './NotificationSettings';
-
-function pickDefault(models: ModelInfo[], kind: 'flash' | 'pro' | 'tts'): string | undefined {
-  const names = models.map((m) => m.name);
-  const rx = kind === 'tts' ? /^gemini-([\d.]+)-flash(-preview)?-tts$/ : kind === 'pro' ? /^gemini-([\d.]+)-pro$/ : /^gemini-([\d.]+)-flash$/;
-  const matches = names.filter((n) => rx.test(n)).sort((a, b) => parseFloat(b.match(rx)![1]) - parseFloat(a.match(rx)![1]));
-  return matches[0];
-}
 
 export function SettingsModal() {
   const s = useSettings();
@@ -32,7 +25,13 @@ export function SettingsModal() {
   useEffect(() => {
     navigator.storage?.estimate?.().then((e) => setUsage(`${((e.usage ?? 0) / 1048576).toFixed(1)} MB used`));
     navigator.storage?.persisted?.().then(setPersisted);
-    if (s.apiKey) listModels(s.apiKey).then(setModels).catch(() => {});
+    if (s.apiKey)
+      listModels(s.apiKey)
+        .then((list) => {
+          setModels(list);
+          updateSettings(modelUpgrades(list.map((m) => m.name), s));
+        })
+        .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -66,15 +65,11 @@ export function SettingsModal() {
     try {
       const list = await listModels(key.trim());
       setModels(list);
-      const patch: Partial<typeof s> = { apiKey: key.trim() };
-      const flash = pickDefault(list, 'flash');
-      const pro = pickDefault(list, 'pro');
-      const ttsM = pickDefault(list, 'tts');
-      if (flash && !list.some((m) => m.name === s.textModel)) patch.textModel = flash;
-      if (pro && !list.some((m) => m.name === s.proModel)) patch.proModel = pro;
-      if (ttsM && !list.some((m) => m.name === s.ttsModel)) patch.ttsModel = ttsM;
-      updateSettings(patch);
-      toast('Gemini key works ✓', 'success');
+      const upgrades = modelUpgrades(list.map((m) => m.name), s);
+      updateSettings({ apiKey: key.trim(), ...upgrades });
+      const textModel = upgrades.textModel ?? s.textModel;
+      await probeModel(textModel, key.trim());
+      toast(`Gemini key works ✓ — using ${textModel}`, 'success');
     } catch (e) {
       toastError(e);
     } finally {

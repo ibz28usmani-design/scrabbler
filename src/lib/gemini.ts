@@ -359,6 +359,66 @@ export async function listModels(apiKey?: string): Promise<ModelInfo[]> {
   return out;
 }
 
+type ModelKind = 'flash' | 'pro' | 'tts';
+
+const FAMILY: Record<ModelKind, RegExp> = {
+  flash: /^gemini-(\d+(?:\.\d+)*)-flash(-preview(?:-[\d-]+)?)?$/,
+  pro: /^gemini-(\d+(?:\.\d+)*)-pro(-preview(?:-[\d-]+)?)?$/,
+  tts: /^gemini-(\d+(?:\.\d+)*)-flash(-preview)?-tts$/,
+};
+
+/** Orders two names of one family: higher version first, then stable before preview. */
+function compareFamily(rx: RegExp, a: string, b: string): number {
+  const [, va, pa] = a.match(rx)!;
+  const [, vb, pb] = b.match(rx)!;
+  const na = va.split('.').map(Number);
+  const nb = vb.split('.').map(Number);
+  for (let i = 0; i < Math.max(na.length, nb.length); i++) {
+    const d = (nb[i] ?? 0) - (na[i] ?? 0);
+    if (d) return d;
+  }
+  return Number(!!pa) - Number(!!pb);
+}
+
+/** The newest model of a family that the key can see, e.g. gemini-3.8-flash over gemini-2.5-flash. */
+export function newestModel(names: string[], kind: ModelKind): string | undefined {
+  const rx = FAMILY[kind];
+  return names.filter((n) => rx.test(n)).sort((a, b) => compareFamily(rx, a, b))[0];
+}
+
+/**
+ * Moves each model slot onto the newest one the key offers. Google keeps
+ * retired models in the list but refuses them to newer keys, so a slot is
+ * moved when its model is missing or is an older version of the same family.
+ * A deliberate pick outside the family (a lite model, say) is left alone.
+ */
+export function modelUpgrades(names: string[], current: { textModel: string; proModel: string; ttsModel: string }) {
+  const patch: Partial<typeof current> = {};
+  const slots = [['textModel', 'flash'], ['proModel', 'pro'], ['ttsModel', 'tts']] as const;
+  for (const [slot, kind] of slots) {
+    const best = newestModel(names, kind);
+    const now = current[slot];
+    if (!best || best === now) continue;
+    const rx = FAMILY[kind];
+    if (!names.includes(now) || (rx.test(now) && compareFamily(rx, now, best) > 0)) patch[slot] = best;
+  }
+  return patch;
+}
+
+/** Asks a model for a single token, so a key that lists a model but can't use it fails here. */
+export async function probeModel(model: string, apiKey?: string): Promise<void> {
+  await call(
+    `${BASE}/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey ?? key() },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Hi' }] }], generationConfig: { maxOutputTokens: 1 } }),
+    },
+    undefined,
+    2,
+  );
+}
+
 /** Schema helpers (OpenAPI subset used by Gemini's responseSchema). */
 export const S = {
   str: (description?: string) => ({ type: 'STRING', ...(description ? { description } : {}) }),

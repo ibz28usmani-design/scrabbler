@@ -5,6 +5,7 @@ import { parseCsvRows, parseDelimited, stripHtml } from '../lib/importers';
 import { salvageSegments } from '../lib/ai';
 import { parseClock, fmtClock, groupLabel, prevDay } from '../lib/dates';
 import { youtubeId } from '../lib/sources';
+import { modelUpgrades, newestModel } from '../lib/gemini';
 
 describe('retrieval', () => {
   it('chunks long text and keeps page numbers', () => {
@@ -383,5 +384,28 @@ describe('date groups', () => {
     const now = new Date(2026, 9, 26, 12).getTime();
     expect(groupLabel(new Date(2026, 9, 25, 0, 30).getTime(), now)).toBe('Yesterday');
     expect(groupLabel(new Date(2026, 9, 24, 23, 30).getTime(), now)).toBe('Previous 7 Days');
+  });
+});
+
+describe('gemini models', () => {
+  const names = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3.8-flash', 'gemini-3.8-flash-preview-09-2026', 'gemini-3.8-pro-preview', 'gemini-2.5-flash-lite', 'gemini-2.5-flash-preview-tts', 'gemini-3.8-flash-tts'];
+
+  it('picks the newest version, stable before preview', () => {
+    expect(newestModel(names, 'flash')).toBe('gemini-3.8-flash');
+    expect(newestModel(names, 'pro')).toBe('gemini-3.8-pro-preview');
+    expect(newestModel(names, 'tts')).toBe('gemini-3.8-flash-tts');
+    expect(newestModel(['gemini-3.8-flash', 'gemini-3.10-flash'], 'flash')).toBe('gemini-3.10-flash');
+  });
+
+  it('moves a retired model that is still listed onto the newest one', () => {
+    expect(modelUpgrades(names, { textModel: 'gemini-2.5-flash', proModel: 'gemini-2.5-pro', ttsModel: 'gemini-2.5-flash-preview-tts' })).toEqual({
+      textModel: 'gemini-3.8-flash',
+      proModel: 'gemini-3.8-pro-preview',
+      ttsModel: 'gemini-3.8-flash-tts',
+    });
+  });
+
+  it('leaves current and deliberate picks alone', () => {
+    expect(modelUpgrades(names, { textModel: 'gemini-2.5-flash-lite', proModel: 'gemini-3.8-pro-preview', ttsModel: 'gemini-3.8-flash-tts' })).toEqual({});
   });
 });
