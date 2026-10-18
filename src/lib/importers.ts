@@ -151,3 +151,48 @@ export async function parseAnki(file: Blob, fallbackName: string): Promise<Impor
     sqldb.close();
   }
 }
+
+/**
+ * Cards copied out of an app with no export, Gizmo among them: whatever shape
+ * the copy comes in. Tries, in order, labelled pairs ("Q: … A: …",
+ * "Front: … Back: …"), tab- or arrow-separated rows, blank-line-separated
+ * blocks (first line the front, the rest the back), "term — definition" or
+ * "term: definition" lines, and last of all alternate lines.
+ */
+export function parseLoose(text: string): ImportedCard[] {
+  const clean = text.replace(/\r\n?/g, '\n').replace(/ /g, ' ').trim();
+  if (!clean) return [];
+  const card = (front: string, back: string): ImportedCard => ({ type: /\{\{c\d+::/.test(front) ? 'cloze' : 'basic', front: front.trim(), back: back.trim() });
+  const ok = (cards: ImportedCard[]) => cards.filter((c) => c.front && c.back);
+
+  // Labelled pairs.
+  const labelled = [...clean.matchAll(/(?:^|\n)\s*(?:Q|Question|Front|Term)\s*[:.)-]\s*([\s\S]*?)\n\s*(?:A|Answer|Back|Definition)\s*[:.)-]\s*([\s\S]*?)(?=\n\s*(?:Q|Question|Front|Term)\s*[:.)-]|\s*$)/gi)];
+  if (labelled.length) return ok(labelled.map((m) => card(m[1], m[2])));
+
+  const lines = clean.split('\n').map((l) => l.trim());
+  const nonEmpty = lines.filter(Boolean);
+  const strip = (l: string) => l.replace(/^(\d+[.)]|[-*•])\s+/, '');
+
+  // One card a row, split on a tab or an arrow.
+  const split = (l: string) => {
+    const m = l.match(/^(.+?)\s*(?:\t+|\s→\s|\s->\s|\s=>\s)\s*(.+)$/);
+    return m ? [strip(m[1]), m[2]] : null;
+  };
+  if (nonEmpty.length && nonEmpty.filter(split).length >= nonEmpty.length * 0.8) return ok(nonEmpty.map(split).filter(Boolean).map((p) => card(p![0], p![1])));
+
+  // Blocks separated by blank lines: the first line is the question.
+  const blocks = clean.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
+  if (blocks.length > 1 && blocks.every((b) => b.includes('\n'))) return ok(blocks.map((b) => card(strip(b.split('\n')[0]), b.split('\n').slice(1).join('\n'))));
+
+  // "term — definition" or "term: definition" on each line.
+  const dash = (l: string) => {
+    const m = strip(l).match(/^(.{1,120}?)\s+[—–-]\s+(.+)$/) ?? strip(l).match(/^([^:]{1,80}):\s+(.+)$/);
+    return m ? [m[1], m[2]] : null;
+  };
+  if (nonEmpty.length && nonEmpty.filter(dash).length >= nonEmpty.length * 0.8) return ok(nonEmpty.map(dash).filter(Boolean).map((p) => card(p![0], p![1])));
+
+  // Front and back on alternate lines.
+  const out: ImportedCard[] = [];
+  for (let i = 0; i + 1 < nonEmpty.length; i += 2) out.push(card(strip(nonEmpty[i]), nonEmpty[i + 1]));
+  return ok(out);
+}

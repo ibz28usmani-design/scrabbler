@@ -1,9 +1,9 @@
 import { useSyncExternalStore } from 'react';
 
-export type View = 'folder' | 'search' | 'deleted' | 'study' | 'calendar' | 'reminders';
+export type View = 'folder' | 'search' | 'deleted' | 'study' | 'calendar' | 'reminders' | 'graph' | 'revision' | 'tutor';
 
 /** Views that fill the main area on their own, without the note list and editor. */
-export const PAGE_VIEWS: View[] = ['study', 'calendar', 'reminders'];
+export const PAGE_VIEWS: View[] = ['study', 'calendar', 'reminders', 'graph', 'revision', 'tutor'];
 export type NotebookTab = 'sources' | 'chat' | 'studio';
 export type Pane = 'sidebar' | 'list' | 'editor';
 
@@ -32,6 +32,8 @@ export interface NavState {
   modal: ModalState;
   deckId: string | null;
   session: null | { deckIds: string[]; mode: 'study' | 'quiz' };
+  /** The note the graph centres on (its local graph); null for the whole vault. */
+  graphFocus: string | null;
 }
 
 const KEY = 'scrabbler.nav';
@@ -58,6 +60,7 @@ function initial(): NavState {
     modal: null,
     deckId: null,
     session: null,
+    graphFocus: null,
   };
 }
 

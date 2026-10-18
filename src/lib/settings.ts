@@ -47,6 +47,18 @@ export interface Settings {
   /** Extra heads-up before the first class of each day (0 = off). */
   firstClassLeadMinutes: number;
   notifyReminders: boolean;
+  /** Timetable subjects with a weekly revision target, a streak and a top-level folder. */
+  revisionSubjects: string[];
+  /** Hours of revision a week each of those subjects aims for. */
+  weeklyTargetHours: number;
+  /** Minutes of revision on a subject that keep its streak going for the day. */
+  streakMinMinutes: number;
+  /** Revision time stops counting after this long without a tap, keystroke or stroke. */
+  idleMinutes: number;
+  /** Read handwriting in sketches a few seconds after you stop, so it is searchable and its [[links]] count. */
+  autoOcr: boolean;
+  /** Exam board and qualification per subject, for the tutor: "AQA A-level Economics". */
+  examBoards: Record<string, string>;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -82,6 +94,12 @@ export const DEFAULT_SETTINGS: Settings = {
   classLeadMinutes: 10,
   firstClassLeadMinutes: 60,
   notifyReminders: true,
+  revisionSubjects: ['law', 'economics', 'maths'],
+  weeklyTargetHours: 4,
+  streakMinMinutes: 20,
+  idleMinutes: 2,
+  autoOcr: true,
+  examBoards: {},
 };
 
 const KEY = 'scrabbler.settings';

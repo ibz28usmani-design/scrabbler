@@ -10,6 +10,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { blockAt, blockAtPos, deleteBlock, dropBlock, duplicateBlock, freshBlock, insertLineAfter, moveBlock, type BlockRef } from '../lib/blockOps';
 import { BLOCK_COLORS, colorBlock, turnInto, type BlockKind } from './notionBlocks';
 import { Menu, type MenuItem } from './ui';
+import { Glyph } from './AppIcon';
 
 const TURN: [BlockKind, string][] = [
   ['text', 'Text'],
@@ -255,14 +256,14 @@ export function BlockHandle({ editor }: { editor: Editor }) {
             ...BLOCK_COLORS.map((c) => ({ label: <span data-bg={c}>{cap(c)} background</span>, onClick: act((r) => (selectBlock(r), colorBlock(editor, 'background', c))) })),
           ]
         : [
-            { label: 'Turn into…', icon: '⇄', disabled: !textual, onClick: () => setTimeout(() => setMenu('turn'), 0) },
+            { label: 'Turn into…', icon: <Glyph icon="swap" />, disabled: !textual, onClick: () => setTimeout(() => setMenu('turn'), 0) },
             { label: 'Colour…', icon: 'A', disabled: !textual, onClick: () => setTimeout(() => setMenu('color'), 0) },
             { divider: true, label: '' },
-            { label: 'Duplicate', icon: '⧉', hint: '⌘D', onClick: act((r) => editor.view.dispatch(duplicateBlock(editor.state.tr, r))) },
+            { label: 'Duplicate', icon: <Glyph icon="copy" />, hint: '⌘D', onClick: act((r) => editor.view.dispatch(duplicateBlock(editor.state.tr, r))) },
             { label: 'Move up', icon: '↑', hint: '⌘⇧↑', onClick: act((r) => { const tr = editor.state.tr; if (moveBlock(tr, r, -1)) editor.view.dispatch(tr.scrollIntoView()); }) },
             { label: 'Move down', icon: '↓', hint: '⌘⇧↓', onClick: act((r) => { const tr = editor.state.tr; if (moveBlock(tr, r, 1)) editor.view.dispatch(tr.scrollIntoView()); }) },
             { divider: true, label: '' },
-            { label: 'Delete', icon: '🗑', danger: true, onClick: act((r) => editor.view.dispatch(deleteBlock(editor.state.tr, r))) },
+            { label: 'Delete', icon: <Glyph icon="trash" />, danger: true, onClick: act((r) => editor.view.dispatch(deleteBlock(editor.state.tr, r))) },
           ];
 
   if (!editor.isEditable) return null;

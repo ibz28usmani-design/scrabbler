@@ -1,4 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useStudyPresence } from '../lib/useStudyPresence';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { db, deleteSource, uid, type Chunk, type ChatMessage, type Citation, type Source, type StudioItem } from '../db';
 import { nav, openModal, useNav, type NotebookTab } from '../lib/nav';
@@ -20,13 +21,14 @@ import {
 export function NotebookPanel({ folderId, overlay }: { folderId: string; overlay: boolean }) {
   const { notebookTab } = useNav();
   const folder = useLiveQuery(() => db.folders.get(folderId), [folderId]);
+  useStudyPresence('notebook', { folderId });
   const sourceCount = useLiveQuery(() => db.sources.where('folderId').equals(folderId).count(), [folderId]) ?? 0;
   return (
     <aside className={`notebook ${overlay ? 'overlay' : ''}`}>
       <div className="nb-head">
         <IBook size={18} />
         <div className="nb-title">
-          {folder?.emoji} {folder?.name} <span className="muted">· Notebook</span>
+          {folder?.name} <span className="muted">· Notebook</span>
         </div>
         <span className="spacer" />
         <button className="icon-btn" onClick={() => nav({ notebookOpen: false, focusPanel: null })} aria-label="Close notebook">
@@ -388,7 +390,7 @@ function ChatTab({ folderId }: { folderId: string }) {
     } catch (e) {
       if ((e as Error).name !== 'AbortError') {
         toastError(e);
-        await db.chats.add({ id: uid(), folderId, role: 'model', text: `⚠️ ${(e as Error).message}`, createdAt: Date.now(), error: true });
+        await db.chats.add({ id: uid(), folderId, role: 'model', text: (e as Error).message, createdAt: Date.now(), error: true });
       }
     } finally {
       setStreaming(null);

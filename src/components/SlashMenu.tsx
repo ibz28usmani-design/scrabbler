@@ -7,6 +7,7 @@ import { PluginKey } from '@tiptap/pm/state';
 import { ReactRenderer } from '@tiptap/react';
 import Suggestion, { type SuggestionProps } from '@tiptap/suggestion';
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
+import { Glyph } from './AppIcon';
 import { emojiItems, getSlashHost, linkItems, mentionItems, slashItems, type SlashItem } from '../lib/slashCommands';
 
 interface ListProps {
@@ -73,7 +74,7 @@ const SuggestionList = forwardRef<ListHandle, ListProps>(function SuggestionList
               data-color={it.swatch?.color && it.swatch.color !== 'default' ? it.swatch.color : undefined}
               data-bg={it.swatch?.bg && it.swatch.bg !== 'default' ? it.swatch.bg : undefined}
             >
-              {it.icon}
+              <Glyph icon={it.icon} />
             </span>
             <span className="slash-text">
               <span className="slash-title">{it.title}</span>

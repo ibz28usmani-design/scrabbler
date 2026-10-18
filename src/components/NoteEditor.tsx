@@ -17,7 +17,13 @@ import { IAa, IBook, IChecklist, IChevL, ICompose, IImage, IMic, IMore, IPencil,
 import { ExportDialog } from './ExportDialog';
 import { FocusButton } from './FocusMode';
 import { toast } from '../lib/events';
-import { createNote } from '../lib/notes';
+import { createNote, linksFor } from '../lib/notes';
+import { NoteContext } from '../lib/noteContext';
+import { HANDWRITING_TEMPLATES, type Paper } from '../lib/paper';
+import { beginHandoff, endHandoff, handoffActive, moveHandoff } from '../lib/penHandoff';
+import { useStudyPresence } from '../lib/useStudyPresence';
+import { LinksPanel } from './LinksPanel';
+import { AppIcon } from './AppIcon';
 
 export { editorExtensions };
 
@@ -26,8 +32,8 @@ function summarize(editor: Editor) {
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
   const hasDrawing = editor.getJSON().content?.some((n) => n.type === 'drawing');
   return {
-    title: (lines[0] ?? (hasDrawing ? 'Handwritten note' : '')).slice(0, 120),
-    snippet: lines.slice(1, 3).join(' ').slice(0, 160) || (hasDrawing ? 'Drawing' : ''),
+    title: (lines[0] ?? '').slice(0, 120),
+    snippet: lines.slice(1, 3).join(' ').slice(0, 160) || (hasDrawing ? 'Handwriting' : ''),
     text,
   };
 }
@@ -40,6 +46,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
   const [words, setWords] = useState(() => countWords(note.text ?? ''));
   // Below this the row cannot hold every action without pushing some off-screen.
   const paneRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   // Shed the secondary actions first; only hide the primary ones when the pane
   // is genuinely too small, rather than emptying the row all at once.
   const paneW = useElementWidth(paneRef);
@@ -49,6 +56,8 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
   const [fmtAnchor, openFmt, closeFmt] = useMenu();
   const [moreAnchor, openMore, closeMore] = useMenu();
   const [moveAnchor, openMove, closeMove] = useMenu();
+  const [paperAnchor, openPaper, closePaper] = useMenu();
+  useStudyPresence(note.kind === 'lecture' ? 'lecture' : 'notes', { folderId: note.folderId });
   const folders = useLiveQuery(() => db.folders.orderBy('order').toArray(), []) ?? [];
 
   const editor = useEditor(
@@ -59,7 +68,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
         FileDrop,
         Placeholder.configure({
           placeholder: ({ node, pos }) =>
-            pos === 0 && node.type.name !== 'drawing' ? 'Title' : node.type.name === 'detailsSummary' ? 'Toggle' : node.type.name === 'heading' ? `Heading ${node.attrs.level}` : 'Start writing, or tap ✎ to draw with Apple Pencil…',
+            pos === 0 && node.type.name !== 'drawing' ? 'Title' : node.type.name === 'detailsSummary' ? 'Toggle' : node.type.name === 'heading' ? `Heading ${node.attrs.level}` : 'Start writing, or write anywhere with Apple Pencil…',
           showOnlyCurrent: false,
           includeChildren: true,
         }),
@@ -68,11 +77,12 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
       editorProps: { attributes: { class: 'prose', spellcheck: 'true', autocapitalize: 'sentences' } },
       onUpdate: ({ editor }) => {
         window.clearTimeout(saveTimer.current);
-        saveTimer.current = window.setTimeout(() => {
+        saveTimer.current = window.setTimeout(async () => {
           saveTimer.current = 0;
           const s = summarize(editor);
           setWords(countWords(s.text));
-          db.notes.update(noteId, { content: editor.getJSON(), ...s, updatedAt: Date.now() });
+          const content = editor.getJSON();
+          db.notes.update(noteId, { content, ...s, ...(await linksFor({ id: noteId, content, text: s.text })), updatedAt: Date.now() });
         }, 400);
       },
     },
@@ -115,6 +125,15 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
     lastStatus.current = note.status;
   }, [contentVersion, editor, note.content, note.status]);
 
+  // While a Pencil stroke is being handed to a new sketch, it must not scroll the note.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const hold = (e: TouchEvent) => handoffActive() && Array.from(e.touches).some((t: any) => t.touchType === 'stylus') && e.preventDefault();
+    el.addEventListener('touchmove', hold, { passive: false });
+    return () => el.removeEventListener('touchmove', hold);
+  }, [editor]);
+
   // What the / menu needs from this screen.
   useEffect(() => {
     if (!editor) return;
@@ -141,6 +160,49 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
   };
 
   const setFont = (font: NonNullable<Note['font']>) => db.notes.update(note.id, { font });
+  const paper: Paper = note.paper ?? (note.lined ? 'lines' : 'blank');
+  const setPaper = (p: Paper) => db.notes.update(note.id, { paper: p, lined: p === 'lines' });
+
+  /**
+   * Apple Notes: the Pencil on empty page starts a drawing right there, and
+   * the stroke that started it is in it. On text it is left to Scribble.
+   */
+  const onPenDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== 'pen' || e.button > 0) return;
+    if ((e.target as HTMLElement).closest('.drawing-node, .ink-dock, button, a, input, select, textarea, .lecture-panel, .links-panel')) return;
+    const view = editor.view;
+    const doc = editor.state.doc;
+    const last = doc.lastChild;
+    const lastDom = view.dom.lastElementChild?.getBoundingClientRect();
+    let from: number;
+    let to: number;
+    if (!lastDom || e.clientY > lastDom.bottom) {
+      // Below everything: on the trailing empty line if there is one.
+      const emptyLast = last?.type.name === 'paragraph' && !last.content.size;
+      to = doc.content.size;
+      from = emptyLast ? to - last!.nodeSize : to;
+    } else {
+      const hit = view.posAtCoords({ left: e.clientX, top: e.clientY });
+      if (!hit) return;
+      const $pos = doc.resolve(hit.pos);
+      if ($pos.depth < 1) return;
+      const block = $pos.node(1);
+      if (block.type.name !== 'paragraph' || block.content.size) return;
+      from = $pos.before(1);
+      to = $pos.after(1);
+    }
+    e.preventDefault();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* already released */
+    }
+    beginHandoff(e.nativeEvent);
+    editor
+      .chain()
+      .insertContentAt({ from, to }, [{ type: 'drawing', attrs: { strokes: [], height: 420, paper: null, adoptPen: true, autoActive: true } }, { type: 'paragraph' }])
+      .run();
+  };
 
   return (
     <div className="editor-pane" ref={paneRef}>
@@ -165,7 +227,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
               <IChecklist />
             </button>
           )}
-          <button className="icon-btn" onClick={() => editor.chain().focus().insertDrawing({ paper: 'blank' }).run()} aria-label="Draw">
+          <button className="icon-btn" onClick={() => editor.chain().focus().insertDrawing().run()} aria-label="Draw">
             <IPencil />
           </button>
           {!tighter && (
@@ -192,13 +254,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
         {/* Notebook and Full screen always stay on the bar; only the word
             "Notebook" gives way, then the ruled-lines toggle. */}
         {!tight && (
-          <button
-            className={`icon-btn ${note.lined ? 'on' : ''}`}
-            onClick={() => db.notes.update(note.id, { lined: !note.lined })}
-            aria-label="Ruled lines"
-            aria-pressed={!!note.lined}
-            title="Ruled lines"
-          >
+          <button className={`icon-btn ${paper !== 'blank' ? 'on' : ''}`} onClick={(e) => openPaper(e.currentTarget)} aria-label="Lines & grids" title="Lines & grids">
             <IRuled />
           </button>
         )}
@@ -238,11 +294,21 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
 
       {note.kind === 'lecture' && <LecturePanel note={note} />}
 
-      <div className={`editor-scroll doc font-${note.font ?? 'serif'}${note.lined ? ' lined' : ''}`}>
+      <div
+        ref={scrollRef}
+        className={`editor-scroll doc font-${note.font ?? 'serif'} paper-${paper}${paper === 'lines' || paper === 'cornell' ? ' lined' : ''}`}
+        onPointerDown={onPenDown}
+        onPointerMove={(e) => e.pointerType === 'pen' && handoffActive() && moveHandoff(e.nativeEvent)}
+        onPointerUp={(e) => e.pointerType === 'pen' && endHandoff(e.nativeEvent)}
+        onPointerCancel={(e) => e.pointerType === 'pen' && endHandoff(e.nativeEvent)}
+      >
         <div className="doc-page">
           <div className="editor-date">{new Date(note.updatedAt).toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' })}</div>
-          <EditorContent editor={editor} />
+          <NoteContext.Provider value={{ noteId: note.id, folderId: note.folderId, title: note.title, paper }}>
+            <EditorContent editor={editor} />
+          </NoteContext.Provider>
           <BlockHandle editor={editor} />
+          <LinksPanel note={note} />
         </div>
       </div>
       <div className="doc-status" aria-live="polite">
@@ -263,7 +329,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
             {fmt('Serif', () => setFont('serif'), (note.font ?? 'serif') === 'serif', 'face-serif')}
             {fmt('Sans', () => setFont('sans'), note.font === 'sans', 'face-sans')}
             {fmt('Mono', () => setFont('mono'), note.font === 'mono', 'face-mono')}
-            {fmt(note.lined ? 'Lines on' : 'Lines off', () => db.notes.update(note.id, { lined: !note.lined }), !!note.lined)}
+            {fmt(paper === 'lines' ? 'Lines on' : 'Lines off', () => setPaper(paper === 'lines' ? 'blank' : 'lines'), paper === 'lines')}
           </div>
           <div className="fmt-row">
             {fmt('B', () => editor.chain().focus().toggleBold().run(), editor.isActive('bold'), 'b')}
@@ -312,7 +378,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
               : []),
             ...(tight
               ? [
-                  { label: note.lined ? 'Hide ruled lines' : 'Show ruled lines', icon: <IRuled size={18} />, onClick: () => db.notes.update(note.id, { lined: !note.lined }) },
+                  { label: 'Lines & grids…', icon: <IRuled size={18} />, onClick: () => setTimeout(() => openPaper(moreAnchor), 0) },
                   { divider: true, label: '' },
                 ]
               : []),
@@ -326,13 +392,26 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
           ]}
         />
       )}
+      {paperAnchor && (
+        <Menu
+          anchor={paperAnchor}
+          align="right"
+          onClose={closePaper}
+          items={HANDWRITING_TEMPLATES.map((t) => ({
+            label: `${paper === t.paper ? '✓ ' : ''}${t.label}`,
+            hint: t.description,
+            onClick: () => setPaper(t.paper),
+          }))}
+        />
+      )}
       {moveAnchor && (
         <Menu
           anchor={moveAnchor}
           align="right"
           onClose={closeMove}
           items={folders.map((f) => ({
-            label: `${f.emoji} ${f.name}`,
+            label: f.name,
+            icon: <AppIcon name={f.icon ?? f.emoji} size={17} />,
             disabled: f.id === note.folderId,
             onClick: async () => {
               await db.notes.update(note.id, { folderId: f.id });

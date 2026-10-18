@@ -1,6 +1,6 @@
-import { db, type StoredBlob } from '../db';
+import { db, inkToNote, type Note, type StoredBlob } from '../db';
 
-const TABLES = ['folders', 'notes', 'sources', 'chunks', 'chats', 'studio', 'decks', 'cards', 'reviews', 'meta', 'subjects', 'lessons', 'reminderLists', 'reminders'] as const;
+const TABLES = ['folders', 'notes', 'sources', 'chunks', 'chats', 'studio', 'decks', 'cards', 'reviews', 'meta', 'subjects', 'lessons', 'reminderLists', 'reminders', 'studyTime', 'tutor'] as const;
 
 /**
  * A zip: the tables as backup.json, and each file (recordings, attachments)
@@ -37,6 +37,8 @@ export async function importBackup(file: Blob) {
     fileFor = async (b) => (b.data === undefined ? null : new Blob([Uint8Array.from(atob(b.data), (c) => c.charCodeAt(0))]));
   }
   if (data?.app !== 'scrabbler') throw new Error('That is not a Scrabbler backup file.');
+  // Handwritten notes from before handwriting moved inline come back as sketches.
+  if (Array.isArray(data.notes)) data.notes = data.notes.map((n: Note) => (n.kind === 'ink' && n.ink ? { ...n, ...inkToNote(n) } : n));
   // Read every file before the transaction: IndexedDB commits a transaction left waiting on other work.
   const files: StoredBlob[] = [];
   for (const b of (data.blobs ?? []) as BlobMeta[]) {
@@ -47,6 +49,8 @@ export async function importBackup(file: Blob) {
     for (const t of TABLES) if (Array.isArray(data[t])) await (db as any)[t].bulkPut(data[t]);
     await db.blobs.bulkPut(files);
   });
+  const { reindexAll } = await import('./notes');
+  await reindexAll();
 }
 
 export async function eraseEverything() {

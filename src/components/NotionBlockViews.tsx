@@ -11,6 +11,7 @@ import { db } from '../db';
 import { nav } from '../lib/nav';
 import { cleanUrl, embedPlan, type EmbedKind } from '../lib/embeds';
 import { promptDialog, Spinner, useObjectUrl } from './ui';
+import { Glyph } from './AppIcon';
 import { attachmentKind, formatBytes, insertFiles } from '../lib/attachments';
 import { toast, toastError } from '../lib/events';
 import { getSlashHost } from '../lib/slashHost';
@@ -234,7 +235,9 @@ function NoteLinkView({ node }: NodeViewProps) {
   const title = (note?.title || node.attrs.title || 'Untitled').trim() || 'Untitled';
   return (
     <NodeViewWrapper as="span" className={`note-link ${gone ? 'gone' : ''}`} contentEditable={false} onClick={() => !gone && openNote(id)} title={gone ? 'This note was deleted' : 'Open note'}>
-      <span className="note-link-icon">{note?.kind === 'ink' ? '✎' : note?.kind === 'lecture' ? '🎙' : '📄'}</span>
+      <span className="note-link-icon">
+        <Glyph icon={note?.kind === 'lecture' ? 'mic' : 'doc'} size={14} />
+      </span>
       {title}
     </NodeViewWrapper>
   );
@@ -287,7 +290,9 @@ function EmbedView({ node, selected, deleteNode }: NodeViewProps) {
       {plan.as === 'audio' && <audio src={plan.src} controls preload="metadata" />}
       {plan.as === 'card' ? (
         <a className="embed-card" href={href} target="_blank" rel="noopener noreferrer">
-          <span className="embed-favicon">🔗</span>
+          <span className="embed-favicon">
+            <Glyph icon="link" size={18} />
+          </span>
           <span className="embed-card-text">
             <span className="embed-host">{host}</span>
             <span className="embed-url">{src}</span>
@@ -358,7 +363,7 @@ function usePdfPreview(blobId: string, blob: Blob | undefined) {
   return preview;
 }
 
-const FILE_GLYPH: Record<string, string> = { pdf: 'PDF', video: '▶', audio: '♪', image: '🖼', file: '📎' };
+const FILE_GLYPH: Record<string, string> = { pdf: 'PDF', video: 'play', audio: 'music', image: 'image', file: 'paperclip' };
 
 function AttachmentView({ node, selected, editor, deleteNode }: NodeViewProps) {
   const { blobId, name, mime, size } = node.attrs as { blobId: string; name: string; mime: string; size: number };
@@ -390,7 +395,9 @@ function AttachmentView({ node, selected, editor, deleteNode }: NodeViewProps) {
 
   const head = (
     <div className="file-head">
-      <span className={`file-glyph k-${kind}`}>{FILE_GLYPH[kind]}</span>
+      <span className={`file-glyph k-${kind}`}>
+        <Glyph icon={FILE_GLYPH[kind]} size={18} />
+      </span>
       <span className="file-text">
         <span className="file-name">{name || 'File'}</span>
         <span className="file-meta">{missing ? 'This file is no longer on this device' : meta}</span>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { db, type Note } from '../db';
+import { db, handwrittenPage, type Note } from '../db';
 import { exportNote, INK_FORMATS, printableHtml, TYPED_FORMATS, type ExportFormat, type ExportResult } from '../lib/export';
 import { canShareFiles, downloadFiles, printHtml, shareFiles } from '../lib/export/save';
 import { toast, toastError } from '../lib/events';
@@ -20,7 +20,7 @@ function sizeLabel(bytes: number) {
  * which an async PDF or Word build would otherwise use up.
  */
 export function ExportDialog({ note, onClose }: { note: Note; onClose: () => void }) {
-  const ink = note.kind === 'ink';
+  const ink = !!handwrittenPage(note);
   const formats = ink ? INK_FORMATS : TYPED_FORMATS;
   const [format, setFormat] = useState<ExportFormat>(() => {
     try {

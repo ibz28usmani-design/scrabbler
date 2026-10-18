@@ -144,10 +144,10 @@ const kinds: { kind: BlockKind; title: string; icon: string; aliases: string[]; 
   { kind: 'h3', title: 'Heading 3', icon: 'H3', aliases: ['h3', '###', 'heading3'], hint: 'Small section heading.', shortcut: '###', group: 'Basic blocks' },
   { kind: 'bullet', title: 'Bulleted list', icon: '•', aliases: ['bullet', 'bulletedlist', 'ul', 'list', '-'], hint: 'Create a simple bulleted list.', shortcut: '-', group: 'Basic blocks' },
   { kind: 'number', title: 'Numbered list', icon: '1.', aliases: ['num', 'number', 'numberedlist', 'ol', '1.'], hint: 'Create a list with numbering.', shortcut: '1.', group: 'Basic blocks' },
-  { kind: 'todo', title: 'To-do list', icon: '☐', aliases: ['todo', 'to-do', 'checkbox', 'checklist', 'task', '[]'], hint: 'Track tasks with a to-do list.', shortcut: '[]', group: 'Basic blocks' },
+  { kind: 'todo', title: 'To-do list', icon: 'checklist', aliases: ['todo', 'to-do', 'checkbox', 'checklist', 'task', '[]'], hint: 'Track tasks with a to-do list.', shortcut: '[]', group: 'Basic blocks' },
   { kind: 'toggle', title: 'Toggle list', icon: '▸', aliases: ['toggle', 'togglelist', 'details', 'collapse', '>'], hint: 'Toggles can hide and show content inside.', shortcut: '>', group: 'Basic blocks' },
-  { kind: 'quote', title: 'Quote', icon: '❝', aliases: ['quote', 'blockquote', '"'], hint: 'Capture a quote.', shortcut: '"', group: 'Basic blocks' },
-  { kind: 'callout', title: 'Callout', icon: '💡', aliases: ['callout', 'note', 'info', 'aside'], hint: 'Make writing stand out.', group: 'Basic blocks' },
+  { kind: 'quote', title: 'Quote', icon: 'quote', aliases: ['quote', 'blockquote', '"'], hint: 'Capture a quote.', shortcut: '"', group: 'Basic blocks' },
+  { kind: 'callout', title: 'Callout', icon: 'bulb', aliases: ['callout', 'note', 'info', 'aside'], hint: 'Make writing stand out.', group: 'Basic blocks' },
   { kind: 'code', title: 'Code', icon: '</>', aliases: ['code', 'codeblock', 'snippet', '```'], hint: 'Capture a code snippet.', shortcut: '```', group: 'Basic blocks' },
   { kind: 'toggleh1', title: 'Toggle heading 1', icon: '▸H1', aliases: ['toggleh1', 'toggleheading1', '>#'], hint: 'Hide content inside a large heading.', group: 'Advanced blocks' },
   { kind: 'toggleh2', title: 'Toggle heading 2', icon: '▸H2', aliases: ['toggleh2', 'toggleheading2', '>##'], hint: 'Hide content inside a medium heading.', group: 'Advanced blocks' },
@@ -158,14 +158,14 @@ const colorName = (c: string) => c[0].toUpperCase() + c.slice(1);
 
 export const SLASH_ITEMS: SlashItem[] = [
   ...kinds.map(({ kind, ...k }) => ({ id: kind, ...k, run: turn(kind) })),
-  { id: 'page', title: 'Page', icon: '📄', group: 'Basic blocks', aliases: ['page', 'subpage', 'newpage', 'newnote'], hint: 'Make a new note and link to it here.', run: async ({ editor, host }) => {
+  { id: 'page', title: 'Page', icon: 'doc', group: 'Basic blocks', aliases: ['page', 'subpage', 'newpage', 'newnote'], hint: 'Make a new note and link to it here.', run: async ({ editor, host }) => {
       if (!host) return;
       freshLine(editor);
       const page = await createNote(host.folderId, {}, false);
       editor.chain().focus().insertNoteLink({ id: page.id, title: '' }).run();
       setTimeout(() => openNote(page.id), 50);
     } },
-  { id: 'table', title: 'Table', icon: '▦', group: 'Basic blocks', aliases: ['table', 'grid', 'simpletable'], hint: 'Add a simple table.', run: ({ editor }) => {
+  { id: 'table', title: 'Table', icon: 'table', group: 'Basic blocks', aliases: ['table', 'grid', 'simpletable'], hint: 'Add a simple table.', run: ({ editor }) => {
       freshLine(editor);
       editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
     } },
@@ -173,25 +173,25 @@ export const SLASH_ITEMS: SlashItem[] = [
       freshLine(editor);
       editor.chain().focus().setHorizontalRule().run();
     } },
-  { id: 'link', title: 'Link to note', icon: '↗', group: 'Basic blocks', aliases: ['link', 'linktopage', 'linktonote'], shortcut: '[[', hint: 'Link to another note.', drill: 'link ' },
+  { id: 'link', title: 'Link to note', icon: 'link', group: 'Basic blocks', aliases: ['link', 'linktopage', 'linktonote'], shortcut: '[[', hint: 'Link to another note.', drill: 'link ' },
 
-  { id: 'image', title: 'Image', icon: '🖼', group: 'Media', aliases: ['image', 'img', 'picture', 'photo'], hint: 'Upload a picture.', run: ({ editor, host }) => {
+  { id: 'image', title: 'Image', icon: 'image', group: 'Media', aliases: ['image', 'img', 'picture', 'photo'], hint: 'Upload a picture.', run: ({ editor, host }) => {
       freshLine(editor);
       host?.pickImage();
       editor.commands.focus();
     } },
   { id: 'pdf', title: 'PDF', icon: 'PDF', group: 'Media', aliases: ['pdf'], hint: 'Upload a PDF and see its first page.', run: ({ editor }) => attachFromPicker(editor, 'application/pdf,.pdf') },
-  { id: 'file', title: 'File', icon: '📎', group: 'Media', aliases: ['file', 'upload', 'attach', 'attachment'], hint: 'Upload any file to keep with the note.', run: ({ editor }) => attachFromPicker(editor, '') },
-  { id: 'video', title: 'Video', icon: '▶', group: 'Media', aliases: ['video', 'movie', 'clip'], hint: 'Upload a video from this device.', run: ({ editor }) => attachFromPicker(editor, 'video/*') },
-  { id: 'audio', title: 'Audio', icon: '♪', group: 'Media', aliases: ['audio', 'sound', 'mp3', 'voicememo'], hint: 'Upload an audio file from this device.', run: ({ editor }) => attachFromPicker(editor, 'audio/*') },
-  { id: 'videolink', title: 'Video link', icon: '▶', group: 'Media', aliases: ['videolink', 'youtube', 'vimeo', 'loom', 'embedvideo'], hint: 'Embed from YouTube, Vimeo or a video link.', run: ({ editor }) => embed(editor, 'video', 'Video') },
-  { id: 'audiolink', title: 'Audio link', icon: '♪', group: 'Media', aliases: ['audiolink', 'podcast', 'embedaudio'], hint: 'Play an audio file from a web link.', run: ({ editor }) => embed(editor, 'audio', 'Audio') },
-  { id: 'embed', title: 'Embed', icon: '⧉', group: 'Media', aliases: ['embed', 'iframe', 'web'], hint: 'Show a web page inside the note.', run: ({ editor }) => embed(editor, 'embed', 'Embed') },
-  { id: 'bookmark', title: 'Web bookmark', icon: '🔖', group: 'Media', aliases: ['bookmark', 'webbookmark', 'url'], hint: 'Save a link as a visual card.', run: ({ editor }) => embed(editor, 'bookmark', 'Bookmark') },
+  { id: 'file', title: 'File', icon: 'paperclip', group: 'Media', aliases: ['file', 'upload', 'attach', 'attachment'], hint: 'Upload any file to keep with the note.', run: ({ editor }) => attachFromPicker(editor, '') },
+  { id: 'video', title: 'Video', icon: 'play', group: 'Media', aliases: ['video', 'movie', 'clip'], hint: 'Upload a video from this device.', run: ({ editor }) => attachFromPicker(editor, 'video/*') },
+  { id: 'audio', title: 'Audio', icon: 'music', group: 'Media', aliases: ['audio', 'sound', 'mp3', 'voicememo'], hint: 'Upload an audio file from this device.', run: ({ editor }) => attachFromPicker(editor, 'audio/*') },
+  { id: 'videolink', title: 'Video link', icon: 'play', group: 'Media', aliases: ['videolink', 'youtube', 'vimeo', 'loom', 'embedvideo'], hint: 'Embed from YouTube, Vimeo or a video link.', run: ({ editor }) => embed(editor, 'video', 'Video') },
+  { id: 'audiolink', title: 'Audio link', icon: 'music', group: 'Media', aliases: ['audiolink', 'podcast', 'embedaudio'], hint: 'Play an audio file from a web link.', run: ({ editor }) => embed(editor, 'audio', 'Audio') },
+  { id: 'embed', title: 'Embed', icon: 'copy', group: 'Media', aliases: ['embed', 'iframe', 'web'], hint: 'Show a web page inside the note.', run: ({ editor }) => embed(editor, 'embed', 'Embed') },
+  { id: 'bookmark', title: 'Web bookmark', icon: 'bookmark', group: 'Media', aliases: ['bookmark', 'webbookmark', 'url'], hint: 'Save a link as a visual card.', run: ({ editor }) => embed(editor, 'bookmark', 'Bookmark') },
 
   { id: 'mention', title: 'Mention a note', icon: '@', group: 'Inline', aliases: ['mention', 'mentionpage', 'mentionnote'], shortcut: '@', hint: 'Link to a note inside the sentence.', drill: 'mention ' },
-  { id: 'date', title: 'Date', icon: '📅', group: 'Inline', aliases: ['date', 'today', 'now', 'remind', 'reminder'], hint: 'Insert today’s date.', run: ({ editor }) => editor.chain().focus().insertContent(longDate(new Date()) + ' ').run() },
-  { id: 'emoji', title: 'Emoji', icon: '☺', group: 'Inline', aliases: ['emoji', 'emoticon', 'smiley'], shortcut: ':', hint: 'Search for an emoji to place in text.', run: ({ editor }) => editor.chain().focus().insertContent(':').run() },
+  { id: 'date', title: 'Date', icon: 'calendar', group: 'Inline', aliases: ['date', 'today', 'now', 'remind', 'reminder'], hint: 'Insert today’s date.', run: ({ editor }) => editor.chain().focus().insertContent(longDate(new Date()) + ' ').run() },
+  { id: 'emoji', title: 'Emoji', icon: 'smile', group: 'Inline', aliases: ['emoji', 'emoticon', 'smiley'], shortcut: ':', hint: 'Search for an emoji to place in text.', run: ({ editor }) => editor.chain().focus().insertContent(':').run() },
   { id: 'inlinemath', title: 'Inline equation', icon: '√x', group: 'Inline', aliases: ['inlineequation', 'inlinemath', 'inlinelatex', '$'], shortcut: '$$', hint: 'Insert a maths symbol in text.', run: async ({ editor }) => {
       const v = await promptDialog('Inline equation (LaTeX)', '', 'a^2 + b^2 = c^2');
       if (v) editor.chain().focus().insertMathInline(v).run();
@@ -201,26 +201,26 @@ export const SLASH_ITEMS: SlashItem[] = [
   { id: 'toc', title: 'Table of contents', icon: '≡', group: 'Advanced blocks', aliases: ['toc', 'tableofcontents', 'contents', 'outline'], hint: 'Show an outline of the note.', run: ({ editor }) => insertBlock(editor, { type: 'tableOfContents' }) },
   { id: 'math', title: 'Block equation', icon: 'Σ', group: 'Advanced blocks', aliases: ['math', 'equation', 'blockequation', 'tex', 'latex', 'katex', '$$'], hint: 'Display a standalone maths equation.', run: ({ editor }) => insertBlock(editor, { type: 'mathBlock', attrs: { latex: '' } }) },
 
-  { id: 'ai', title: 'Ask AI', icon: '✦', group: 'Scrabbler', aliases: ['ai', 'ask', 'askai', 'writingtools', 'summarize', 'summarise', 'rewrite', 'proofread'], hint: 'Summarise, rewrite, explain or ask anything.', run: ({ host }) => host?.openAI() },
-  { id: 'draw', title: 'Drawing', icon: '✎', group: 'Scrabbler', aliases: ['draw', 'drawing', 'sketch', 'pencil', 'ink', 'handwriting'], hint: 'Sketch with Apple Pencil.', run: ({ editor }) => {
+  { id: 'ai', title: 'Ask AI', icon: 'sparkle', group: 'Scrabbler', aliases: ['ai', 'ask', 'askai', 'writingtools', 'summarize', 'summarise', 'rewrite', 'proofread'], hint: 'Summarise, rewrite, explain or ask anything.', run: ({ host }) => host?.openAI() },
+  { id: 'draw', title: 'Drawing', icon: 'pencil', group: 'Scrabbler', aliases: ['draw', 'drawing', 'sketch', 'pencil', 'ink', 'handwriting'], hint: 'Sketch with Apple Pencil.', run: ({ editor }) => {
       freshLine(editor);
-      editor.chain().focus().insertDrawing({ paper: 'blank' }).run();
+      editor.chain().focus().insertDrawing().run();
     } },
-  { id: 'record', title: 'Record lecture', icon: '🎙', group: 'Scrabbler', aliases: ['record', 'lecture', 'mic', 'transcribe', 'voice'], hint: 'Record and transcribe into a new note.', run: ({ host }) => host && openModal({ type: 'recorder', folderId: host.folderId }) },
-  { id: 'flashcards', title: 'Make flashcards', icon: '🗂', group: 'Scrabbler', aliases: ['flashcards', 'cards', 'deck', 'anki'], hint: 'Turn this note into a study deck.', run: ({ host }) => host && openModal({ type: 'generateDeck', from: { kind: 'note', noteId: host.noteId } }) },
-  { id: 'quiz', title: 'Make a quiz', icon: '?', group: 'Scrabbler', aliases: ['quiz', 'test', 'exam'], hint: 'Quiz yourself on this note.', run: ({ host }) => host && openModal({ type: 'generateDeck', from: { kind: 'note', noteId: host.noteId }, quiz: true }) },
-  { id: 'notebook', title: 'Open notebook', icon: '📓', group: 'Scrabbler', aliases: ['notebook', 'sources', 'addsource', 'chat', 'studio'], hint: 'Sources, chat and Studio for this folder.', run: () => nav({ notebookOpen: true }) },
+  { id: 'record', title: 'Record lecture', icon: 'mic', group: 'Scrabbler', aliases: ['record', 'lecture', 'mic', 'transcribe', 'voice'], hint: 'Record and transcribe into a new note.', run: ({ host }) => host && openModal({ type: 'recorder', folderId: host.folderId }) },
+  { id: 'flashcards', title: 'Make flashcards', icon: 'cards', group: 'Scrabbler', aliases: ['flashcards', 'cards', 'deck', 'anki'], hint: 'Turn this note into a study deck.', run: ({ host }) => host && openModal({ type: 'generateDeck', from: { kind: 'note', noteId: host.noteId } }) },
+  { id: 'quiz', title: 'Make a quiz', icon: 'question', group: 'Scrabbler', aliases: ['quiz', 'test', 'exam'], hint: 'Quiz yourself on this note.', run: ({ host }) => host && openModal({ type: 'generateDeck', from: { kind: 'note', noteId: host.noteId }, quiz: true }) },
+  { id: 'notebook', title: 'Open notebook', icon: 'book', group: 'Scrabbler', aliases: ['notebook', 'sources', 'addsource', 'chat', 'studio'], hint: 'Sources, chat and Studio for this folder.', run: () => nav({ notebookOpen: true }) },
 
-  { id: 'turn', title: 'Turn into', icon: '⇄', group: 'Actions', aliases: ['turn', 'turninto', 'convert'], hint: 'Change this block’s type.', drill: 'turn' },
+  { id: 'turn', title: 'Turn into', icon: 'swap', group: 'Actions', aliases: ['turn', 'turninto', 'convert'], hint: 'Change this block’s type.', drill: 'turn' },
   { id: 'color', title: 'Colour', icon: 'A', group: 'Actions', aliases: ['color', 'colour', 'textcolor', 'background'], hint: 'Colour the text or background.', drill: 'color ' },
-  { id: 'duplicate', title: 'Duplicate', icon: '⧉', group: 'Actions', aliases: ['duplicate', 'copy', 'clone'], shortcut: '⌘D', hint: 'Copy this block below itself.', run: ({ editor }) => duplicateCurrentBlock(editor) },
-  { id: 'delete', title: 'Delete', icon: '🗑', group: 'Actions', aliases: ['delete', 'remove', 'del'], hint: 'Delete this block.', run: ({ editor }) => deleteCurrentBlock(editor) },
-  { id: 'moveto', title: 'Move to', icon: '📁', group: 'Actions', aliases: ['moveto', 'move', 'folder'], hint: 'Move this note to another folder.', drill: 'moveto ' },
+  { id: 'duplicate', title: 'Duplicate', icon: 'copy', group: 'Actions', aliases: ['duplicate', 'copy', 'clone'], shortcut: '⌘D', hint: 'Copy this block below itself.', run: ({ editor }) => duplicateCurrentBlock(editor) },
+  { id: 'delete', title: 'Delete', icon: 'trash', group: 'Actions', aliases: ['delete', 'remove', 'del'], hint: 'Delete this block.', run: ({ editor }) => deleteCurrentBlock(editor) },
+  { id: 'moveto', title: 'Move to', icon: 'folder', group: 'Actions', aliases: ['moveto', 'move', 'folder'], hint: 'Move this note to another folder.', drill: 'moveto ' },
   { id: 'toggles', title: 'Open or close all toggles', icon: '▾', group: 'Actions', aliases: ['expandall', 'collapseall', 'toggleall'], shortcut: '⌘⌥T', hint: 'Expand or collapse every toggle.', run: ({ editor }) => setAllToggles(editor) },
 
   // Turn into… (listed once you type /turn)
   ...kinds.map(({ kind, title, icon }) => ({ id: `turn-${kind}`, title: `Turn into ${title}`, icon, group: 'Turn into', hidden: true, aliases: [`turn${kind}`, `turninto${kind}`, `turn${norm(title)}`], run: ({ editor }: { editor: Editor }) => turnInto(editor, kind) })),
-  { id: 'turn-page', title: 'Turn into Page', icon: '📄', group: 'Turn into', hidden: true, aliases: ['turnpage', 'turnintopage', 'turnnote'], run: ({ editor, host }) => turnIntoPage(editor, host) },
+  { id: 'turn-page', title: 'Turn into Page', icon: 'doc', group: 'Turn into', hidden: true, aliases: ['turnpage', 'turnintopage', 'turnnote'], run: ({ editor, host }) => turnIntoPage(editor, host) },
 
   // Colours (listed once you type /red, /blue background, /color…)
   { id: 'color-default', title: 'Default', icon: 'A', group: 'Colour', hidden: true, swatch: { color: 'default' }, aliases: ['default', 'defaultcolor', 'colordefault', 'colourdefault'], run: ({ editor }) => colorBlock(editor, 'color', null) },
@@ -237,7 +237,7 @@ export async function recentNotes(exclude?: string, limit = 400): Promise<Note[]
 }
 
 const noteTitle = (n: Note) => n.title.trim() || (n.kind === 'ink' ? 'Handwritten note' : 'Untitled');
-const noteIcon = (n: Note) => (n.kind === 'ink' ? '✎' : n.kind === 'lecture' ? '🎙' : '📄');
+const noteIcon = (n: Note) => (n.kind === 'lecture' ? 'mic' : 'doc');
 
 /** Everything the / menu can offer for a query, notes and folders included. */
 export async function slashItems(query: string, editor: Editor): Promise<SlashItem[]> {
@@ -266,8 +266,8 @@ export async function slashItems(query: string, editor: Editor): Promise<SlashIt
         .filter((f) => f.id !== here)
         .map((f) => ({
           id: `folder-${f.id}`,
-          title: `${f.emoji} ${f.name}`,
-          icon: '📁',
+          title: f.name,
+          icon: 'folder',
           group: 'Move to',
           hidden: true,
           aliases: [`moveto${norm(f.name)}`, `move${norm(f.name)}`],
@@ -288,10 +288,10 @@ export async function mentionItems(query: string, editor: Editor): Promise<Slash
   const host = getSlashHost(editor);
   const notes = await recentNotes(host?.noteId);
   const dates: SlashItem[] = [
-    { id: 'today', title: 'Today', hint: longDate(new Date()), icon: '📅', group: 'Date', aliases: ['today'], run: ({ editor }) => editor.chain().focus().insertContent(longDate(new Date()) + ' ').run() },
-    { id: 'tomorrow', title: 'Tomorrow', hint: longDate(dayOffset(1)), icon: '📅', group: 'Date', aliases: ['tomorrow'], run: ({ editor }) => editor.chain().focus().insertContent(longDate(dayOffset(1)) + ' ').run() },
-    { id: 'yesterday', title: 'Yesterday', hint: longDate(dayOffset(-1)), icon: '📅', group: 'Date', aliases: ['yesterday'], run: ({ editor }) => editor.chain().focus().insertContent(longDate(dayOffset(-1)) + ' ').run() },
-    { id: 'now', title: 'Now', hint: new Date().toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' }), icon: '🕑', group: 'Date', aliases: ['now', 'time'], run: ({ editor }) => editor.chain().focus().insertContent(new Date().toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' }) + ' ').run() },
+    { id: 'today', title: 'Today', hint: longDate(new Date()), icon: 'calendar', group: 'Date', aliases: ['today'], run: ({ editor }) => editor.chain().focus().insertContent(longDate(new Date()) + ' ').run() },
+    { id: 'tomorrow', title: 'Tomorrow', hint: longDate(dayOffset(1)), icon: 'calendar', group: 'Date', aliases: ['tomorrow'], run: ({ editor }) => editor.chain().focus().insertContent(longDate(dayOffset(1)) + ' ').run() },
+    { id: 'yesterday', title: 'Yesterday', hint: longDate(dayOffset(-1)), icon: 'calendar', group: 'Date', aliases: ['yesterday'], run: ({ editor }) => editor.chain().focus().insertContent(longDate(dayOffset(-1)) + ' ').run() },
+    { id: 'now', title: 'Now', hint: new Date().toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' }), icon: 'clock', group: 'Date', aliases: ['now', 'time'], run: ({ editor }) => editor.chain().focus().insertContent(new Date().toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' }) + ' ').run() },
   ];
   const noteItems: SlashItem[] = notes.map((n) => ({
     id: `note-${n.id}`,

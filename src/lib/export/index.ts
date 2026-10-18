@@ -4,7 +4,7 @@
  * vector (PDF, SVG) or raster (PNG, JPEG) pages on its paper.
  */
 import { generateJSON } from '@tiptap/core';
-import type { InkDoc, Note } from '../../db';
+import { handwrittenPage, type InkDoc, type Note } from '../../db';
 import { contentBottom, type Stroke } from '../ink';
 import { editorExtensions } from '../../components/editorExtensions';
 import { canvasToBlob, inkPages, renderInkRange } from '../inkRender';
@@ -78,7 +78,7 @@ export async function noteBlocks(note: Note): Promise<Block[]> {
 }
 
 export function noteTitle(note: Note, blocks?: Block[]): string {
-  return note.title?.trim() || (blocks ? titleOf(blocks, '') : '') || (note.kind === 'ink' ? 'Handwritten note' : 'Untitled note');
+  return note.title?.trim() || (blocks ? titleOf(blocks, '') : '') || (handwrittenPage(note) ? 'Handwritten note' : 'Untitled note');
 }
 
 /** A sketch embedded in a typed note, rasterised for formats without vector support. */
@@ -103,7 +103,8 @@ function backupJson(note: Note, doc?: unknown): string {
 }
 
 export async function exportNote(note: Note, format: ExportFormat): Promise<ExportResult> {
-  if (note.kind === 'ink') return exportInk(note, format as InkFormat);
+  const page = handwrittenPage(note);
+  if (page) return exportInk(note, page, format as InkFormat);
   const blocks = await noteBlocks(note);
   const title = noteTitle(note, blocks);
   const base = safeFileName(title);
@@ -142,8 +143,7 @@ export async function exportNote(note: Note, format: ExportFormat): Promise<Expo
   }
 }
 
-async function exportInk(note: Note, format: InkFormat): Promise<ExportResult> {
-  const ink: InkDoc = note.ink ?? { paper: 'blank', strokes: [], height: PAGE_H };
+async function exportInk(note: Note, ink: InkDoc, format: InkFormat): Promise<ExportResult> {
   const doc = { strokes: ink.strokes as Stroke[], paper: ink.paper as Paper };
   const title = noteTitle(note);
   const base = safeFileName(title, 'Handwritten note');
