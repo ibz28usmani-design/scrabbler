@@ -1,0 +1,59 @@
+name: Deploy push server
+
+# Deploys push-server/ to Cloudflare whenever it changes on the main branch,
+# in place of Cloudflare's own Workers Builds. worker.js is the built file
+# (deploy.yml checks it matches push-server/src), so this just ships it.
+# Needs two repository secrets, CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID
+# (push-server/README.md, "Deploy from GitHub").
+
+on:
+  push:
+    branches: [main, claude/ai-note-app-design-1ld11b]
+    paths: ['push-server/**', '.github/workflows/push-server.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time, and never one cut off halfway.
+concurrency:
+  group: push-server
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: push-server
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      KV_ID: ${{ vars.SCRABBLER_KV_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: push-server/package-lock.json
+      - name: Check the Cloudflare secrets are set
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Add the repository secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID (push-server/README.md, \"Deploy from GitHub\")."
+            exit 1
+          fi
+      - run: npm ci
+      # Without an id Wrangler keeps the KV namespace the worker already has
+      # bound as SCRABBLER. Pinning it, when its id is known, means a deploy
+      # can never make a new, empty one instead.
+      - name: Pin the KV namespace
+        if: env.KV_ID != ''
+        run: |
+          if ! [[ "$KV_ID" =~ ^[0-9a-f]{32}$ ]]; then
+            echo "::error::The SCRABBLER_KV_ID variable should be the namespace's 32-character id."
+            exit 1
+          fi
+          sed -i "s/^binding = \"SCRABBLER\"$/binding = \"SCRABBLER\"\nid = \"$KV_ID\"/" wrangler.toml
+          grep -A1 'binding = "SCRABBLER"' wrangler.toml
+      - run: npx wrangler deploy
