@@ -14,6 +14,9 @@ import { NoteEditor } from './components/NoteEditor';
 import { FocusChrome, useFocusShortcuts } from './components/FocusMode';
 import { NotebookPanel, SourceViewer } from './components/NotebookPanel';
 import { StudyView } from './components/StudyView';
+import { RevisionView, TimerChip, useTimerEngine } from './components/RevisionView';
+import { GraphView } from './components/GraphView';
+import { TutorView } from './components/TutorView';
 import { Recorder } from './components/Recorder';
 import { SettingsModal } from './components/SettingsModal';
 import { GenerateDeckDialog, ImportDeckDialog } from './components/DeckDialogs';
@@ -22,9 +25,12 @@ import { ICompose, ISparkle } from './components/Icons';
 import { createNote } from './lib/notes';
 import { mdToHtml } from './lib/markdown';
 
+const PAGE_LABEL: Partial<Record<string, string>> = { calendar: 'Calendar', reminders: 'Reminders', revision: 'Revision', graph: 'the graph', tutor: 'the tutor' };
+
 export default function App() {
   useApplyTheme();
   useFocusShortcuts();
+  useTimerEngine();
   const s = useNav();
   const narrow = useMediaQuery('(max-width: 699px)');
   const wide = useMediaQuery('(min-width: 1100px)');
@@ -139,11 +145,17 @@ export default function App() {
       )}
       {showStudy && (
         <main className="main study-main">
-          <ErrorBoundary label={s.view === 'calendar' ? 'Calendar' : s.view === 'reminders' ? 'Reminders' : 'Study'} key={s.view}>
+          <ErrorBoundary label={PAGE_LABEL[s.view] ?? 'Study'} key={s.view}>
             {s.view === 'calendar' ? (
               <CalendarView narrow={narrow} showSidebarToggle={!showSidebar} />
             ) : s.view === 'reminders' ? (
               <RemindersView narrow={narrow} showSidebarToggle={!showSidebar} />
+            ) : s.view === 'revision' ? (
+              <RevisionView narrow={narrow} showSidebarToggle={!showSidebar} />
+            ) : s.view === 'graph' ? (
+              <GraphView narrow={narrow} showSidebarToggle={!showSidebar} />
+            ) : s.view === 'tutor' ? (
+              <TutorView narrow={narrow} showSidebarToggle={!showSidebar} />
             ) : (
               <StudyView narrow={narrow} showSidebarToggle={!showSidebar} />
             )}
@@ -172,6 +184,7 @@ export default function App() {
       {s.modal?.type === 'generateDeck' && <GenerateDeckDialog from={s.modal.from} quiz={s.modal.quiz} />}
       {s.modal?.type === 'importDeck' && <ImportDeckDialog />}
       {s.modal?.type === 'source' && <SourceViewer sourceId={s.modal.sourceId} chunkId={s.modal.chunkId} onClose={closeModal} />}
+      <TimerChip />
       <Toasts />
       <ConfirmHost />
       <PromptHost />
