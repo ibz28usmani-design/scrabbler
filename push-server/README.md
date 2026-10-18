@@ -51,18 +51,33 @@ Do the last step on each device you want notified (iPad and iPhone).
 
 ## Deploy from GitHub (optional)
 
-Instead of pasting the code after each change, Cloudflare can deploy the worker
-from this repository on every push. Do steps 1–8 first, then:
+Instead of pasting the code after each change, GitHub can deploy the worker
+whenever `push-server/` changes on the main branch
+(`.github/workflows/push-server.yml`). Do steps 1–8 first, then:
 
-1. In the worker open **Settings → Build** and connect the GitHub repository.
-2. Set **Path** (the root directory) to `push-server`. Leave the build command
-   empty; the deploy command is `npx wrangler deploy` and the non-production
-   branch command `npx wrangler versions upload` (Cloudflare's defaults).
-3. Set the production branch to the repository's main branch.
+1. **Make a token.** In Cloudflare open **My Profile → API Tokens → Create
+   Token**, pick the **Edit Cloudflare Workers** template, limit it to your
+   account, and create it. Copy the token: Cloudflare shows it once.
+2. **Find your account ID.** It is on the right of the **Workers & Pages**
+   overview (it is also the long code in your dashboard's address bar).
+3. **Give both to GitHub.** In the repository open **Settings → Secrets and
+   variables → Actions → New repository secret** and add
+   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+4. **Pin the KV namespace (recommended).** In Cloudflare open **Storage &
+   Databases → KV**, copy the ID of the namespace bound to the worker as
+   `SCRABBLER`, and add it in the same GitHub page under the **Variables** tab
+   as `SCRABBLER_KV_ID`.
+5. **Turn off Cloudflare's own builds**, if you connected them before: in the
+   worker open **Settings → Build** and disconnect the repository, so pushes
+   aren't built twice.
+6. **Deploy once by hand** to check it: in the repository open **Actions →
+   Deploy push server → Run workflow**.
 
-Deploys keep the KV namespace already bound as `SCRABBLER`, so registered
-devices and the push keys survive; `wrangler.toml` deliberately has no
-namespace id. They also keep the `PASSWORD` secret and the cron trigger.
+Deploys keep the KV namespace bound as `SCRABBLER`, so registered devices and
+the push keys survive: without `SCRABBLER_KV_ID`, Wrangler reuses the
+namespace the worker already has (`wrangler.toml` deliberately has no id);
+with it, the deploy is pinned to that namespace. They also keep the
+`PASSWORD` secret and the cron trigger.
 
 ## From a computer instead
 
