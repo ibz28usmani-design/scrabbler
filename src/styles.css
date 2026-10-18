@@ -2008,10 +2008,6 @@ select.input {
 }
 .studio-tile.t-podcast {
   grid-column: span 2;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.14), rgba(236, 72, 153, 0.12));
-}
-.studio-tile.t-podcast .studio-icon {
-  background: linear-gradient(135deg, #8b5cf6, #ec4899);
 }
 .studio-tile.t-briefing .studio-icon {
   background: #3b82f6;
@@ -2157,9 +2153,10 @@ select.input {
   padding-left: 14px;
 }
 
-/* podcast */
+/* podcast: set in ink, the two hosts told apart by ink and navy, as a transcript in print would */
 .podcast-player {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.14), rgba(236, 72, 153, 0.1));
+  background: var(--card);
+  border: 1px solid var(--rule);
   border-radius: var(--radius);
   padding: 16px;
   display: flex;
@@ -2183,7 +2180,7 @@ select.input {
 .wave i {
   width: 5px;
   height: 20%;
-  background: linear-gradient(#8b5cf6, #ec4899);
+  background: var(--text);
   border-radius: var(--radius);
 }
 .wave i.live {
@@ -2230,10 +2227,10 @@ select.input {
   letter-spacing: 0.04em;
 }
 .pline.a .pspeaker {
-  color: #8b5cf6;
+  color: var(--text);
 }
 .pline.b .pspeaker {
-  color: #ec4899;
+  color: var(--blue);
 }
 
 /* ------------------------------------------------------------------ study */
