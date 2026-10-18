@@ -1,6 +1,6 @@
 import { db, type StoredBlob } from '../db';
 
-const TABLES = ['folders', 'notes', 'sources', 'chunks', 'chats', 'studio', 'decks', 'cards', 'reviews', 'meta', 'subjects', 'lessons', 'reminderLists', 'reminders'] as const;
+const TABLES = ['folders', 'notes', 'sources', 'chunks', 'chats', 'studio', 'decks', 'cards', 'reviews', 'meta', 'subjects', 'lessons', 'reminderLists', 'reminders', 'studyTime', 'tutor'] as const;
 
 /**
  * A zip: the tables as backup.json, and each file (recordings, attachments)
