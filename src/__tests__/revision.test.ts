@@ -190,3 +190,22 @@ describe('pasted cards (Gizmo has no export)', () => {
     ]);
   });
 });
+
+describe('revision plan', () => {
+  it('fits blocks around lessons and spreads them over the days left', async () => {
+    const { freeSlots, planWeek } = await import('../lib/revisionPlan');
+    const cal = { terms: [{ name: 'Autumn', start: '2026-09-01', end: '2026-12-18' }], closures: [] };
+    const lessons = [{ id: 'l', subjectId: 'law', day: 1, start: '09:00', end: '12:00' }];
+    const mon = freeSlots('2026-10-12', lessons, cal);
+    expect(mon[0]).toEqual([12 * 60 + 10, 17 * 60 + 30]);
+    const sat = freeSlots('2026-10-17', lessons, cal);
+    expect(sat[0]).toEqual([600, 750]);
+    const days = ['2026-10-17', '2026-10-18'];
+    const plan = planWeek({ days, remaining: new Map([['law', 90], ['maths', 90]]), slots: new Map(days.map((d) => [d, freeSlots(d, lessons, cal)])), topics: new Map([['law', ['Offer']]]) });
+    const total = (s: string) => plan.filter((b) => b.subjectId === s).reduce((a, b) => a + b.minutes, 0);
+    expect(total('law')).toBe(90);
+    expect(total('maths')).toBe(90);
+    expect(new Set(plan.map((b) => b.day)).size).toBe(2);
+    expect(plan.find((b) => b.subjectId === 'law')?.topic).toBe('Offer');
+  });
+});

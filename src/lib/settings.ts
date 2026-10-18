@@ -57,6 +57,8 @@ export interface Settings {
   idleMinutes: number;
   /** Read handwriting in sketches a few seconds after you stop, so it is searchable and its [[links]] count. */
   autoOcr: boolean;
+  /** Exam board and qualification per subject, for the tutor: "AQA A-level Economics". */
+  examBoards: Record<string, string>;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -97,6 +99,7 @@ export const DEFAULT_SETTINGS: Settings = {
   streakMinMinutes: 20,
   idleMinutes: 2,
   autoOcr: true,
+  examBoards: {},
 };
 
 const KEY = 'scrabbler.settings';
