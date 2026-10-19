@@ -4,6 +4,7 @@
  */
 import { getSettings, updateSettings } from './settings';
 import { emitStatus, sleep } from './events';
+import { inSlot, isOffline, waitBusy, waitOnline } from './aiQueue';
 
 const BASE = 'https://generativelanguage.googleapis.com';
 
@@ -57,11 +58,14 @@ async function call(url: string, init: RequestInit, signal?: AbortSignal, attemp
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
     let res: Response;
+    // Offline: wait for the connection (saying so) rather than spend the retries.
+    if (isOffline() && !(await waitOnline('Gemini', signal))) throw new GeminiError('You’re offline. Try again once you’re connected.', 0);
     try {
-      res = await fetch(url, { ...init, signal });
+      res = await inSlot(() => fetch(url, { ...init, signal }), signal);
     } catch (e) {
       if ((e as Error).name === 'AbortError') throw e;
       lastErr = new GeminiError('Network error — check your connection.', 0);
+      if (isOffline()) i--;
       await sleep(1500 * (i + 1), signal);
       continue;
     }
@@ -75,8 +79,7 @@ async function call(url: string, init: RequestInit, signal?: AbortSignal, attemp
     const msg: string = body?.error?.message || `${res.status} ${res.statusText}`;
     if ((res.status === 429 || res.status === 503 || res.status === 500) && i < attempts - 1) {
       const wait = Math.min(parseRetryDelay(body) ?? 4000 * 2 ** i, 65000);
-      emitStatus(`Gemini is busy (free-tier limit). Retrying in ${Math.ceil(wait / 1000)}s…`);
-      await sleep(wait, signal);
+      await waitBusy(wait, 'Gemini', signal);
       lastErr = new GeminiError(msg, res.status);
       continue;
     }

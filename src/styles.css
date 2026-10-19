@@ -7553,3 +7553,35 @@ body.block-dragging * {
   flex: 1;
   min-height: 200px;
 }
+
+/* ------------------------------------------------------------------ AI waiting */
+.ai-status {
+  position: fixed;
+  z-index: 90;
+  top: calc(10px + env(safe-area-inset-top));
+  right: calc(14px + env(safe-area-inset-right));
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: min(420px, calc(100vw - 28px));
+  padding: 6px 12px;
+  background: var(--raised);
+  color: var(--text);
+  border: 1px solid var(--rule);
+  border-radius: 99px;
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  animation: toast-in 0.4s var(--ease-ink);
+}
+.ai-status.offline {
+  border-color: var(--danger);
+}
+@media (max-width: 699px) {
+  .ai-status {
+    top: auto;
+    bottom: calc(14px + env(safe-area-inset-bottom));
+    right: 50%;
+    transform: translateX(50%);
+  }
+}
