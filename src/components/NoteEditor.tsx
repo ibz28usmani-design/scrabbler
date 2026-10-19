@@ -19,7 +19,7 @@ import { NOTE_REPLACED } from '../lib/versions';
 import { lazyNamed } from '../lib/lazy';
 import { FocusButton } from './FocusMode';
 import { toast } from '../lib/events';
-import { createNote, linksFor } from '../lib/notes';
+import { createNote, linksFor, setPinned } from '../lib/notes';
 import { NoteContext } from '../lib/noteContext';
 import { HANDWRITING_TEMPLATES, type Paper } from '../lib/paper';
 import { beginHandoff, endHandoff, handoffActive, moveHandoff } from '../lib/penHandoff';
@@ -409,7 +409,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
                   { divider: true, label: '' },
                 ]
               : []),
-            { label: note.pinned ? 'Unpin note' : 'Pin note', icon: <IPin size={18} />, onClick: () => db.notes.update(note.id, { pinned: !note.pinned }) },
+            { label: note.pinned ? 'Unpin note' : 'Pin note', icon: <IPin size={18} />, onClick: () => setPinned(note.id, !note.pinned) },
             { label: 'Move to folder…', icon: <IFolder size={18} />, onClick: () => setTimeout(() => openMove(moreAnchor), 0) },
             { label: 'Make flashcards', icon: <ICards size={18} />, onClick: () => openModal({ type: 'generateDeck', from: { kind: 'note', noteId: note.id } }) },
             { label: 'Make a quiz', icon: <ICards size={18} />, onClick: () => openModal({ type: 'generateDeck', from: { kind: 'note', noteId: note.id }, quiz: true }) },

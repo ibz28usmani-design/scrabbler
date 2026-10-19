@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { db, deleteNotesForever, type Note } from '../db';
 import { nav, toggleSidebar, openModal, useNav } from '../lib/nav';
 import { groupLabel, shortDate } from '../lib/dates';
-import { createNote, createHandwrittenNote, restoreNote } from '../lib/notes';
+import { createNote, createHandwrittenNote, folderPage, restoreNote, setPinned } from '../lib/notes';
 import { HANDWRITING_TEMPLATES } from '../lib/paper';
 import { confirmDialog, Empty, Menu, useMenu } from './ui';
 import { ICompose, IHandwriting, IMic, IPin, ISidebar, ITrash, IChevL } from './Icons';
@@ -43,27 +43,36 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
   const [menu, setMenu] = useState<{ note: Note; el: HTMLElement } | null>(null);
   const [tplAnchor, openTpl, closeTpl] = useMenu();
   const folder = useLiveQuery(() => (folderId ? db.folders.get(folderId) : undefined), [folderId]);
-  const listed =
-    useLiveQuery(async () => {
-      if (view === 'deleted') return (await db.notes.where('deletedAt').above(0).toArray()).sort((a, b) => b.deletedAt! - a.deletedAt!);
-      if (view === 'search' || !folderId) return [];
-      return (await db.notes.where('folderId').equals(folderId).toArray()).filter((n) => !n.deletedAt).sort((a, b) => b.updatedAt - a.updatedAt);
-    }, [view, folderId]) ?? [];
+  const [total, setTotal] = useState(0);
+  const [shown, sentinel] = useMoreOnScroll(`${view}:${folderId}:${query}`, total);
+  // Only what is drawn is read: a big folder isn't loaded whole on every save.
+  const page = useLiveQuery(async () => {
+    if (view === 'deleted') {
+      const all = (await db.notes.where('deletedAt').above(0).toArray()).sort((a, b) => b.deletedAt! - a.deletedAt!);
+      return { notes: all, total: all.length };
+    }
+    if (view === 'search' || !folderId) return { notes: [] as Note[], total: 0 };
+    const p = await folderPage(folderId, shown);
+    return { notes: [...p.pinned, ...p.recent], total: p.total };
+  }, [view, folderId, shown]);
+  const listed = page?.notes ?? [];
   const hits = useLiveQuery(() => (view === 'search' && query.trim() ? searchNotes(query) : Promise.resolve([] as Hit[])), [view, query]);
   const hitFor = new Map((hits ?? []).map((h) => [h.note.id, h]));
   const notes = view === 'search' ? (hits ?? []).map((h) => h.note) : listed;
+  const count = view === 'search' ? notes.length : (page?.total ?? 0);
+  useEffect(() => setTotal(count), [count]);
   const folderNames = useLiveQuery(async () => (view === 'search' ? new Map((await db.folders.toArray()).map((f) => [f.id, f.name])) : null), [view]);
-  const [shown, sentinel] = useMoreOnScroll(`${view}:${folderId}:${query}`, notes.length);
 
   const title = view === 'deleted' ? 'Recently Deleted' : view === 'search' ? 'Search' : folder?.name ?? 'Notes';
 
   const groups: { label: string; items: Note[] }[] = [];
   const pinned = view === 'folder' ? notes.filter((n) => n.pinned) : [];
   if (pinned.length) groups.push({ label: 'Pinned', items: pinned });
-  let drawn = pinned.length;
+  let drawn = 0;
   for (const n of notes) {
     if (view === 'folder' && n.pinned) continue;
-    if (drawn++ >= shown) break;
+    // A folder's page is already cut to size; other lists are cut here.
+    if (view !== 'folder' && drawn++ >= shown) break;
     const label = view === 'deleted' ? 'Deleted notes are removed after 30 days' : view === 'search' ? `${notes.length} result${notes.length === 1 ? '' : 's'}` : groupLabel(n.updatedAt);
     const g = groups[groups.length - 1];
     if (g && g.label === label) g.items.push(n);
@@ -126,12 +135,12 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
           </span>
         ) : (
           <>
-            {notes.length} note{notes.length === 1 ? '' : 's'}
+            {count} note{count === 1 ? '' : 's'}
           </>
         )}
       </div>
       <div className="list-scroll">
-        {notes.length === 0 && (
+        {count === 0 && (
           <Empty title={view === 'search' ? 'No results' : view === 'deleted' ? 'Nothing here' : 'No notes yet'}>
             {view === 'folder' && 'Type a note, write one by hand with Apple Pencil, or record a lecture.'}
           </Empty>
@@ -167,10 +176,10 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
             </div>
           </div>
         ))}
-        {shown < notes.length && (
+        {shown < count && (
           <div ref={sentinel} className="list-more">
             <button className="btn small" onClick={() => sentinel.current?.scrollIntoView()}>
-              Showing {shown} of {notes.length}
+              Showing {shown} of {count}
             </button>
           </div>
         )}
@@ -204,7 +213,7 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
                   },
                 ]
               : [
-                  { label: menu.note.pinned ? 'Unpin' : 'Pin', icon: <IPin size={17} />, onClick: () => db.notes.update(menu.note.id, { pinned: !menu.note.pinned }) },
+                  { label: menu.note.pinned ? 'Unpin' : 'Pin', icon: <IPin size={17} />, onClick: () => setPinned(menu.note.id, !menu.note.pinned) },
                   {
                     label: 'Delete',
                     icon: <ITrash size={17} />,

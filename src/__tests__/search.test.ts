@@ -74,3 +74,19 @@ describe('search', () => {
     });
   });
 });
+
+describe('a folder a page at a time', () => {
+  it('reads pinned notes and the newest of the rest, and counts them all', async () => {
+    const { folderPage, setPinned } = await import('../lib/notes');
+    await Promise.all(db.tables.map((x) => x.clear()));
+    await db.notes.bulkAdd(Array.from({ length: 30 }, (_, i) => note(`n${i}`, `Note ${i}`, '', { folderId: 'big', updatedAt: 1000 + i })));
+    await db.notes.update('n29', { deletedAt: 5 });
+    await setPinned('n0', true);
+    const page = await folderPage('big', 5);
+    expect(page.pinned.map((n) => n.id)).toEqual(['n0']);
+    expect(page.recent.map((n) => n.id)).toEqual(['n28', 'n27', 'n26', 'n25', 'n24']);
+    expect(page.total).toBe(29);
+    await setPinned('n0', false);
+    expect((await folderPage('big', 5)).pinned).toEqual([]);
+  });
+});

@@ -54,13 +54,16 @@ describe('opening older databases', () => {
     old.close();
 
     const { db } = await fresh();
-    expect(db.verno).toBe(5);
+    expect(db.verno).toBe(6);
     expect(await db.notes.count()).toBe(3);
     expect((await db.notes.get('ink'))!.kind).toBe('note');
     expect((await db.notes.get('ink'))!.paper).toBe('lines');
     const typed = (await db.notes.get('typed'))!;
     expect(typed.paper).toBe('lines');
     expect(typed.pinned).toBe(true);
+    // Pinned notes gain the index a folder's pinned notes are found by.
+    expect(typed.pinnedAt).toBe(2);
+    expect(await db.notes.where('pinnedAt').above(0).count()).toBe(1);
     expect(typed.links).toEqual(['ink']);
     expect(typed.tags).toEqual(['contract']);
     expect((await db.notes.get('lec'))!.transcript).toEqual([{ start: 0, text: 'Hi' }]);
@@ -79,7 +82,7 @@ describe('opening older databases', () => {
     expect(await db.shares.count()).toBe(0);
   });
 
-  it('adds history, exams and past papers to a version 4 database without touching it', async () => {
+  it('adds history, exams, past papers and the folder index to a version 4 database without touching it', async () => {
     const old = new Dexie('scrabbler');
     old.version(4).stores({
       ...V1,

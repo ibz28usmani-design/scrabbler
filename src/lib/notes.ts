@@ -1,3 +1,4 @@
+import Dexie from 'dexie';
 import { db, uid, type Note } from '../db';
 import { nav, getNav } from './nav';
 import { indexNote, titleMap } from './links';
@@ -61,7 +62,9 @@ export async function reindexAll() {
   const changes: { key: string; changes: Partial<Note> }[] = [];
   await db.notes.each((n) => {
     const { links, tags } = indexNote(n, map);
-    if (JSON.stringify(links) !== JSON.stringify(n.links ?? []) || JSON.stringify(tags) !== JSON.stringify(n.tags ?? [])) changes.push({ key: n.id, changes: { links, tags } });
+    // Notes from a backup made before pinning was indexed.
+    const pin = n.pinned && !n.pinnedAt ? { pinnedAt: n.updatedAt || Date.now() } : {};
+    if (JSON.stringify(links) !== JSON.stringify(n.links ?? []) || JSON.stringify(tags) !== JSON.stringify(n.tags ?? []) || 'pinnedAt' in pin) changes.push({ key: n.id, changes: { links, tags, ...pin } });
   });
   if (changes.length) await db.notes.bulkUpdate(changes);
   return changes.length;
@@ -74,4 +77,25 @@ export async function restoreNote(id: string) {
   if (!(await db.folders.get(folderId))) folderId = (await db.folders.orderBy('order').first())!.id;
   await db.notes.update(id, { deletedAt: undefined, folderId });
   if (getNav().noteId === id) nav({ noteId: null });
+}
+
+export async function setPinned(id: string, pinned: boolean) {
+  await db.notes.update(id, pinned ? { pinned, pinnedAt: Date.now() } : { pinned, pinnedAt: undefined });
+}
+
+/**
+ * A folder's notes, newest first: its pinned ones and the first `limit` of
+ * the rest, read from the indexes so a big folder isn't loaded whole on every
+ * save. `total` counts them all.
+ */
+export async function folderPage(folderId: string, limit: number): Promise<{ pinned: Note[]; recent: Note[]; total: number }> {
+  const range = db.notes.where('[folderId+updatedAt]').between([folderId, Dexie.minKey], [folderId, Dexie.maxKey]);
+  const [recent, pinned, keys, gone] = await Promise.all([
+    range.reverse().filter((n) => !n.deletedAt && !n.pinned).limit(limit).toArray(),
+    db.notes.where('pinnedAt').above(0).filter((n) => n.folderId === folderId && !n.deletedAt && n.pinned).toArray(),
+    db.notes.where('folderId').equals(folderId).primaryKeys(),
+    db.notes.where('deletedAt').above(0).primaryKeys(),
+  ]);
+  const deleted = new Set(gone);
+  return { pinned: pinned.sort((a, b) => b.updatedAt - a.updatedAt), recent, total: keys.filter((k) => !deleted.has(k)).length };
 }

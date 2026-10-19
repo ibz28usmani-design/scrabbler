@@ -51,6 +51,8 @@ export interface Note {
   content: unknown;
   text: string;
   pinned: boolean;
+  /** When it was pinned: indexed, so a folder's pinned notes are found without reading the rest. */
+  pinnedAt?: number;
   createdAt: number;
   updatedAt: number;
   deletedAt?: number;
@@ -414,6 +416,20 @@ db.version(5).stores({
   shares: 'id, refId',
   cards: 'id, deckId, sched.due, noteId',
 });
+
+// A folder's notes newest first, a page at a time, and its pinned notes, without loading them all.
+db.version(6)
+  .stores({
+    notes: 'id, folderId, updatedAt, pinned, deletedAt, status, *links, *tags, [folderId+updatedAt], pinnedAt',
+  })
+  .upgrade(async (tx) => {
+    await tx
+      .table('notes')
+      .filter((n: Note) => n.pinned && !n.pinnedAt)
+      .modify((n: Note) => {
+        n.pinnedAt = n.updatedAt || Date.now();
+      });
+  });
 
 export function uid(): ID {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
