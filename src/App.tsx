@@ -24,6 +24,7 @@ import { ConfirmHost, confirmDialog, Empty, ErrorBoundary, PromptHost, Toasts, u
 import { ICompose, ISparkle } from './components/Icons';
 import { createNote } from './lib/notes';
 import { mdToHtml } from './lib/markdown';
+import { SafetyBanner } from './components/SafetyBanner';
 
 const PAGE_LABEL: Partial<Record<string, string>> = { calendar: 'Calendar', reminders: 'Reminders', revision: 'Revision', graph: 'the graph', tutor: 'the tutor' };
 
@@ -185,6 +186,7 @@ export default function App() {
       {s.modal?.type === 'importDeck' && <ImportDeckDialog />}
       {s.modal?.type === 'source' && <SourceViewer sourceId={s.modal.sourceId} chunkId={s.modal.chunkId} onClose={closeModal} />}
       <TimerChip />
+      <SafetyBanner />
       <Toasts />
       <ConfirmHost />
       <PromptHost />

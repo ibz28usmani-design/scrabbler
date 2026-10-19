@@ -7460,3 +7460,41 @@ body.block-dragging * {
     border-bottom: 1px solid var(--line);
   }
 }
+
+/* ------------------------------------------------------------------ safety banner (storage, backups) */
+.safety-banner {
+  position: fixed;
+  z-index: 45;
+  right: calc(14px + env(safe-area-inset-right));
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  width: min(560px, calc(100vw - 28px));
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 10px 12px 10px 14px;
+  background: var(--raised);
+  color: var(--text);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+  line-height: 1.4;
+  animation: toast-in 0.4s var(--ease-ink);
+}
+.safety-banner.warn {
+  border-left: 4px solid var(--danger);
+}
+.safety-text {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.focus .safety-banner {
+  display: none;
+}
+@media (max-width: 699px) {
+  /* Above the phone's timer chip, which sits bottom left. */
+  .safety-banner {
+    bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+}

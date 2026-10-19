@@ -3,7 +3,8 @@ import { closeModal } from '../lib/nav';
 import { GEMINI_VOICES, updateSettings, useSettings } from '../lib/settings';
 import { listModels as listCompatModels, looksMultimodal, pickModel, PRESETS, presetById, isProxyBase } from '../lib/openaiCompat';
 import { listModels, modelUpgrades, probeModel, type ModelInfo } from '../lib/gemini';
-import { download, eraseEverything, exportBackup, importBackup } from '../lib/backup';
+import { download, eraseEverything, importBackup } from '../lib/backup';
+import { ago, backupNow, useBackupState } from '../lib/safety';
 import { toast, toastError } from '../lib/events';
 import { confirmDialog, DraftInput, Modal, Segmented, Spinner } from './ui';
 import { ICheck, IDownload, IUpload } from './Icons';
@@ -25,6 +26,8 @@ export function SettingsModal() {
   const preset = presetById(s.compatPreset);
   const subjects = useLiveQuery(() => db.subjects.toArray(), []) ?? [];
   const proxied = isProxyBase(s.compatBaseUrl);
+  const backup = useBackupState();
+  const [backingUp, setBackingUp] = useState(false);
 
   useEffect(() => {
     navigator.storage?.estimate?.().then((e) => setUsage(`${((e.usage ?? 0) / 1048576).toFixed(1)} MB used`));
@@ -347,7 +350,11 @@ export function SettingsModal() {
         <h3>Your data</h3>
         <p className="muted">
           Everything lives on this device ({usage || 'calculating…'}
-          {persisted === false ? ', not yet protected from eviction' : persisted ? ', protected storage' : ''}). Add Scrabbler to your Home Screen and export backups regularly.
+          {persisted === false ? ', not yet protected from eviction' : persisted ? ', protected storage' : ''}). Add Scrabbler to your Home Screen and back up regularly: on an iPad, Back up now opens the share sheet, where Save to Files puts the backup in iCloud Drive.
+        </p>
+        <p className="muted">
+          {backup?.lastAt ? `Last backup ${ago(backup.lastAt)} (${new Date(backup.lastAt).toLocaleDateString()}).` : 'No backup made on this device yet.'}
+          {backup?.changedSince ? ' You have changes since.' : ''}
         </p>
         <div className="row wrap">
           {persisted === false && (
@@ -363,16 +370,18 @@ export function SettingsModal() {
             </button>
           )}
           <button
-            className="btn"
+            className="btn primary"
+            disabled={backingUp}
             onClick={async () => {
+              setBackingUp(true);
               try {
-                download(await exportBackup(), `scrabbler-backup-${new Date().toISOString().slice(0, 10)}.zip`);
-              } catch (e) {
-                toastError(e);
+                await backupNow();
+              } finally {
+                setBackingUp(false);
               }
             }}
           >
-            <IDownload size={16} /> Export backup
+            {backingUp ? <Spinner size={14} /> : <IDownload size={16} />} Back up now
           </button>
           <label className="btn">
             <IUpload size={16} /> Import backup
