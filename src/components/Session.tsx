@@ -13,7 +13,8 @@ import { useSettings } from '../lib/settings';
 import { toastError } from '../lib/events';
 import { Spinner } from './ui';
 import { Glyph } from './AppIcon';
-import { IBolt, ICheck, IHeart, ISparkle, IX, IFlame } from './Icons';
+import { IBolt, ICheck, IHeart, IPencil, ISparkle, IX, IFlame } from './Icons';
+import { AnswerBox, answerText, emptyAnswer, type Answer } from './AnswerBox';
 import type { Grade } from 'ts-fsrs';
 
 type Mode = 'study' | 'quiz';
@@ -64,7 +65,16 @@ export function Session({ deckIds, mode }: { deckIds: string[]; mode: Mode }) {
   const [revealed, setRevealed] = useState(false);
   const [picked, setPicked] = useState<number | null>(null);
   const [typed, setTyped] = useState('');
-  const [verdict, setVerdict] = useState<null | { correct: boolean; feedback?: string; pending?: boolean; self?: boolean }>(null);
+  const [verdict, setVerdict] = useState<null | { correct: boolean; feedback?: string; pending?: boolean; self?: boolean; reading?: boolean }>(null);
+  // Answering typed cards by hand, remembered for next time.
+  const [writing, setWriting] = useState(() => {
+    try {
+      return localStorage.getItem('scrabbler.writeAnswers') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [ink, setInk] = useState<Answer>(() => ({ ...emptyAnswer(), mode: 'hand', height: 420 }));
   const [explain, setExplain] = useState<string | null>(null);
   const [explaining, setExplaining] = useState(false);
   const [game, setGame] = useState<GameState | null>(null);
@@ -102,6 +112,7 @@ export function Session({ deckIds, mode }: { deckIds: string[]; mode: Mode }) {
     setRevealed(false);
     setPicked(null);
     setTyped('');
+    setInk({ ...emptyAnswer(), mode: 'hand', height: 420 });
     setVerdict(null);
     setExplain(null);
   };
@@ -139,16 +150,31 @@ export function Session({ deckIds, mode }: { deckIds: string[]; mode: Mode }) {
 
   const checkTyped = async () => {
     if (!item || verdict) return;
+    const at = pos;
+    let given = typed;
+    // Written with the Pencil: read it first, then mark it as if typed.
+    if (writing) {
+      if (!ink.strokes.length) return setVerdict({ correct: false });
+      setVerdict({ correct: false, pending: true, reading: true });
+      try {
+        given = await answerText({ ...ink, mode: 'hand' });
+      } catch (e) {
+        toastError(e);
+        return posRef.current === at && setVerdict(null);
+      }
+      if (posRef.current !== at) return;
+      setTyped(given);
+      setVerdict(null);
+    }
     const expected = item.expected ?? '';
-    const sim = Math.max(...expected.split(/\s*[,;/]\s*|\s+or\s+/).concat(expected).map((e) => similarity(typed, e)));
+    const sim = Math.max(...expected.split(/\s*[,;/]\s*|\s+or\s+/).concat(expected).map((e) => similarity(given, e)));
     if (sim >= 0.85) return setVerdict({ correct: true });
-    if (!typed.trim()) return setVerdict({ correct: false });
+    if (!given.trim()) return setVerdict({ correct: false });
     if (!hasTextKey()) return setVerdict({ correct: false, self: true });
     setVerdict({ correct: false, pending: true });
-    const at = pos;
     let next: { correct: boolean; feedback?: string; self?: boolean };
     try {
-      const r = await gradeTyped(item.prompt, expected, typed);
+      const r = await gradeTyped(item.prompt, expected, given);
       next = { correct: r.correct, feedback: r.feedback };
     } catch {
       next = { correct: false, self: true };
@@ -329,11 +355,34 @@ export function Session({ deckIds, mode }: { deckIds: string[]; mode: Mode }) {
                 else checkTyped();
               }}
             >
-              <input ref={inputRef} className="input" value={typed} disabled={!!verdict} onChange={(e) => setTyped(e.target.value)} placeholder="Your answer" autoComplete="off" autoCapitalize="off" />
+              {writing && !verdict ? (
+                <AnswerBox compact value={ink} onChange={setInk} placeholder="" />
+              ) : (
+                <input ref={inputRef} className="input" value={typed} disabled={!!verdict} onChange={(e) => setTyped(e.target.value)} placeholder="Your answer" autoComplete="off" autoCapitalize="off" />
+              )}
               {!verdict && (
-                <button className="btn primary" type="submit">
-                  Check
-                </button>
+                <div className="typed-actions">
+                  <button
+                    type="button"
+                    className={`btn ${writing ? 'on' : ''}`}
+                    aria-pressed={writing}
+                    onClick={() => {
+                      const next = !writing;
+                      setWriting(next);
+                      try {
+                        localStorage.setItem('scrabbler.writeAnswers', next ? '1' : '0');
+                      } catch {
+                        /* private mode */
+                      }
+                    }}
+                    title="Answer with Apple Pencil; your writing is read, then marked"
+                  >
+                    <IPencil size={15} /> {writing ? 'Type instead' : 'Write'}
+                  </button>
+                  <button className="btn primary" type="submit">
+                    Check
+                  </button>
+                </div>
               )}
             </form>
           )}
@@ -341,7 +390,7 @@ export function Session({ deckIds, mode }: { deckIds: string[]; mode: Mode }) {
             <div className={`verdict ${verdict.pending ? '' : verdict.correct ? 'right' : 'wrong'}`}>
               {verdict.pending ? (
                 <>
-                  <Spinner size={14} /> Checking your answer…
+                  <Spinner size={14} /> {verdict.reading ? 'Reading your writing…' : 'Checking your answer…'}
                 </>
               ) : (
                 <>

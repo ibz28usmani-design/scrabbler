@@ -2,16 +2,12 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { db, getTermCalendar, uid, type TutorTool } from '../db';
 import type { Content } from '../lib/gemini';
-import type { Stroke } from '../lib/ink';
-import { transcribeHandwriting } from '../lib/ai';
 import { dayKey, fmtClock } from '../lib/dates';
 import { toast, toastError } from '../lib/events';
 import { folderSubject, OTHER_SUBJECT } from '../lib/folders';
-import { renderInkPages } from '../lib/inkRender';
-import { canReadImages, hasTextKey, stream } from '../lib/llm';
+import { hasTextKey, stream } from '../lib/llm';
 import { mdToHtml } from '../lib/markdown';
 import { nav, openModal } from '../lib/nav';
-import { PAGE_H } from '../lib/paper';
 import { freeSlots, planWeek, type PlanBlock } from '../lib/revisionPlan';
 import { nextExams, targetMinutes } from '../lib/exams';
 import { getSettings, updateSettings, useSettings } from '../lib/settings';
@@ -44,8 +40,7 @@ import {
 import { useStudyPresence } from '../lib/useStudyPresence';
 import { addReminder } from './RemindersView';
 import { PageHead } from './PageHead';
-import { SketchCanvas } from './SketchCanvas';
-import { useDark } from '../lib/theme';
+import { AnswerBox, answerText, emptyAnswer, type Answer } from './AnswerBox';
 import { Segmented, Spinner } from './ui';
 import { ICards, ISend, ISparkle } from './Icons';
 
@@ -170,59 +165,6 @@ export function TutorView({ narrow, showSidebarToggle }: { narrow: boolean; show
 }
 
 // ---------------------------------------------------------------- shared pieces
-
-interface Answer {
-  mode: 'typed' | 'hand';
-  text: string;
-  strokes: Stroke[];
-  height: number;
-}
-
-const emptyAnswer = (): Answer => ({ mode: 'typed', text: '', strokes: [], height: PAGE_H });
-
-/** The answer as text: typed as it is, handwriting read by the AI first. */
-async function answerText(a: Answer): Promise<string> {
-  if (a.mode === 'typed') return a.text.trim();
-  if (!a.strokes.length) return '';
-  if (!canReadImages()) throw new Error('Reading handwriting needs a model that can see images: add a Gemini key in Settings.');
-  const pages = await renderInkPages({ strokes: a.strokes, paper: 'lines' }, { scale: 1.5, template: false });
-  return (await transcribeHandwriting(pages, 'formatted', 'lines')).trim();
-}
-
-/** Typed, or written by hand with the Pencil on lined paper. */
-function AnswerBox({ value, onChange, placeholder, rows = 10 }: { value: Answer; onChange: (a: Answer) => void; placeholder: string; rows?: number }) {
-  const dark = useDark();
-  return (
-    <div className="answer-box">
-      <Segmented
-        value={value.mode}
-        onChange={(mode) => onChange({ ...value, mode })}
-        options={[
-          { value: 'typed', label: 'Type' },
-          { value: 'hand', label: 'Write by hand' },
-        ]}
-      />
-      {value.mode === 'typed' ? (
-        <textarea className="input answer-text" rows={rows} value={value.text} onChange={(e) => onChange({ ...value, text: e.target.value })} placeholder={placeholder} />
-      ) : (
-        <div className="editor-pane answer-ink">
-          <div className="editor-scroll">
-            <SketchCanvas
-              paper="lines"
-              page
-              strokes={value.strokes}
-              height={value.height}
-              dark={dark}
-              active
-              onActivate={() => {}}
-              onChange={(p) => onChange({ ...value, ...(p.strokes ? { strokes: p.strokes } : {}), ...(p.height ? { height: p.height } : {}) })}
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function Busy({ children }: { children: ReactNode }) {
   return (

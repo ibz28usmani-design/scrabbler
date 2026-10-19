@@ -7900,3 +7900,27 @@ body.block-dragging * {
   font-size: 13.5px;
   color: var(--muted);
 }
+
+/* ------------------------------------------------------------------ handwritten flashcard answers */
+.typed {
+  flex-wrap: wrap;
+}
+.typed .answer-box {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.answer-ink.compact {
+  height: min(36vh, 340px);
+}
+.answer-ink.compact .editor-scroll {
+  padding-bottom: 12vh;
+}
+.typed-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.btn.on {
+  background: var(--accent-fill);
+  color: var(--on-accent);
+}
