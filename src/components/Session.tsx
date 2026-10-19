@@ -303,6 +303,7 @@ export function Session({ deckIds, mode }: { deckIds: string[]; mode: Mode }) {
               ) : null}
               {item.card.back && <div className="back">{item.card.back}</div>}
               {item.card.explanation && <div className="explanation">{item.card.explanation}</div>}
+              {item.card.noteId && <FromNote noteId={item.card.noteId} />}
             </div>
           )}
           {(item.kind === 'mcq' || item.kind === 'tf') && (
@@ -421,5 +422,16 @@ export function Session({ deckIds, mode }: { deckIds: string[]; mode: Mode }) {
         )}
       </div>
     </div>
+  );
+}
+
+/** Where a card cut from a highlight came from, one tap away. */
+function FromNote({ noteId }: { noteId: string }) {
+  const note = useLiveQuery(() => db.notes.get(noteId), [noteId]);
+  if (!note || note.deletedAt) return null;
+  return (
+    <button className="link-btn from-note" onClick={() => nav({ view: 'folder', folderId: note.folderId, noteId: note.id, pane: 'editor', session: null })}>
+      From your note: {note.title || 'Untitled'}
+    </button>
   );
 }

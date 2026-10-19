@@ -10,6 +10,7 @@ import { menuExtensions } from './SlashMenu';
 import { FileDrop } from './NotionBlockViews';
 import { downscaleImage } from '../lib/attachments';
 import { BlockHandle } from './BlockHandle';
+import { HighlightCard } from './HighlightCard';
 import { setSlashHost } from '../lib/slashCommands';
 import { nav, toggleSidebar, openModal, useNav } from '../lib/nav';
 import { Menu, useElementWidth, useMenu, confirmDialog } from './ui';
@@ -327,6 +328,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
             <EditorContent editor={editor} />
           </NoteContext.Provider>
           <BlockHandle editor={editor} />
+          <HighlightCard editor={editor} note={note} />
           <LinksPanel note={note} />
         </div>
       </div>
