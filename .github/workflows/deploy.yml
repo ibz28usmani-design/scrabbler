@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main, claude/ai-note-app-design-1ld11b]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
