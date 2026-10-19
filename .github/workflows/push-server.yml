@@ -8,7 +8,7 @@ name: Deploy push server
 
 on:
   push:
-    branches: [main, claude/ai-note-app-design-1ld11b]
+    branches: [main]
     paths: ['push-server/**', '.github/workflows/push-server.yml']
   workflow_dispatch:
 
