@@ -145,6 +145,7 @@ function MonthView({ tt, year, month, today, reminders, narrow, onDay }: { tt: T
   const trail = (7 - ((lead + days) % 7)) % 7;
   const classes = useMemo(() => classesByDate(tt, first, days), [tt, first, days]);
   const due = dueByDate(reminders);
+  const exams = useLiveQuery(() => db.exams.toArray(), []) ?? [];
   const notesKey = `monthNotes:${first.slice(0, 7)}`;
   const savedNotes = useLiveQuery(() => getMeta<string>(notesKey, ''), [notesKey]);
   const [notes, setNotes] = useState<string | null>(null);
@@ -173,14 +174,20 @@ function MonthView({ tt, year, month, today, reminders, narrow, onDay }: { tt: T
     const status = dayStatus(key, tt.calendar);
     const cls = classes.get(key) ?? [];
     const rs = due.get(key) ?? [];
+    const ex = exams.filter((e) => e.date === key);
     const off = status.kind === 'closure' || status.kind === 'holiday';
     const showLabel = off && status.label && (status.label !== lastLabel || weekday(key) === 1);
     lastLabel = off ? (status.label ?? '') : '';
     cells.push(
-      <button key={key} className={`cal-cell day ${status.kind} ${key === today ? 'today' : ''} ${key < today ? 'past' : ''}`} onClick={() => onDay(key)} aria-label={`${dayTitle(key, today)}${status.label ? `, ${status.label}` : ''}${cls.length ? `, ${cls.length} classes` : ''}${rs.length ? `, ${rs.length} reminders` : ''}`}>
+      <button key={key} className={`cal-cell day ${status.kind} ${key === today ? 'today' : ''} ${key < today ? 'past' : ''}`} onClick={() => onDay(key)} aria-label={`${dayTitle(key, today)}${status.label ? `, ${status.label}` : ''}${cls.length ? `, ${cls.length} classes` : ''}${rs.length ? `, ${rs.length} reminders` : ''}${ex.length ? `, exam: ${ex.map((e) => e.name).join(', ')}` : ''}`}>
         <span className="cal-num">{d}</span>
         {showLabel && <span className="cal-off">{status.label}</span>}
         <span className="cal-items">
+          {ex.map((e) => (
+            <span key={e.id} className="cal-exam" style={{ ['--subject' as string]: subjectOf(tt, e.subjectId)?.color }}>
+              {narrow ? 'Exam' : `Exam: ${e.name}`}
+            </span>
+          ))}
           {narrow ? (
             <span className="cal-dots">
               {cls.map((c) => (
@@ -310,6 +317,7 @@ function DayDetail({ tt, day, today, reminders, onClose }: { tt: Timetable; day:
   return (
     <Modal title={`${['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][weekday(day) - 1]} ${d} ${MONTH_NAMES[m - 1]} ${y}`} onClose={onClose}>
       {status.label && <p className="day-status">{status.label} — no classes</p>}
+      <DayExams day={day} tt={tt} />
       {status.kind === 'weekend' && !dueHere.length && <p className="muted">Weekend.</p>}
       {classes.length > 0 && (
         <div className="day-classes">
@@ -517,5 +525,26 @@ function TermsEditor({ calendar, onClose }: { calendar: TermCalendar; onClose: (
       {section('terms', 'Terms', 'Days between terms are holidays (Christmas, Easter, summer).')}
       {section('closures', 'Closures in term', 'Half terms, bank holidays, training days.')}
     </Modal>
+  );
+}
+
+function DayExams({ day, tt }: { day: string; tt: Timetable }) {
+  const exams = useLiveQuery(() => db.exams.where('date').equals(day).toArray(), [day]) ?? [];
+  if (!exams.length) return null;
+  return (
+    <div className="day-classes">
+      {exams.map((e) => {
+        const s = subjectOf(tt, e.subjectId);
+        return (
+          <div key={e.id} className="day-class exam" style={{ ['--subject' as string]: s?.color }}>
+            <span className="day-time">{e.time ?? ''}</span>
+            <span>
+              <b>Exam: {e.name}</b>
+              <span className="muted small">{s?.name}</span>
+            </span>
+          </div>
+        );
+      })}
+    </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useState } from 'react';
-import { db } from '../db';
+import { db, type Exam } from '../db';
+import { daysBetween, nextExams, targetMinutes } from '../lib/exams';
 import type { Subject } from '../lib/timetable';
 import { dayKey, fmtClock, prevDay } from '../lib/dates';
 import { nav, useNav } from '../lib/nav';
@@ -80,6 +81,11 @@ export interface SubjectStats {
   streak: ReturnType<typeof subjectStreak>;
   week: number;
   perDay: Map<string, number> | undefined;
+  /** This week's target in minutes, raised as the next exam nears. */
+  target: number;
+  exam?: Exam;
+  /** Days until that exam. */
+  examIn?: number;
 }
 
 export function useRevisionData() {
@@ -91,22 +97,29 @@ export function useRevisionData() {
   }, []);
   const sessions = useLiveQuery(() => db.studyTime.where('day').aboveOrEqual(since).toArray(), [since]);
   const subjects = useLiveQuery(() => db.subjects.toArray(), []);
+  const exams = useLiveQuery(() => db.exams.toArray(), []);
   return useMemo(() => {
-    if (!sessions || !subjects) return null;
+    if (!sessions || !subjects || !exams) return null;
     const today = dayKey();
     const monday = weekStart(today);
     const byDay = minutesByDay(sessions);
+    const upcoming = nextExams(exams, today);
     const tracked = settings.revisionSubjects.map((id) => subjects.find((s) => s.id === id) ?? { id, name: id });
-    const stats: SubjectStats[] = tracked.map((subject) => ({
-      subject,
-      streak: subjectStreak(byDay.get(subject.id), settings.streakMinMinutes, today),
-      week: weekMinutes(byDay.get(subject.id), monday),
-      perDay: byDay.get(subject.id),
-    }));
+    const stats: SubjectStats[] = tracked.map((subject) => {
+      const exam = upcoming.get(subject.id);
+      return {
+        subject,
+        streak: subjectStreak(byDay.get(subject.id), settings.streakMinMinutes, today),
+        week: weekMinutes(byDay.get(subject.id), monday),
+        perDay: byDay.get(subject.id),
+        target: targetMinutes(settings.weeklyTargetHours, exam, today),
+        ...(exam ? { exam, examIn: daysBetween(today, exam.date) } : {}),
+      };
+    });
     const otherIds = [...byDay.keys()].filter((id) => !settings.revisionSubjects.includes(id));
     const otherWeek = otherIds.reduce((sum, id) => sum + weekMinutes(byDay.get(id), monday), 0);
-    return { sessions, subjects, stats, otherWeek, byDay, today, monday };
-  }, [sessions, subjects, settings.revisionSubjects, settings.streakMinMinutes]);
+    return { sessions, subjects, stats, otherWeek, byDay, today, monday, exams };
+  }, [sessions, subjects, exams, settings.revisionSubjects, settings.streakMinMinutes, settings.weeklyTargetHours]);
 }
 
 /** For the sidebar: the longest streak running, and whether a timer is going. */

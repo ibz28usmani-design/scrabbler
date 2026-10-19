@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState } from 'react';
-import { db, type StudySession } from '../db';
+import { db, type Exam, type StudySession } from '../db';
+import { addExam, countdown, daysBetween, pullCardsBefore } from '../lib/exams';
 import type { Subject } from '../lib/timetable';
 import { dayKey, prevDay } from '../lib/dates';
 import { OTHER_SUBJECT } from '../lib/folders';
@@ -52,7 +53,7 @@ export function RevisionView({ narrow, showSidebarToggle }: { narrow: boolean; s
         <div className="rev-dateline">
           <span>Week of {weekLabel}</span>
           <span>
-            Target {settings.weeklyTargetHours}h a subject · streak needs {settings.streakMinMinutes}m a day
+            Target {settings.weeklyTargetHours}h a subject, more before an exam · streak needs {settings.streakMinMinutes}m a day
           </span>
           <span className="rev-level" title={`${xp.toLocaleString()} XP from cards, quizzes and revision time`}>
             Lv {lvl.level} · {xp.toLocaleString()} XP
@@ -63,9 +64,10 @@ export function RevisionView({ narrow, showSidebarToggle }: { narrow: boolean; s
 
         <section className="rev-columns" aria-label="This week by subject">
           {data.stats.map((s) => (
-            <SubjectColumn key={s.subject.id} s={s} target={target} monday={data.monday} today={data.today} revised={settings.revisionSubjects} />
+            <SubjectColumn key={s.subject.id} s={s} target={s.target} monday={data.monday} today={data.today} revised={settings.revisionSubjects} />
           ))}
         </section>
+        <ExamsPanel exams={data.exams} subjects={data.subjects} revised={settings.revisionSubjects} today={data.today} />
         {data.otherWeek > 0 && <p className="rev-other">Plus {fmtMinutes(data.otherWeek)} this week on other subjects.</p>}
 
         <Heatmap data={data} revised={settings.revisionSubjects} min={settings.streakMinMinutes} />
@@ -78,6 +80,7 @@ export function RevisionView({ narrow, showSidebarToggle }: { narrow: boolean; s
 }
 
 function SubjectColumn({ s, target, monday, today, revised }: { s: SubjectStats; target: number; monday: string; today: string; revised: string[] }) {
+  const baseTarget = useSettings().weeklyTargetHours * 60;
   const days = weekDays(monday);
   const pct = Math.min(1, s.week / target);
   const color = seriesVar(s.subject.id, revised);
@@ -88,6 +91,12 @@ function SubjectColumn({ s, target, monday, today, revised }: { s: SubjectStats;
         <span className="rev-key" aria-hidden="true" />
         {s.subject.name}
       </h2>
+      {s.exam && s.examIn !== undefined && (
+        <p className="rev-exam">
+          <strong>{s.exam.name}</strong> {countdown(s.examIn)}
+          {s.target > baseTarget ? ` · target raised to ${fmtMinutes(s.target)}` : ''}
+        </p>
+      )}
       <div className={`rev-streak ${s.streak.todayMet ? 'lit' : ''}`}>
         <IFlame size={30} />
         <span className="rev-streak-num">{s.streak.days}</span>
@@ -398,6 +407,110 @@ function AddTime({ subjects, revised, onClose }: { subjects: Subject[]; revised:
         <span>What (optional)</span>
         <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Past paper, flashcards on paper…" />
       </label>
+    </Modal>
+  );
+}
+
+/** Exam dates per subject: they raise the weekly target, steer the plan and bring flashcards forward. */
+function ExamsPanel({ exams, subjects, revised, today }: { exams: Exam[]; subjects: Subject[]; revised: string[]; today: string }) {
+  const [adding, setAdding] = useState(false);
+  const upcoming = [...exams].filter((e) => e.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+  const past = exams.filter((e) => e.date < today);
+  const name = (id: string) => subjects.find((x) => x.id === id)?.name ?? id;
+  return (
+    <section className="rev-exams" aria-labelledby="rev-exams-h">
+      <div className="rev-exams-head">
+        <h2 id="rev-exams-h">Exams</h2>
+        <button className="btn small" onClick={() => setAdding(true)}>
+          <IPlus size={14} /> Add an exam
+        </button>
+      </div>
+      {!upcoming.length ? (
+        <p className="muted">Add your exam dates: each subject’s weekly target grows as its exam nears, the week’s plan gives it more time, and its flashcards are brought forward so none is left until after the exam.</p>
+      ) : (
+        <ul className="exam-list">
+          {upcoming.map((e) => {
+            const d = daysBetween(today, e.date);
+            return (
+              <li key={e.id} style={{ ['--ink' as string]: seriesVar(e.subjectId, revised) }}>
+                <span className="exam-days" aria-label={`${d} days`}>
+                  <strong>{d}</strong>
+                  <small>{d === 1 ? 'day' : 'days'}</small>
+                </span>
+                <span className="exam-what">
+                  <strong>{e.name}</strong>
+                  <span className="muted">
+                    {name(e.subjectId)} · {new Date(`${e.date}T12:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'long' })}
+                    {e.time ? ` at ${e.time}` : ''}
+                  </span>
+                </span>
+                <button
+                  className="icon-btn small"
+                  aria-label={`Remove ${e.name}`}
+                  onClick={async () => {
+                    if (await confirmDialog(`Remove ${e.name}?`, 'Remove')) await db.exams.delete(e.id);
+                  }}
+                >
+                  <ITrash size={15} />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {past.length > 0 && <p className="muted small">{past.length} past exam{past.length === 1 ? '' : 's'} kept for the record.</p>}
+      {adding && <AddExam subjects={subjects} revised={revised} onClose={() => setAdding(false)} />}
+    </section>
+  );
+}
+
+function AddExam({ subjects, revised, onClose }: { subjects: Subject[]; revised: string[]; onClose: () => void }) {
+  const [subjectId, setSubjectId] = useState(revised[0] ?? subjects[0]?.id ?? '');
+  const [name, setName] = useState('');
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('09:00');
+  const save = async () => {
+    if (!subjectId || !date) return;
+    const subject = subjects.find((x) => x.id === subjectId)?.name ?? 'Exam';
+    const exam = await addExam({ subjectId, name: name.trim() || `${subject} exam`, date, ...(time ? { time } : {}) });
+    const moved = await pullCardsBefore(subjectId, exam);
+    toast(moved ? `Exam added. ${moved} flashcard${moved === 1 ? '' : 's'} brought forward to come up before it.` : 'Exam added.', 'success');
+    onClose();
+  };
+  return (
+    <Modal
+      title="Add an exam"
+      onClose={onClose}
+      footer={
+        <button className="btn primary" disabled={!subjectId || !date} onClick={save}>
+          Add exam
+        </button>
+      }
+    >
+      <div className="form-grid">
+        <label>
+          Subject
+          <select className="input" value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
+            {subjects.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Paper
+          <input className="input" placeholder="e.g. Paper 1: Contract" value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
+        <label>
+          Date
+          <input className="input" type="date" value={date} min={dayKey()} onChange={(e) => setDate(e.target.value)} required />
+        </label>
+        <label>
+          Start time
+          <input className="input" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+        </label>
+      </div>
     </Modal>
   );
 }

@@ -7585,3 +7585,94 @@ body.block-dragging * {
     transform: translateX(50%);
   }
 }
+
+/* ------------------------------------------------------------------ exams */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px 16px;
+}
+.form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.rev-exam {
+  margin: 0;
+  padding: 6px 8px;
+  border-left: 3px solid var(--ink, var(--rule));
+  background: var(--accent-soft);
+  font-size: 14px;
+}
+.rev-exams {
+  margin: 22px 0 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule);
+}
+.rev-exams-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.rev-exams-head h2 {
+  font-family: var(--display);
+  font-size: 22px;
+  margin: 0;
+}
+.exam-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.exam-list li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.exam-days {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 52px;
+  padding: 4px 6px;
+  border: 1.5px solid var(--ink, var(--rule));
+  line-height: 1.05;
+}
+.exam-days strong {
+  font-family: var(--poster);
+  font-size: 22px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.exam-days small {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.exam-what {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cal-exam {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: var(--radius);
+  background: var(--subject, var(--text));
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.day-class.exam b {
+  font-family: var(--display);
+}

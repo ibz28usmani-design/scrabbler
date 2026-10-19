@@ -13,6 +13,7 @@ import { mdToHtml } from '../lib/markdown';
 import { nav, openModal } from '../lib/nav';
 import { PAGE_H } from '../lib/paper';
 import { freeSlots, planWeek, type PlanBlock } from '../lib/revisionPlan';
+import { nextExams, targetMinutes } from '../lib/exams';
 import { getSettings, updateSettings, useSettings } from '../lib/settings';
 import { makeCard } from '../lib/study';
 import { fmtMinutes, minutesByDay, weekDays, weekMinutes, weekStart } from '../lib/studyTime';
@@ -897,20 +898,23 @@ function Plan() {
     const folders = await db.folders.toArray();
     const decks = new Map((await db.decks.toArray()).map((d) => [d.id, d.folderId]));
     const weak = await weakSpots((deckId) => folderSubject(folders, decks.get(deckId)));
-    return { today, monday, sessions, lessons, cal, weak };
+    const exams = await db.exams.toArray();
+    return { today, monday, sessions, lessons, cal, weak, exams };
   }, []);
 
   const build = useMemo(
     () => () => {
       if (!data) return;
-      const target = settings.weeklyTargetHours * 60;
       const byDay = minutesByDay(data.sessions);
       const nextMonday = addDays(data.monday, 7);
+      // A subject with an exam coming gets more of the week (lib/exams.ts).
+      const upcoming = nextExams(data.exams, which === 'this' ? data.today : nextMonday);
+      const target = (id: string) => targetMinutes(settings.weeklyTargetHours, upcoming.get(id), which === 'this' ? data.today : nextMonday);
       const now = new Date();
       // Today only from the next quarter hour on.
       const nowMin = Math.ceil((now.getHours() * 60 + now.getMinutes()) / 15) * 15;
       const days = which === 'this' ? weekDays(data.monday).filter((d) => d >= data.today) : weekDays(nextMonday);
-      const remaining = new Map(settings.revisionSubjects.map((id) => [id, which === 'this' ? Math.max(0, target - weekMinutes(byDay.get(id), data.monday)) : target]));
+      const remaining = new Map(settings.revisionSubjects.map((id) => [id, which === 'this' ? Math.max(0, target(id) - weekMinutes(byDay.get(id), data.monday)) : target(id)]));
       const slots = new Map(days.map((d) => [d, freeSlots(d, data.lessons, data.cal, d === data.today ? nowMin : 0)]));
       const topics = new Map(settings.revisionSubjects.map((id) => [id, data.weak.filter((w) => w.subjectId === id).slice(0, 6).map((w) => w.label)]));
       setOwed([...remaining.values()].reduce((a, b) => a + b, 0));
@@ -928,7 +932,7 @@ function Plan() {
     <section className="tutor-tool">
       <header className="tutor-lede">
         <h2>The week’s revision</h2>
-        <p>Each subject’s {settings.weeklyTargetHours} hours, in blocks fitted around your lessons and spread across the days, with your weakest topics first.</p>
+        <p>Each subject’s {settings.weeklyTargetHours} hours — more as its exam nears — in blocks fitted around your lessons and spread across the days, with your weakest topics first.</p>
         <Segmented
           value={which}
           onChange={setWhich}
