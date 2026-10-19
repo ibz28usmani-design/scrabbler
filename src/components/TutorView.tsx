@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { db, getTermCalendar, uid, type TutorTool } from '../db';
+import { db, getTermCalendar, uid, type PastPaper, type TutorTool } from '../db';
 import type { Content } from '../lib/gemini';
 import { dayKey, fmtClock } from '../lib/dates';
 import { toast, toastError } from '../lib/events';
@@ -41,16 +41,18 @@ import { useStudyPresence } from '../lib/useStudyPresence';
 import { addReminder } from './RemindersView';
 import { PageHead } from './PageHead';
 import { AnswerBox, answerText, emptyAnswer, type Answer } from './AnswerBox';
-import { Segmented, Spinner } from './ui';
-import { ICards, ISend, ISparkle } from './Icons';
+import { addPastPaper, deletePastPaper, markAgainstScheme, partsOf } from '../lib/pastPapers';
+import { confirmDialog, Modal, Segmented, Spinner, useObjectUrl } from './ui';
+import { ICards, ISend, ISparkle, ITrash, IUpload } from './Icons';
 
-type Tab = 'blurt' | 'feynman' | 'exam' | 'mock' | 'socratic' | 'weak' | 'plan';
+type Tab = 'blurt' | 'feynman' | 'exam' | 'mock' | 'papers' | 'socratic' | 'weak' | 'plan';
 
 const TABS: { value: Tab; label: string }[] = [
   { value: 'blurt', label: 'Blurt' },
   { value: 'feynman', label: 'Feynman' },
   { value: 'exam', label: 'Exam question' },
   { value: 'mock', label: 'Mock paper' },
+  { value: 'papers', label: 'Past papers' },
   { value: 'socratic', label: 'Socratic' },
   { value: 'weak', label: 'Weak spots' },
   { value: 'plan', label: 'Plan' },
@@ -152,6 +154,8 @@ export function TutorView({ narrow, showSidebarToggle }: { narrow: boolean; show
           <Exam key={subjectId} s={setup} />
         ) : tab === 'mock' ? (
           <Mock key={subjectId} s={setup} />
+        ) : tab === 'papers' ? (
+          <Papers key={subjectId} s={setup} />
         ) : tab === 'socratic' ? (
           <Socratic key={`${subjectId}:${seed}`} s={setup} seed={seed} />
         ) : tab === 'weak' ? (
@@ -384,7 +388,7 @@ function MarkView({ m, q }: { m: ExamMark; q: ExamQuestion }) {
     <div className="tutor-result">
       <div className="tutor-score">
         <span className="tutor-score-num">{m.mark}</span>
-        <span className="tutor-score-of">/ {q.marks}</span>
+        <span className="tutor-score-of">/ {q.marks || m.outOf}</span>
         {m.level && <span className="tutor-level">{m.level}</span>}
       </div>
       {m.objectives.length > 0 && (
@@ -621,6 +625,195 @@ function Mock({ s }: { s: Setup }) {
           <span className="tutor-level">
             {Math.round((got / Math.max(1, max)) * 100)}% · about a {grade((got / Math.max(1, max)) * 100)} (a rough guide, not real boundaries)
           </span>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------- past papers
+
+/**
+ * Real past papers: added as PDFs (paper and mark scheme), sat against the
+ * clock, and marked question by question against the board's own scheme.
+ */
+function Papers({ s }: { s: Setup }) {
+  const papers = useLiveQuery(() => db.papers.where('subjectId').equals(s.subjectId).reverse().sortBy('createdAt'), [s.subjectId]);
+  const [adding, setAdding] = useState(false);
+  const [sitting, setSitting] = useState<PastPaper | null>(null);
+  if (sitting) return <SitPaper s={s} paper={sitting} onBack={() => setSitting(null)} />;
+  return (
+    <section className="tutor-tool">
+      <header className="tutor-lede">
+        <h2>Past papers</h2>
+        <p>Add a real {s.board} paper and its mark scheme as PDFs (from the board’s website). Sit it against the clock, by keyboard or Pencil, and each answer is marked against what the mark scheme actually says.</p>
+        <button className="btn primary" onClick={() => setAdding(true)}>
+          <IUpload size={16} /> Add a past paper
+        </button>
+      </header>
+      {papers && !papers.length && <p className="muted">No {s.subject} papers yet.</p>}
+      {!!papers?.length && (
+        <ul className="paper-list">
+          {papers.map((p) => (
+            <li key={p.id}>
+              <span className="paper-what">
+                <strong>{p.title}</strong>
+                <span className="muted small">
+                  {p.minutes} minutes · {p.parts?.length ? `${p.parts.length} questions, ${p.parts.reduce((a, q) => a + q.marks, 0)} marks` : 'sat as one answer'} · {p.markScheme ? 'with mark scheme' : 'no mark scheme'}
+                </span>
+              </span>
+              <button className="btn small primary" onClick={() => setSitting(p)}>
+                Sit it
+              </button>
+              <button
+                className="icon-btn small"
+                aria-label={`Delete ${p.title}`}
+                onClick={async () => {
+                  if (await confirmDialog(`Delete ${p.title} and its PDFs from this device?`)) await deletePastPaper(p.id);
+                }}
+              >
+                <ITrash size={15} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {adding && <AddPaper s={s} onClose={() => setAdding(false)} />}
+    </section>
+  );
+}
+
+function AddPaper({ s, onClose }: { s: Setup; onClose: () => void }) {
+  const [title, setTitle] = useState('');
+  const [minutes, setMinutes] = useState(120);
+  const [paper, setPaper] = useState<File | null>(null);
+  const [scheme, setScheme] = useState<File | null>(null);
+  const [busy, setBusy] = useState('');
+  const add = async () => {
+    if (!paper) return;
+    try {
+      const p = await addPastPaper({ title, subjectId: s.subjectId, minutes, paper, scheme }, setBusy);
+      toast(p.parts?.length ? `${p.title}: ${p.parts.length} questions found` : `${p.title} added; it couldn’t be split, so it is sat as one answer`, 'success');
+      onClose();
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setBusy('');
+    }
+  };
+  return (
+    <Modal
+      title="Add a past paper"
+      onClose={() => !busy && onClose()}
+      footer={
+        <button className="btn primary" disabled={!paper || !!busy} onClick={add}>
+          {busy ? <Spinner size={14} /> : null} {busy || 'Add paper'}
+        </button>
+      }
+    >
+      <div className="form-grid">
+        <label>
+          Name
+          <input className="input" placeholder="e.g. June 2024 Paper 1" value={title} onChange={(e) => setTitle(e.target.value)} />
+        </label>
+        <label>
+          Time allowed (minutes)
+          <input className="input" type="number" min={10} max={240} value={minutes} onChange={(e) => setMinutes(Math.max(10, Math.min(240, Number(e.target.value) || 120)))} />
+        </label>
+        <label>
+          Question paper (PDF)
+          <input className="input" type="file" accept="application/pdf,.pdf" onChange={(e) => setPaper(e.target.files?.[0] ?? null)} />
+        </label>
+        <label>
+          Mark scheme (PDF, optional)
+          <input className="input" type="file" accept="application/pdf,.pdf" onChange={(e) => setScheme(e.target.files?.[0] ?? null)} />
+        </label>
+      </div>
+    </Modal>
+  );
+}
+
+function SitPaper({ s, paper, onBack }: { s: Setup; paper: PastPaper; onBack: () => void }) {
+  const parts = partsOf(paper);
+  const [answers, setAnswers] = useState<Answer[]>(() => parts.map(emptyAnswer));
+  const [marks, setMarks] = useState<(ExamMark | null)[]>([]);
+  const [busy, setBusy] = useState('');
+  const [started, setStarted] = useState(false);
+  const pdf = useLiveQuery(() => (paper.paperBlobId ? db.blobs.get(paper.paperBlobId) : undefined), [paper.paperBlobId]);
+  const pdfUrl = useObjectUrl(pdf?.blob);
+  const finished = marks.length === parts.length;
+  const got = marks.reduce((a, m) => a + (m?.mark ?? 0), 0);
+  const max = marks.reduce((a, m, i) => a + (parts[i].marks || m?.outOf || 0), 0);
+
+  const submit = async () => {
+    const out: (ExamMark | null)[] = [];
+    try {
+      for (let i = 0; i < parts.length; i++) {
+        setBusy(`Marking question ${parts[i].num || i + 1} against the mark scheme (${i + 1} of ${parts.length})…`);
+        const text = await answerText(answers[i]);
+        out.push(text ? await markAgainstScheme(s, parts[i], text) : { mark: 0, outOf: parts[i].marks, level: '', objectives: [], strengths: [], improvements: ['Not answered.'], model: '', gaps: [] });
+        setMarks([...out]);
+      }
+      const total = out.reduce((a, m) => a + (m?.mark ?? 0), 0);
+      const outOf = out.reduce((a, m, i) => a + (parts[i].marks || m?.outOf || 0), 0);
+      await saveAttempt({ tool: 'paper', subjectId: s.subjectId, topic: paper.title, prompt: paper.id, answer: '', feedback: `${total}/${outOf}`, score: total, max: outOf, gaps: out.flatMap((m) => m?.gaps ?? []) });
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  return (
+    <section className="tutor-tool">
+      <header className="tutor-lede">
+        <button className="link-btn" onClick={onBack}>
+          ← All past papers
+        </button>
+        <h2>{paper.title}</h2>
+        {pdfUrl && (
+          <a className="btn small" href={pdfUrl} target="_blank" rel="noreferrer">
+            Open the paper (PDF)
+          </a>
+        )}
+      </header>
+      <article className="exam-paper">
+        <div className="exam-meta">
+          <span>{paper.markScheme ? 'Marked against the board’s mark scheme' : 'No mark scheme: marked to the board’s conventions'}</span>
+          {started && !finished ? <Countdown minutes={paper.minutes} onDone={() => toast('Time is up — pens down.', 'info')} /> : <span>{paper.minutes} minutes</span>}
+        </div>
+        {!started && !finished && (
+          <button className="btn primary" onClick={() => setStarted(true)}>
+            Turn over and start
+          </button>
+        )}
+        {(started || finished) &&
+          parts.map((q, i) => (
+            <div key={i} className="mock-q">
+              <div className="mock-q-head">
+                {q.num && <span className="mock-q-num">{q.num}</span>}
+                {q.marks > 0 && <span className="mock-q-marks">[{q.marks} marks]</span>}
+              </div>
+              <Md md={q.question} />
+              {!marks[i] ? (
+                <AnswerBox value={answers[i]} onChange={(a) => setAnswers((all) => all.map((x, j) => (j === i ? a : x)))} placeholder="Your answer…" rows={Math.min(16, 3 + (q.marks || 12))} />
+              ) : (
+                <MarkView m={marks[i]!} q={{ question: q.question, marks: q.marks, minutes: 0 }} />
+              )}
+            </div>
+          ))}
+      </article>
+      {busy && <Busy>{busy}</Busy>}
+      {started && !finished && !busy && (
+        <button className="btn primary" onClick={submit}>
+          Hand in the paper
+        </button>
+      )}
+      {finished && (
+        <div className="tutor-score big">
+          <span className="tutor-score-num">{got}</span>
+          <span className="tutor-score-of">/ {max}</span>
+          <span className="tutor-level">{Math.round((got / Math.max(1, max)) * 100)}% on the board’s own mark scheme</span>
         </div>
       )}
     </section>

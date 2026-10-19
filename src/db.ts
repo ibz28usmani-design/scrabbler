@@ -235,7 +235,7 @@ export interface StudySession {
   label?: string;
 }
 
-export type TutorTool = 'blurt' | 'feynman' | 'exam' | 'socratic' | 'mock';
+export type TutorTool = 'blurt' | 'feynman' | 'exam' | 'socratic' | 'mock' | 'paper';
 
 /** One go at a tutor exercise, kept so weak spots can be found across them. */
 export interface TutorAttempt {
@@ -303,9 +303,20 @@ export interface PastPaper {
   /** The board's mark scheme, as read from its PDF; empty when there isn't one. */
   markScheme: string;
   minutes: number;
+  /** The paper split into its questions, each with its part of the mark scheme. */
+  parts?: PaperPart[];
   paperBlobId?: ID;
   schemeBlobId?: ID;
   createdAt: number;
+}
+
+export interface PaperPart {
+  /** As printed: "1", "2(a)", "03.2". */
+  num: string;
+  question: string;
+  marks: number;
+  /** This question's mark scheme, as the board wrote it; empty when there isn't one. */
+  scheme: string;
 }
 
 /** A note or deck published read-only through the push server (lib/share.ts). */
