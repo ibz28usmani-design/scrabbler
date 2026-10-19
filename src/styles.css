@@ -7498,3 +7498,50 @@ body.block-dragging * {
     bottom: calc(64px + env(safe-area-inset-bottom));
   }
 }
+
+/* ------------------------------------------------------------------ search */
+.search-help {
+  display: block;
+  line-height: 1.6;
+}
+.search-help code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--accent-soft);
+  padding: 0 3px;
+  border-radius: var(--radius);
+}
+.searching .note-meta {
+  align-items: flex-start;
+}
+.searching .note-snippet {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+.note-row mark {
+  background: var(--mark);
+  color: inherit;
+  padding: 0 1px;
+}
+.note-row.on mark {
+  background: color-mix(in srgb, var(--mark) 55%, transparent);
+}
+.note-folder {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--poster);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.list-more {
+  display: flex;
+  justify-content: center;
+  padding: 14px 0 24px;
+}
+.note-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

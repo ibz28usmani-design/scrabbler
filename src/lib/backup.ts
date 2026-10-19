@@ -57,6 +57,7 @@ export async function importBackup(file: Blob) {
   });
   const { reindexAll } = await import('./notes');
   await reindexAll();
+  (await import('./search')).resetSearchIndex();
 }
 
 export async function eraseEverything() {
