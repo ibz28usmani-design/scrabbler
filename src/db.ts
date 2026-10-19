@@ -501,6 +501,8 @@ export async function initDb() {
   }
   const { installVersionHooks } = await import('./lib/versions');
   installVersionHooks();
+  const { installSyncHooks } = await import('./lib/sync');
+  installSyncHooks();
   const old = await db.notes.where('deletedAt').below(Date.now() - THIRTY_DAYS).toArray();
   if (old.length) await deleteNotesForever(old.map((n) => n.id));
   await sweepAttachments();

@@ -49,6 +49,41 @@ look for the nearest equivalent.
 
 Do the last step on each device you want notified (iPad and iPhone).
 
+## Sync and sharing (optional, about 3 minutes)
+
+The same worker can keep your notes in step between your iPad, iPhone and
+Mac, and publish a note or deck as a read-only page you can send to a
+classmate. Both need a free D1 database:
+
+1. In Cloudflare open **Storage & Databases → D1 → Create** and name it
+   `scrabbler-sync`.
+2. In your worker open **Bindings → Add binding → D1 database**: variable
+   name `SYNC`, database `scrabbler-sync`. (The worker creates its tables on
+   first use.)
+3. Paste in the latest server code again (step 3 above), unless the worker
+   deploys from GitHub.
+4. Open your worker's address: it should now say *"D1 database bound as
+   SYNC: yes"*.
+5. In Scrabbler open **Settings → Sync between devices**, choose a
+   passphrase, and tap **Turn on sync**. Do the same on each device, with the
+   same server address, password and passphrase.
+
+Sync is end-to-end encrypted: each device encrypts everything with a key made
+from your passphrase (AES-256-GCM, PBKDF2) before sending it, so the
+database only ever holds ciphertext. The passphrase never leaves your
+devices; if you lose it, the synced copy can't be read (each device keeps its
+own notes, and backups still work). When two devices change the same note
+before syncing, the later change wins and the other is kept in that note's
+version history.
+
+Shared pages are the exception: they are published so that anyone with the
+link can read them, served with every script and outside request blocked.
+Take one down from the note's or deck's Share menu.
+
+Free plan limits: D1 gives 5 GB and 100,000 row writes a day, far more than
+one person's notes need. Large files (lecture recordings) are stored in
+1.5 MB parts.
+
 ## Deploy from GitHub (optional)
 
 Instead of pasting the code after each change, GitHub can deploy the worker
@@ -66,7 +101,9 @@ whenever `push-server/` changes on the main branch
 4. **Pin the KV namespace (recommended).** In Cloudflare open **Storage &
    Databases → KV**, copy the ID of the namespace bound to the worker as
    `SCRABBLER`, and add it in the same GitHub page under the **Variables** tab
-   as `SCRABBLER_KV_ID`.
+   as `SCRABBLER_KV_ID`. If you set up sync, do the same for the D1 database
+   bound as `SYNC` (**Storage & Databases → D1**, its ID) as
+   `SCRABBLER_SYNC_ID`.
 5. **Turn off Cloudflare's own builds**, if you connected them before: in the
    worker open **Settings → Build** and disconnect the repository, so pushes
    aren't built twice.

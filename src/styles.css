@@ -7945,3 +7945,31 @@ body.block-dragging * {
   flex-direction: column;
   gap: 2px;
 }
+
+/* ------------------------------------------------------------------ sync */
+.join-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0;
+}
+.join-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: var(--raised);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  cursor: pointer;
+}
+.join-choice:hover {
+  background: var(--hover);
+}
+.join-choice span {
+  color: var(--muted);
+  font-size: 14px;
+}

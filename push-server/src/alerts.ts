@@ -11,6 +11,8 @@ export interface KV {
 export interface Env {
   SCRABBLER?: KV;
   PASSWORD?: string;
+  /** A D1 database for sync and shared pages (optional; see README). */
+  SYNC?: import('./sync').D1;
 }
 
 /** One alert at a fixed time — a reminder. */

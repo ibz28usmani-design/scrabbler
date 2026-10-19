@@ -28,6 +28,7 @@ navigator.storage?.persist?.().catch(() => {});
 initDb()
   .catch((e) => console.error('DB init failed', e))
   .finally(() => {
+    import('./lib/sync').then((m) => m.startAutoSync()).catch(() => {});
     createRoot(document.getElementById('root')!).render(
       <StrictMode>
         <App />

@@ -10,6 +10,7 @@ import { confirmDialog, DraftInput, Modal, Segmented, Spinner } from './ui';
 import { ICheck, IDownload, IUpload } from './Icons';
 import { NotificationSettings } from './NotificationSettings';
 import { FeatureSettings } from './FeatureSettings';
+import { SyncSettings } from './SyncSettings';
 import { exportVault, importVault } from '../lib/vault';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
@@ -346,6 +347,8 @@ export function SettingsModal() {
       </section>
 
       <NotificationSettings />
+
+      <SyncSettings />
 
       <FeatureSettings />
 
