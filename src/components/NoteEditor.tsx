@@ -14,7 +14,7 @@ import { HighlightCard } from './HighlightCard';
 import { setSlashHost } from '../lib/slashCommands';
 import { nav, toggleSidebar, openModal, useNav } from '../lib/nav';
 import { Menu, useElementWidth, useMenu, confirmDialog } from './ui';
-import { IAa, IBook, IChecklist, IChevL, ICompose, IImage, IMic, IMore, IPencil, IPin, IRuled, ISidebar, ITable, ITrash, ICards, IDownload, IFolder, IClock } from './Icons';
+import { IAa, IBook, IChecklist, IChevL, ICompose, IImage, IMic, IMore, IPencil, IPin, IRuled, ISidebar, ITable, ITrash, ICards, IDownload, IFolder, IClock, IShare } from './Icons';
 import { NOTE_REPLACED } from '../lib/versions';
 import { lazyNamed } from '../lib/lazy';
 import { FocusButton } from './FocusMode';
@@ -31,6 +31,7 @@ export { editorExtensions };
 
 const ExportDialog = lazyNamed(() => import('./ExportDialog'), 'ExportDialog');
 const VersionHistory = lazyNamed(() => import('./VersionHistory'), 'VersionHistory');
+const ShareDialog = lazyNamed(() => import('./ShareDialog'), 'ShareDialog');
 
 function summarize(editor: Editor) {
   const text = editor.getText({ blockSeparator: '\n' });
@@ -49,6 +50,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
   const { notebookOpen, focus } = useNav();
   const [exporting, setExporting] = useState(false);
   const [history, setHistory] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [words, setWords] = useState(() => countWords(note.text ?? ''));
   // Below this the row cannot hold every action without pushing some off-screen.
   const paneRef = useRef<HTMLDivElement>(null);
@@ -338,6 +340,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
       <Suspense fallback={null}>
         {exporting && <ExportDialog note={note} onClose={() => setExporting(false)} />}
         {history && <VersionHistory note={note} onClose={() => setHistory(false)} />}
+        {sharing && <ShareDialog kind="note" refId={note.id} title={note.title} onClose={() => setSharing(false)} />}
       </Suspense>
 
       {fmtAnchor && (
@@ -412,6 +415,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
             { label: 'Make a quiz', icon: <ICards size={18} />, onClick: () => openModal({ type: 'generateDeck', from: { kind: 'note', noteId: note.id }, quiz: true }) },
             { label: 'Save to device…', icon: <IDownload size={18} />, onClick: () => setExporting(true) },
             { label: 'Version history…', icon: <IClock size={18} />, onClick: () => setHistory(true) },
+            { label: 'Share…', icon: <IShare size={18} />, onClick: () => setSharing(true) },
             { divider: true, label: '' },
             { label: 'Delete note', icon: <ITrash size={18} />, danger: true, onClick: deleteNote },
           ]}

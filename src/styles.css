@@ -7973,3 +7973,24 @@ body.block-dragging * {
   color: var(--muted);
   font-size: 14px;
 }
+
+/* ------------------------------------------------------------------ sharing */
+.share-options {
+  display: grid;
+  gap: 14px;
+}
+.share-options section {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.share-options h4 {
+  margin: 0 0 4px;
+  font-family: var(--display);
+  font-size: 17px;
+}
+.share-url {
+  width: 100%;
+  margin: 6px 0 8px;
+  font-family: var(--mono);
+  font-size: 13px;
+}
