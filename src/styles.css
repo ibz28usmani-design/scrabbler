@@ -7338,3 +7338,125 @@ body.block-dragging * {
 .plan-min {
   color: var(--muted);
 }
+
+/* ------------------------------------------------------------------ toasts with an action */
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.toast-action {
+  margin-left: auto;
+  flex: none;
+  font: inherit;
+  font-weight: 700;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: var(--radius);
+  padding: 4px 10px;
+  min-height: 32px;
+  cursor: pointer;
+}
+
+/* ------------------------------------------------------------------ version history */
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.versions {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) 1fr;
+  gap: 16px;
+  min-height: 320px;
+  max-height: min(64vh, 640px);
+}
+.version-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 4px 0 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--line);
+}
+.version-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 9px 8px;
+  cursor: pointer;
+}
+.version-row:hover {
+  background: var(--hover);
+}
+.version-row.on {
+  background: var(--accent-fill);
+  color: var(--on-accent);
+}
+.version-when {
+  font-weight: 700;
+  font-size: 14px;
+}
+.version-why,
+.version-title {
+  font-size: 13px;
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.version-preview {
+  overflow-y: auto;
+  min-width: 0;
+}
+.version-summary {
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.version-lines {
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.vline {
+  display: flex;
+  gap: 8px;
+  padding: 1px 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.vmark {
+  flex: none;
+  width: 1ch;
+  font-weight: 700;
+}
+.vline.add {
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+}
+.vline.del {
+  background: color-mix(in srgb, var(--danger) 13%, transparent);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--danger) 60%, transparent);
+}
+@media (max-width: 699px) {
+  .versions {
+    grid-template-columns: 1fr;
+    max-height: none;
+  }
+  .version-list {
+    max-height: 30vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+}

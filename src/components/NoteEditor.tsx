@@ -13,7 +13,9 @@ import { BlockHandle } from './BlockHandle';
 import { setSlashHost } from '../lib/slashCommands';
 import { nav, toggleSidebar, openModal, useNav } from '../lib/nav';
 import { Menu, useElementWidth, useMenu, confirmDialog } from './ui';
-import { IAa, IBook, IChecklist, IChevL, ICompose, IImage, IMic, IMore, IPencil, IPin, IRuled, ISidebar, ITable, ITrash, ICards, IDownload, IFolder } from './Icons';
+import { IAa, IBook, IChecklist, IChevL, ICompose, IImage, IMic, IMore, IPencil, IPin, IRuled, ISidebar, ITable, ITrash, ICards, IDownload, IFolder, IClock } from './Icons';
+import { VersionHistory } from './VersionHistory';
+import { NOTE_REPLACED } from '../lib/versions';
 import { ExportDialog } from './ExportDialog';
 import { FocusButton } from './FocusMode';
 import { toast } from '../lib/events';
@@ -43,6 +45,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
   const noteId = note.id;
   const { notebookOpen, focus } = useNav();
   const [exporting, setExporting] = useState(false);
+  const [history, setHistory] = useState(false);
   const [words, setWords] = useState(() => countWords(note.text ?? ''));
   // Below this the row cannot hold every action without pushing some off-screen.
   const paneRef = useRef<HTMLDivElement>(null);
@@ -105,6 +108,20 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
       document.removeEventListener('visibilitychange', onHide);
       flush();
     };
+  }, [editor, noteId]);
+
+  // A version restored, or an AI rewrite undone, from outside the editor: show it, and drop any pending save of the old text.
+  useEffect(() => {
+    const onReplaced = (e: Event) => {
+      const { noteId: id, content } = (e as CustomEvent).detail ?? {};
+      if (id !== noteId || !editor || editor.isDestroyed) return;
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = 0;
+      editor.commands.setContent(content as any, { emitUpdate: false });
+      setWords(countWords(editor.getText({ blockSeparator: '\n' })));
+    };
+    window.addEventListener(NOTE_REPLACED, onReplaced);
+    return () => window.removeEventListener(NOTE_REPLACED, onReplaced);
   }, [editor, noteId]);
 
   // Focus a brand-new empty note — but not a handwritten one, where focusing the
@@ -315,6 +332,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
         {words.toLocaleString()} {words === 1 ? 'word' : 'words'} · {Math.max(1, Math.round(words / 200))} min read
       </div>
       {exporting && <ExportDialog note={note} onClose={() => setExporting(false)} />}
+      {history && <VersionHistory note={note} onClose={() => setHistory(false)} />}
 
       {fmtAnchor && (
         <FormatPanel anchor={fmtAnchor} onClose={closeFmt}>
@@ -387,6 +405,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
             { label: 'Make flashcards', icon: <ICards size={18} />, onClick: () => openModal({ type: 'generateDeck', from: { kind: 'note', noteId: note.id } }) },
             { label: 'Make a quiz', icon: <ICards size={18} />, onClick: () => openModal({ type: 'generateDeck', from: { kind: 'note', noteId: note.id }, quiz: true }) },
             { label: 'Save to device…', icon: <IDownload size={18} />, onClick: () => setExporting(true) },
+            { label: 'Version history…', icon: <IClock size={18} />, onClick: () => setHistory(true) },
             { divider: true, label: '' },
             { label: 'Delete note', icon: <ITrash size={18} />, danger: true, onClick: deleteNote },
           ]}

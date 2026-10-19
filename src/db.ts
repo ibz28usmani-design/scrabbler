@@ -200,6 +200,8 @@ export interface Card {
   sched: SchedState;
   createdAt: number;
   suspended?: boolean;
+  /** The note it was made from, for a card cut from a highlight. */
+  noteId?: ID;
 }
 
 export interface ReviewEntry {
@@ -259,6 +261,64 @@ export interface Meta {
   value: unknown;
 }
 
+/** Why a note's earlier state was kept (lib/versions.ts). */
+export type VersionReason = 'edit' | 'ai' | 'restore' | 'sync' | 'lecture';
+
+/** A note as it once was, kept so an edit, an AI rewrite or a sync can be undone. */
+export interface NoteVersion {
+  id: ID;
+  noteId: ID;
+  /** When the note looked like this (its updatedAt then). */
+  at: number;
+  /** When the copy was taken. */
+  takenAt: number;
+  reason: VersionReason;
+  /** What was about to happen, e.g. "Proofread". */
+  label?: string;
+  title: string;
+  text: string;
+  content: unknown;
+}
+
+/** An exam on a subject's calendar: revision, cards and the week's plan build toward it. */
+export interface Exam {
+  id: ID;
+  subjectId: string;
+  /** e.g. "Paper 1: Contract". */
+  name: string;
+  /** Its local day, "YYYY-MM-DD". */
+  date: string;
+  /** Start time, "HH:MM", when known. */
+  time?: string;
+  createdAt: number;
+}
+
+/** A real past paper and its mark scheme, sat in the tutor and marked against the scheme. */
+export interface PastPaper {
+  id: ID;
+  subjectId?: string;
+  title: string;
+  /** The paper's text, as read from its PDF or photos. */
+  questions: string;
+  /** The board's mark scheme, as read from its PDF; empty when there isn't one. */
+  markScheme: string;
+  minutes: number;
+  paperBlobId?: ID;
+  schemeBlobId?: ID;
+  createdAt: number;
+}
+
+/** A note or deck published read-only through the push server (lib/share.ts). */
+export interface Share {
+  id: ID;
+  kind: 'note' | 'deck';
+  refId: ID;
+  title: string;
+  url: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export const db = new Dexie('scrabbler') as Dexie & {
   folders: EntityTable<Folder, 'id'>;
   notes: EntityTable<Note, 'id'>;
@@ -277,6 +337,10 @@ export const db = new Dexie('scrabbler') as Dexie & {
   reminders: EntityTable<Reminder, 'id'>;
   studyTime: EntityTable<StudySession, 'id'>;
   tutor: EntityTable<TutorAttempt, 'id'>;
+  versions: EntityTable<NoteVersion, 'id'>;
+  exams: EntityTable<Exam, 'id'>;
+  papers: EntityTable<PastPaper, 'id'>;
+  shares: EntityTable<Share, 'id'>;
 };
 
 db.version(1).stores({
@@ -331,6 +395,15 @@ db.version(4)
     }
   });
 
+// Note history, exam dates, past papers and shared links.
+db.version(5).stores({
+  versions: 'id, noteId, takenAt',
+  exams: 'id, subjectId, date',
+  papers: 'id, subjectId, createdAt',
+  shares: 'id, refId',
+  cards: 'id, deckId, sched.due, noteId',
+});
+
 export function uid(): ID {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -369,6 +442,8 @@ export async function sweepAttachments(now = Date.now()) {
   if (!candidates.length) return 0;
   const used = new Set<ID>();
   await db.notes.each((n) => attachmentBlobIds(n.content).forEach((id) => used.add(id)));
+  // An earlier version may still show the file, and can be restored.
+  await db.versions.each((v) => attachmentBlobIds(v.content).forEach((id) => used.add(id)));
   const orphans = candidates.filter((id) => !used.has(id));
   await db.blobs.bulkDelete(orphans);
   return orphans.length;
@@ -413,6 +488,8 @@ export async function initDb() {
     const { welcomeNote } = await import('./lib/welcome');
     await db.notes.add(welcomeNote(folderId));
   }
+  const { installVersionHooks } = await import('./lib/versions');
+  installVersionHooks();
   const old = await db.notes.where('deletedAt').below(Date.now() - THIRTY_DAYS).toArray();
   if (old.length) await deleteNotesForever(old.map((n) => n.id));
   await sweepAttachments();
@@ -516,7 +593,7 @@ export function legacyInk(content: unknown, notePaper: Paper = 'blank'): InkDoc 
 }
 
 export async function deleteNotesForever(ids: ID[]) {
-  await db.transaction('rw', db.notes, db.blobs, async () => {
+  await db.transaction('rw', db.notes, db.blobs, db.versions, async () => {
     const gone = new Set(ids);
     const notes = await db.notes.bulkGet(ids);
     const blobIds = new Set(notes.flatMap((n) => (n ? [...(n.audioBlobId ? [n.audioBlobId] : []), ...attachmentBlobIds(n.content)] : [])));
@@ -526,7 +603,9 @@ export async function deleteNotesForever(ids: ID[]) {
       if (n.audioBlobId) blobIds.delete(n.audioBlobId);
       attachmentBlobIds(n.content).forEach((id) => blobIds.delete(id));
     });
+    await db.versions.each((v) => !gone.has(v.noteId) && attachmentBlobIds(v.content).forEach((id) => blobIds.delete(id)));
     await db.notes.bulkDelete(ids);
+    await db.versions.where('noteId').anyOf(ids).delete();
     await db.blobs.bulkDelete([...blobIds]);
   });
 }

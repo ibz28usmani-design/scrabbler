@@ -127,8 +127,20 @@ export function Toasts() {
   return createPortal(
     <div className="toasts" aria-live="polite">
       {toasts.map((t) => (
-        <div key={t.id} className={`toast ${t.kind}`} onClick={() => dismiss(t.id)}>
+        <div key={t.id} className={`toast ${t.kind}`} role={t.kind === 'error' ? 'alert' : 'status'} onClick={() => dismiss(t.id)}>
           {t.text}
+          {t.action && (
+            <button
+              className="toast-action"
+              onClick={(e) => {
+                e.stopPropagation();
+                dismiss(t.id);
+                t.action!.run();
+              }}
+            >
+              {t.action.label}
+            </button>
+          )}
         </div>
       ))}
     </div>,

@@ -1,16 +1,22 @@
 import { useEffect, useState } from 'react';
 
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
 export interface Toast {
   id: number;
   text: string;
   kind: 'info' | 'error' | 'success';
+  action?: ToastAction;
 }
 
 let seq = 0;
 const listeners = new Set<(t: Toast) => void>();
 
-export function toast(text: string, kind: Toast['kind'] = 'info') {
-  const t = { id: ++seq, text, kind };
+export function toast(text: string, kind: Toast['kind'] = 'info', action?: ToastAction) {
+  const t: Toast = { id: ++seq, text, kind, ...(action ? { action } : {}) };
   listeners.forEach((l) => l(t));
 }
 
@@ -30,7 +36,8 @@ export function useToasts() {
   useEffect(() => {
     const on = (t: Toast) => {
       setToasts((ts) => [...ts.slice(-3), t]);
-      setTimeout(() => setToasts((ts) => ts.filter((x) => x.id !== t.id)), t.kind === 'error' ? 7000 : 4000);
+      // One with an action (Undo) stays long enough to reach it.
+      setTimeout(() => setToasts((ts) => ts.filter((x) => x.id !== t.id)), t.action ? 10000 : t.kind === 'error' ? 7000 : 4000);
     };
     listeners.add(on);
     return () => {

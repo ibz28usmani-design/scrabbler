@@ -6,6 +6,7 @@ import { hasTextKey } from '../lib/llm';
 import { mdToEditorHtml, mdToHtml } from '../lib/markdown';
 import { openModal } from '../lib/nav';
 import { toast, toastError } from '../lib/events';
+import { restoreVersion, snapshot } from '../lib/versions';
 import { Menu, Modal, Spinner, useMenu } from './ui';
 import { ICards, ICopy, ISparkle } from './Icons';
 
@@ -59,12 +60,23 @@ export function AIToolsButton({ editor, note }: { editor: Editor; note: Note }) 
     }
   };
 
-  const apply = (mode: 'replace' | 'insert') => {
+  const apply = async (mode: 'replace' | 'insert') => {
     if (!result?.md) return;
     const html = mdToEditorHtml(result.md);
+    // The note as it is now, from the editor (the saved copy may be a moment behind), so the change can be undone after the editor is closed.
+    const before = await snapshot(
+      { id: note.id, title: note.title, text: editor.getText({ blockSeparator: '\n' }), content: editor.getJSON(), updatedAt: Date.now() },
+      'ai',
+      result.title,
+    ).catch(() => null);
     if (mode === 'replace') editor.chain().focus().insertContentAt(result.range, html).run();
     else editor.chain().focus().insertContentAt(result.range.to, html).run();
     setResult(null);
+    if (before)
+      toast(`${result.title} applied`, 'success', {
+        label: 'Undo',
+        run: () => restoreVersion(before).catch(toastError),
+      });
   };
 
   const tools = Object.entries(WRITING_TOOLS) as [WritingTool, (typeof WRITING_TOOLS)[WritingTool]][];
