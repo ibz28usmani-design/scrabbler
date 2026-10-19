@@ -1,9 +1,13 @@
 import { useSyncExternalStore } from 'react';
 
-export type View = 'folder' | 'search' | 'deleted' | 'study' | 'calendar' | 'reminders' | 'graph' | 'revision' | 'tutor';
+export type View = 'folder' | 'search' | 'deleted' | 'today' | 'study' | 'calendar' | 'reminders' | 'graph' | 'revision' | 'tutor';
 
 /** Views that fill the main area on their own, without the note list and editor. */
-export const PAGE_VIEWS: View[] = ['study', 'calendar', 'reminders', 'graph', 'revision', 'tutor'];
+export const PAGE_VIEWS: View[] = ['today', 'study', 'calendar', 'reminders', 'graph', 'revision', 'tutor'];
+
+/** The three parts of Study, one place with tabs between them. */
+export const STUDY_VIEWS = ['revision', 'study', 'tutor'] as const;
+export type StudyTab = (typeof STUDY_VIEWS)[number];
 export type NotebookTab = 'sources' | 'chat' | 'studio';
 export type Pane = 'sidebar' | 'list' | 'editor';
 
@@ -39,14 +43,17 @@ export interface NavState {
 const KEY = 'scrabbler.nav';
 
 function initial(): NavState {
-  let saved: Partial<NavState> = {};
+  let saved: Partial<NavState> | null = null;
   try {
-    saved = JSON.parse(localStorage.getItem(KEY) || '{}');
+    saved = JSON.parse(localStorage.getItem(KEY) || 'null');
   } catch {
     /* ignore */
   }
+  // A first launch opens on Today; after that, wherever you left off.
+  const first = !saved;
+  saved ??= {};
   return {
-    view: saved.view && PAGE_VIEWS.includes(saved.view) ? saved.view : 'folder',
+    view: saved.view && PAGE_VIEWS.includes(saved.view) ? saved.view : first ? 'today' : 'folder',
     folderId: saved.folderId ?? null,
     noteId: saved.noteId ?? null,
     query: '',
@@ -77,6 +84,33 @@ export function nav(patch: Partial<NavState> | ((s: NavState) => Partial<NavStat
     /* ignore */
   }
   listeners.forEach((l) => l());
+}
+
+let lastStudy: StudyTab = 'revision';
+try {
+  const v = localStorage.getItem('scrabbler.lastStudy');
+  if ((STUDY_VIEWS as readonly string[]).includes(v ?? '')) lastStudy = v as StudyTab;
+} catch {
+  /* ignore */
+}
+
+/** Opens Study on whichever of its tabs was used last. */
+export function openStudy(tab?: StudyTab) {
+  const view = tab ?? lastStudy;
+  nav({ view, pane: 'list', drawer: false, ...(view === 'study' ? { deckId: null, session: null } : {}) });
+}
+
+export function lastStudyTab(): StudyTab {
+  return lastStudy;
+}
+
+export function rememberStudyTab(tab: StudyTab) {
+  lastStudy = tab;
+  try {
+    localStorage.setItem('scrabbler.lastStudy', tab);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function getNav() {

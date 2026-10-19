@@ -9,6 +9,7 @@ import { toast, toastError } from '../lib/events';
 import { confirmDialog, DraftInput, Modal, Segmented, Spinner } from './ui';
 import { ICheck, IDownload, IUpload } from './Icons';
 import { NotificationSettings } from './NotificationSettings';
+import { FeatureSettings } from './FeatureSettings';
 import { exportVault, importVault } from '../lib/vault';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
@@ -345,6 +346,8 @@ export function SettingsModal() {
       </section>
 
       <NotificationSettings />
+
+      <FeatureSettings />
 
       <section className="set-section">
         <h3>Your data</h3>

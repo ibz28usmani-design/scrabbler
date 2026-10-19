@@ -1,6 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useStudyPresence } from '../lib/useStudyPresence';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { isHidden, noteUse } from '../lib/usage';
+import { useSettings } from '../lib/settings';
 import { db, deleteSource, uid, type Chunk, type ChatMessage, type Citation, type Source, type StudioItem } from '../db';
 import { nav, openModal, useNav, type NotebookTab } from '../lib/nav';
 import { addDiscover, addFile, addText, addUrl, retrySource } from '../lib/sources';
@@ -592,7 +594,9 @@ function StudioTab({ folderId }: { folderId: string }) {
   const [view, setView] = useState<StudioItem | null>(null);
   const current = view ? items.find((i) => i.id === view.id) ?? view : null;
 
+  const { hiddenFeatures } = useSettings();
   const start = (kind: StudioItem['kind']) => {
+    noteUse(`studio:${kind}`);
     if (!hasTextKey()) {
       toast('Add an AI key in Settings to use Studio.', 'error');
       openModal({ type: 'settings' });
@@ -613,7 +617,7 @@ function StudioTab({ folderId }: { folderId: string }) {
   return (
     <div className="nb-body studio">
       <div className="studio-grid">
-        {STUDIO_TILES.map((t) => (
+        {STUDIO_TILES.filter((t) => !isHidden(`studio:${t.kind}`, hiddenFeatures)).map((t) => (
           <button key={t.kind} className={`studio-tile t-${t.kind}`} onClick={() => start(t.kind)}>
             <span className="studio-icon">{t.icon}</span>
             <span className="studio-label">{t.label}</span>

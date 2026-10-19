@@ -1,3 +1,4 @@
+import { noteUse } from '../lib/usage';
 import { useEffect, useRef, useState } from 'react';
 import { putBlob } from '../db';
 import { startRecording, geminiMime, type RecorderHandle } from '../lib/audio';
@@ -16,6 +17,7 @@ import { Modal, confirmDialog } from './ui';
 import { IMic, IPause, IPlay, IStop, IUpload } from './Icons';
 
 export function Recorder({ folderId }: { folderId: string }) {
+  useEffect(() => noteUse('lecture'), []);
   const [phase, setPhase] = useState<'setup' | 'recording' | 'saving'>('setup');
   const [title, setTitle] = useState('');
   const [context, setContext] = useState('');

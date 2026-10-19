@@ -1,7 +1,9 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Suspense, useEffect } from 'react';
 import { db, deleteNotesForever } from './db';
-import { closeModal, nav, PAGE_VIEWS, setSidebarInline, useNav } from './lib/nav';
+import { closeModal, nav, PAGE_VIEWS, setSidebarInline, STUDY_VIEWS, useNav } from './lib/nav';
+import { noteUse, type Feature } from './lib/usage';
+import { StudyTabs } from './components/StudyTabs';
 import { usePushSync } from './lib/calendarData';
 import { useApplyTheme } from './lib/theme';
 import { restoreNote } from './lib/notes';
@@ -21,6 +23,7 @@ const RevisionView = lazyNamed(() => import('./components/RevisionView'), 'Revis
 const GraphView = lazyNamed(() => import('./components/GraphView'), 'GraphView');
 const TutorView = lazyNamed(() => import('./components/TutorView'), 'TutorView');
 const StudyView = lazyNamed(() => import('./components/StudyView'), 'StudyView');
+const TodayView = lazyNamed(() => import('./components/TodayView'), 'TodayView');
 const NotebookPanel = lazyNamed(() => import('./components/NotebookPanel'), 'NotebookPanel');
 const SourceViewer = lazyNamed(() => import('./components/NotebookPanel'), 'SourceViewer');
 const SettingsModal = lazyNamed(() => import('./components/SettingsModal'), 'SettingsModal');
@@ -41,7 +44,7 @@ import { mdToHtml } from './lib/markdown';
 import { SafetyBanner } from './components/SafetyBanner';
 import { AiStatus } from './components/AiStatus';
 
-const PAGE_LABEL: Partial<Record<string, string>> = { calendar: 'Calendar', reminders: 'Reminders', revision: 'Revision', graph: 'the graph', tutor: 'the tutor' };
+const PAGE_LABEL: Partial<Record<string, string>> = { today: 'Today', calendar: 'Calendar', reminders: 'Reminders', revision: 'Revision', graph: 'the graph', tutor: 'the tutor' };
 
 export default function App() {
   useApplyTheme();
@@ -68,6 +71,14 @@ export default function App() {
     return () => navigator.serviceWorker?.removeEventListener('message', onMsg);
   }, []);
   const note = useLiveQuery(() => (s.noteId ? db.notes.get(s.noteId) : undefined), [s.noteId]);
+
+  // What gets used, for Settings → Sidebar (lib/usage.ts).
+  useEffect(() => {
+    if (PAGE_VIEWS.includes(s.view)) noteUse(s.view as Feature);
+  }, [s.view]);
+  useEffect(() => {
+    if (s.notebookOpen) noteUse('notebook');
+  }, [s.notebookOpen]);
 
   // Keep the selected folder valid.
   useEffect(() => {
@@ -162,8 +173,11 @@ export default function App() {
       {showStudy && (
         <main className="main study-main">
           <ErrorBoundary label={PAGE_LABEL[s.view] ?? 'Study'} key={s.view}>
+            {(STUDY_VIEWS as readonly string[]).includes(s.view) && <StudyTabs />}
             <Suspense fallback={<Loading />}>
-            {s.view === 'calendar' ? (
+            {s.view === 'today' ? (
+              <TodayView narrow={narrow} showSidebarToggle={!showSidebar} />
+            ) : s.view === 'calendar' ? (
               <CalendarView narrow={narrow} showSidebarToggle={!showSidebar} />
             ) : s.view === 'reminders' ? (
               <RemindersView narrow={narrow} showSidebarToggle={!showSidebar} />
