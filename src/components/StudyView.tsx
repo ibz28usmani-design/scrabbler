@@ -138,7 +138,7 @@ function StudyHome({ narrow, showSidebarToggle }: { narrow: boolean; showSidebar
     <div className="study">
       <div className="study-head">
         {narrow ? (
-          <button className="icon-btn accent" onClick={() => nav({ pane: 'sidebar' })}>
+          <button aria-label="Folders" className="icon-btn accent" onClick={() => nav({ pane: 'sidebar' })}>
             <IChevL /> <span className="back-label">Folders</span>
           </button>
         ) : (
@@ -232,7 +232,7 @@ function DeckDetail({ deckId }: { deckId: string }) {
   return (
     <div className="study">
       <div className="study-head">
-        <button className="icon-btn accent" onClick={() => nav({ deckId: null })}>
+        <button aria-label="Decks" className="icon-btn accent" onClick={() => nav({ deckId: null })}>
           <IChevL /> <span className="back-label">Decks</span>
         </button>
         <span className="spacer" />

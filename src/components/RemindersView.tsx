@@ -210,11 +210,11 @@ export function RemindersView({ narrow, showSidebarToggle }: { narrow: boolean; 
       <div className="study-head">
         {narrow ? (
           showMain ? (
-            <button className="icon-btn accent" onClick={() => setShowMain(false)}>
+            <button aria-label="Lists" className="icon-btn accent" onClick={() => setShowMain(false)}>
               <IChevL /> <span className="back-label">Lists</span>
             </button>
           ) : (
-            <button className="icon-btn accent" onClick={() => nav({ pane: 'sidebar' })}>
+            <button aria-label="Folders" className="icon-btn accent" onClick={() => nav({ pane: 'sidebar' })}>
               <IChevL /> <span className="back-label">Folders</span>
             </button>
           )

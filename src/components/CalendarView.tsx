@@ -44,7 +44,7 @@ export function CalendarView({ narrow, showSidebarToggle }: { narrow: boolean; s
     <div className="study calendar">
       <div className="study-head">
         {narrow ? (
-          <button className="icon-btn accent" onClick={() => nav({ pane: 'sidebar' })}>
+          <button aria-label="Folders" className="icon-btn accent" onClick={() => nav({ pane: 'sidebar' })}>
             <IChevL /> <span className="back-label">Folders</span>
           </button>
         ) : (

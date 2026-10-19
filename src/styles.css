@@ -5261,7 +5261,7 @@ body.block-dragging * {
 }
 /* Today is circled in red pen. */
 .cal-cell.today .cal-num {
-  color: var(--n-red);
+  color: var(--cal-today, var(--n-red));
   border: 2px solid var(--n-red);
   border-radius: 52% 46% 55% 44% / 48% 55% 45% 52%;
   transform: rotate(-8deg);
@@ -7521,12 +7521,36 @@ body.block-dragging * {
   -webkit-box-orient: vertical;
 }
 .note-row mark {
-  background: var(--mark);
-  color: inherit;
+  background: var(--search-mark);
+  color: var(--text);
   padding: 0 1px;
 }
 .note-row.on mark {
-  background: color-mix(in srgb, var(--mark) 55%, transparent);
+  /* The selected row is already inked: a match there is underlined instead of filled. */
+  background: none;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline 2px;
+  text-underline-offset: 2px;
+}
+/* Checked at 4.5:1 or better against their backgrounds in both themes. */
+:root {
+  --cal-today: #b2302b;
+  --search-mark: #f6dc7c;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --cal-today: #f07a74;
+    --search-mark: #5c5015;
+  }
+}
+:root[data-theme='dark'] {
+  --cal-today: #f07a74;
+  --search-mark: #5c5015;
+}
+.note-row.on .note-folder {
+  color: inherit;
+  opacity: 0.85;
 }
 .note-folder {
   font-size: 12px;
@@ -7993,4 +8017,19 @@ body.block-dragging * {
   margin: 6px 0 8px;
   font-family: var(--mono);
   font-size: 13px;
+}
+
+/* ------------------------------------------------------------------ keyboard focus */
+/* One clear ring for whatever the keyboard is on, in both themes. */
+:where(button, a, select, summary, [role='option'], [tabindex]:not([tabindex='-1'])):focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+:where(input, textarea, select):focus-visible,
+.search:focus-within {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+.modal:focus {
+  outline: none;
 }

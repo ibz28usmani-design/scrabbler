@@ -1,7 +1,11 @@
-import { Component, useEffect, useLayoutEffect, useRef, useState, type InputHTMLAttributes, type ReactNode, type RefObject } from 'react';
+import { Component, useEffect, useId, useLayoutEffect, useRef, useState, type InputHTMLAttributes, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useToasts } from '../lib/events';
 import { IX } from './Icons';
+
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]';
+
+const IN_BODY = FOCUSABLE.split(', ').map((x) => `.modal-body ${x}`).join(', ');
 
 /** Open modals, newest last: Escape closes only the one on top. */
 const modalStack: object[] = [];
@@ -22,23 +26,47 @@ export function Modal({
   className?: string;
 }) {
   const [self] = useState(() => ({}));
+  // Read while rendering, before anything in the dialog takes focus.
+  const [before] = useState(() => (typeof document === 'undefined' ? null : (document.activeElement as HTMLElement | null)));
+  const box = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   useEffect(() => {
     modalStack.push(self);
+    // Focus moves into the dialog, and back to where it was when the dialog closes.
+    const el = box.current;
+    if (el && !el.contains(document.activeElement)) (el.querySelector<HTMLElement>(IN_BODY) ?? el).focus({ preventScroll: true });
     return () => {
       modalStack.splice(modalStack.indexOf(self), 1);
+      if (before?.isConnected) before.focus({ preventScroll: true });
     };
-  }, [self]);
+  }, [self, before]);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && modalStack[modalStack.length - 1] === self && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (modalStack[modalStack.length - 1] !== self) return;
+      if (e.key === 'Escape') return onClose();
+      // Tab stays inside the dialog on top.
+      if (e.key !== 'Tab' || !box.current) return;
+      const items = [...box.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((x) => x.offsetParent !== null);
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === box.current)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, self]);
   return createPortal(
     <div className="modal-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal ${wide ? 'wide' : ''} ${className}`} role="dialog" aria-modal="true">
+      <div ref={box} tabIndex={-1} className={`modal ${wide ? 'wide' : ''} ${className}`} role="dialog" aria-modal="true" aria-labelledby={title !== undefined ? titleId : undefined}>
         {title !== undefined && (
           <div className="modal-head">
-            <h2>{title}</h2>
+            <h2 id={titleId}>{title}</h2>
             <button className="icon-btn" onClick={onClose} aria-label="Close">
               <IX />
             </button>

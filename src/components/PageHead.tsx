@@ -7,7 +7,7 @@ export function PageHead({ title, narrow, showSidebarToggle, children }: { title
   return (
     <div className="study-head">
       {narrow ? (
-        <button className="icon-btn accent" onClick={() => nav({ pane: 'sidebar' })}>
+        <button aria-label="Folders" className="icon-btn accent" onClick={() => nav({ pane: 'sidebar' })}>
           <IChevL /> <span className="back-label">Folders</span>
         </button>
       ) : (

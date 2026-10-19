@@ -82,7 +82,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
         }),
       ],
       content: (note.content as any) ?? '',
-      editorProps: { attributes: { class: 'prose', spellcheck: 'true', autocapitalize: 'sentences' } },
+      editorProps: { attributes: { class: 'prose', spellcheck: 'true', autocapitalize: 'sentences', role: 'textbox', 'aria-multiline': 'true', 'aria-label': 'Note' } },
       onUpdate: ({ editor }) => {
         window.clearTimeout(saveTimer.current);
         saveTimer.current = window.setTimeout(async () => {
