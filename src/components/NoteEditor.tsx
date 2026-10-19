@@ -2,7 +2,7 @@ import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import { Placeholder } from '@tiptap/extension-placeholder';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { editorExtensions } from './editorExtensions';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { db, type Note } from '../db';
 import { LecturePanel } from './LecturePanel';
 import { AIToolsButton, OPEN_AI_TOOLS } from './AITools';
@@ -14,9 +14,8 @@ import { setSlashHost } from '../lib/slashCommands';
 import { nav, toggleSidebar, openModal, useNav } from '../lib/nav';
 import { Menu, useElementWidth, useMenu, confirmDialog } from './ui';
 import { IAa, IBook, IChecklist, IChevL, ICompose, IImage, IMic, IMore, IPencil, IPin, IRuled, ISidebar, ITable, ITrash, ICards, IDownload, IFolder, IClock } from './Icons';
-import { VersionHistory } from './VersionHistory';
 import { NOTE_REPLACED } from '../lib/versions';
-import { ExportDialog } from './ExportDialog';
+import { lazyNamed } from '../lib/lazy';
 import { FocusButton } from './FocusMode';
 import { toast } from '../lib/events';
 import { createNote, linksFor } from '../lib/notes';
@@ -28,6 +27,9 @@ import { LinksPanel } from './LinksPanel';
 import { AppIcon } from './AppIcon';
 
 export { editorExtensions };
+
+const ExportDialog = lazyNamed(() => import('./ExportDialog'), 'ExportDialog');
+const VersionHistory = lazyNamed(() => import('./VersionHistory'), 'VersionHistory');
 
 function summarize(editor: Editor) {
   const text = editor.getText({ blockSeparator: '\n' });
@@ -331,8 +333,10 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
       <div className="doc-status" aria-live="polite">
         {words.toLocaleString()} {words === 1 ? 'word' : 'words'} · {Math.max(1, Math.round(words / 200))} min read
       </div>
-      {exporting && <ExportDialog note={note} onClose={() => setExporting(false)} />}
-      {history && <VersionHistory note={note} onClose={() => setHistory(false)} />}
+      <Suspense fallback={null}>
+        {exporting && <ExportDialog note={note} onClose={() => setExporting(false)} />}
+        {history && <VersionHistory note={note} onClose={() => setHistory(false)} />}
+      </Suspense>
 
       {fmtAnchor && (
         <FormatPanel anchor={fmtAnchor} onClose={closeFmt}>

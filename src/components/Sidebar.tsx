@@ -9,7 +9,7 @@ import { confirmDialog, Menu, promptDialog } from './ui';
 import { ICalendar, ICards, IChecklist, IChevD, IChevR, IFlame, IGear, IGraph, IMoon, IMore, IPlus, ISearch, ISun, ITimer, ITrash, ITutor, IX } from './Icons';
 import { canNest, folderTree, visibleRows } from '../lib/folders';
 import { foldersChanged } from '../lib/studyTime';
-import { useRevisionSummary } from './RevisionView';
+import { useRevisionSummary } from './RevisionTimer';
 import { AppIcon, FOLDER_ICONS } from './AppIcon';
 import { IconPicker } from './IconPicker';
 import { NextClass } from './NextClass';

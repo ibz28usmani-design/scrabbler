@@ -1,10 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { db, deleteNotesForever } from './db';
 import { closeModal, nav, PAGE_VIEWS, setSidebarInline, useNav } from './lib/nav';
 import { usePushSync } from './lib/calendarData';
-import { CalendarView } from './components/CalendarView';
-import { RemindersView } from './components/RemindersView';
 import { useApplyTheme } from './lib/theme';
 import { restoreNote } from './lib/notes';
 import { hasTextKey } from './lib/llm';
@@ -12,15 +10,31 @@ import { Sidebar } from './components/Sidebar';
 import { NoteList } from './components/NoteList';
 import { NoteEditor } from './components/NoteEditor';
 import { FocusChrome, useFocusShortcuts } from './components/FocusMode';
-import { NotebookPanel, SourceViewer } from './components/NotebookPanel';
-import { StudyView } from './components/StudyView';
-import { RevisionView, TimerChip, useTimerEngine } from './components/RevisionView';
-import { GraphView } from './components/GraphView';
-import { TutorView } from './components/TutorView';
-import { Recorder } from './components/Recorder';
-import { SettingsModal } from './components/SettingsModal';
-import { GenerateDeckDialog, ImportDeckDialog } from './components/DeckDialogs';
-import { ConfirmHost, confirmDialog, Empty, ErrorBoundary, PromptHost, Toasts, useMediaQuery } from './components/ui';
+import { TimerChip, useTimerEngine } from './components/RevisionTimer';
+import { ConfirmHost, confirmDialog, Empty, ErrorBoundary, PromptHost, Spinner, Toasts, useMediaQuery } from './components/ui';
+import { lazyNamed } from './lib/lazy';
+
+// Each page loads the first time it is opened, so the app starts on the notes alone.
+const CalendarView = lazyNamed(() => import('./components/CalendarView'), 'CalendarView');
+const RemindersView = lazyNamed(() => import('./components/RemindersView'), 'RemindersView');
+const RevisionView = lazyNamed(() => import('./components/RevisionView'), 'RevisionView');
+const GraphView = lazyNamed(() => import('./components/GraphView'), 'GraphView');
+const TutorView = lazyNamed(() => import('./components/TutorView'), 'TutorView');
+const StudyView = lazyNamed(() => import('./components/StudyView'), 'StudyView');
+const NotebookPanel = lazyNamed(() => import('./components/NotebookPanel'), 'NotebookPanel');
+const SourceViewer = lazyNamed(() => import('./components/NotebookPanel'), 'SourceViewer');
+const SettingsModal = lazyNamed(() => import('./components/SettingsModal'), 'SettingsModal');
+const Recorder = lazyNamed(() => import('./components/Recorder'), 'Recorder');
+const GenerateDeckDialog = lazyNamed(() => import('./components/DeckDialogs'), 'GenerateDeckDialog');
+const ImportDeckDialog = lazyNamed(() => import('./components/DeckDialogs'), 'ImportDeckDialog');
+
+function Loading() {
+  return (
+    <div className="page-loading" role="status" aria-label="Loading">
+      <Spinner size={22} />
+    </div>
+  );
+}
 import { ICompose, ISparkle } from './components/Icons';
 import { createNote } from './lib/notes';
 import { mdToHtml } from './lib/markdown';
@@ -147,6 +161,7 @@ export default function App() {
       {showStudy && (
         <main className="main study-main">
           <ErrorBoundary label={PAGE_LABEL[s.view] ?? 'Study'} key={s.view}>
+            <Suspense fallback={<Loading />}>
             {s.view === 'calendar' ? (
               <CalendarView narrow={narrow} showSidebarToggle={!showSidebar} />
             ) : s.view === 'reminders' ? (
@@ -160,19 +175,24 @@ export default function App() {
             ) : (
               <StudyView narrow={narrow} showSidebarToggle={!showSidebar} />
             )}
+            </Suspense>
           </ErrorBoundary>
         </main>
       )}
       {notebookDocked && (
         <ErrorBoundary label="the notebook">
-          <NotebookPanel folderId={notebookFolder!} overlay={false} />
+          <Suspense fallback={<Loading />}>
+            <NotebookPanel folderId={notebookFolder!} overlay={false} />
+          </Suspense>
         </ErrorBoundary>
       )}
       {notebookOverlay && (
         <div className="drawer-backdrop right" onClick={() => nav({ notebookOpen: false })}>
           <div className="drawer right" onClick={(e) => e.stopPropagation()}>
             <ErrorBoundary label="the notebook">
-              <NotebookPanel folderId={notebookFolder!} overlay />
+              <Suspense fallback={<Loading />}>
+                <NotebookPanel folderId={notebookFolder!} overlay />
+              </Suspense>
             </ErrorBoundary>
           </div>
         </div>
@@ -180,11 +200,13 @@ export default function App() {
 
       {focus && <FocusChrome folderId={notebookFolder ?? null} />}
 
-      {s.modal?.type === 'settings' && <SettingsModal />}
-      {s.modal?.type === 'recorder' && <Recorder folderId={s.modal.folderId} />}
-      {s.modal?.type === 'generateDeck' && <GenerateDeckDialog from={s.modal.from} quiz={s.modal.quiz} />}
-      {s.modal?.type === 'importDeck' && <ImportDeckDialog />}
-      {s.modal?.type === 'source' && <SourceViewer sourceId={s.modal.sourceId} chunkId={s.modal.chunkId} onClose={closeModal} />}
+      <Suspense fallback={null}>
+        {s.modal?.type === 'settings' && <SettingsModal />}
+        {s.modal?.type === 'recorder' && <Recorder folderId={s.modal.folderId} />}
+        {s.modal?.type === 'generateDeck' && <GenerateDeckDialog from={s.modal.from} quiz={s.modal.quiz} />}
+        {s.modal?.type === 'importDeck' && <ImportDeckDialog />}
+        {s.modal?.type === 'source' && <SourceViewer sourceId={s.modal.sourceId} chunkId={s.modal.chunkId} onClose={closeModal} />}
+      </Suspense>
       <TimerChip />
       <SafetyBanner />
       <Toasts />
