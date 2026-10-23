@@ -2,7 +2,7 @@ import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import { Placeholder } from '@tiptap/extension-placeholder';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { editorExtensions } from './editorExtensions';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { db, type Note } from '../db';
 import { LecturePanel } from './LecturePanel';
 import { AIToolsButton, OPEN_AI_TOOLS } from './AITools';
@@ -10,14 +10,16 @@ import { menuExtensions } from './SlashMenu';
 import { FileDrop } from './NotionBlockViews';
 import { downscaleImage } from '../lib/attachments';
 import { BlockHandle } from './BlockHandle';
+import { HighlightCard } from './HighlightCard';
 import { setSlashHost } from '../lib/slashCommands';
 import { nav, toggleSidebar, openModal, useNav } from '../lib/nav';
 import { Menu, useElementWidth, useMenu, confirmDialog } from './ui';
-import { IAa, IBook, IChecklist, IChevL, ICompose, IImage, IMic, IMore, IPencil, IPin, IRuled, ISidebar, ITable, ITrash, ICards, IDownload, IFolder } from './Icons';
-import { ExportDialog } from './ExportDialog';
+import { IAa, IBook, IChecklist, IChevL, ICompose, IImage, IMic, IMore, IPencil, IPin, IRuled, ISidebar, ITable, ITrash, ICards, IDownload, IFolder, IClock, IShare } from './Icons';
+import { NOTE_REPLACED } from '../lib/versions';
+import { lazyNamed } from '../lib/lazy';
 import { FocusButton } from './FocusMode';
 import { toast } from '../lib/events';
-import { createNote, linksFor } from '../lib/notes';
+import { createNote, linksFor, setPinned } from '../lib/notes';
 import { NoteContext } from '../lib/noteContext';
 import { HANDWRITING_TEMPLATES, type Paper } from '../lib/paper';
 import { beginHandoff, endHandoff, handoffActive, moveHandoff } from '../lib/penHandoff';
@@ -26,6 +28,10 @@ import { LinksPanel } from './LinksPanel';
 import { AppIcon } from './AppIcon';
 
 export { editorExtensions };
+
+const ExportDialog = lazyNamed(() => import('./ExportDialog'), 'ExportDialog');
+const VersionHistory = lazyNamed(() => import('./VersionHistory'), 'VersionHistory');
+const ShareDialog = lazyNamed(() => import('./ShareDialog'), 'ShareDialog');
 
 function summarize(editor: Editor) {
   const text = editor.getText({ blockSeparator: '\n' });
@@ -43,6 +49,8 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
   const noteId = note.id;
   const { notebookOpen, focus } = useNav();
   const [exporting, setExporting] = useState(false);
+  const [history, setHistory] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [words, setWords] = useState(() => countWords(note.text ?? ''));
   // Below this the row cannot hold every action without pushing some off-screen.
   const paneRef = useRef<HTMLDivElement>(null);
@@ -74,7 +82,7 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
         }),
       ],
       content: (note.content as any) ?? '',
-      editorProps: { attributes: { class: 'prose', spellcheck: 'true', autocapitalize: 'sentences' } },
+      editorProps: { attributes: { class: 'prose', spellcheck: 'true', autocapitalize: 'sentences', role: 'textbox', 'aria-multiline': 'true', 'aria-label': 'Note' } },
       onUpdate: ({ editor }) => {
         window.clearTimeout(saveTimer.current);
         saveTimer.current = window.setTimeout(async () => {
@@ -105,6 +113,20 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
       document.removeEventListener('visibilitychange', onHide);
       flush();
     };
+  }, [editor, noteId]);
+
+  // A version restored, or an AI rewrite undone, from outside the editor: show it, and drop any pending save of the old text.
+  useEffect(() => {
+    const onReplaced = (e: Event) => {
+      const { noteId: id, content } = (e as CustomEvent).detail ?? {};
+      if (id !== noteId || !editor || editor.isDestroyed) return;
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = 0;
+      editor.commands.setContent(content as any, { emitUpdate: false });
+      setWords(countWords(editor.getText({ blockSeparator: '\n' })));
+    };
+    window.addEventListener(NOTE_REPLACED, onReplaced);
+    return () => window.removeEventListener(NOTE_REPLACED, onReplaced);
   }, [editor, noteId]);
 
   // Focus a brand-new empty note — but not a handwritten one, where focusing the
@@ -308,13 +330,18 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
             <EditorContent editor={editor} />
           </NoteContext.Provider>
           <BlockHandle editor={editor} />
+          <HighlightCard editor={editor} note={note} />
           <LinksPanel note={note} />
         </div>
       </div>
       <div className="doc-status" aria-live="polite">
         {words.toLocaleString()} {words === 1 ? 'word' : 'words'} · {Math.max(1, Math.round(words / 200))} min read
       </div>
-      {exporting && <ExportDialog note={note} onClose={() => setExporting(false)} />}
+      <Suspense fallback={null}>
+        {exporting && <ExportDialog note={note} onClose={() => setExporting(false)} />}
+        {history && <VersionHistory note={note} onClose={() => setHistory(false)} />}
+        {sharing && <ShareDialog kind="note" refId={note.id} title={note.title} onClose={() => setSharing(false)} />}
+      </Suspense>
 
       {fmtAnchor && (
         <FormatPanel anchor={fmtAnchor} onClose={closeFmt}>
@@ -382,11 +409,13 @@ export function NoteEditor({ note, narrow, wide }: { note: Note; narrow: boolean
                   { divider: true, label: '' },
                 ]
               : []),
-            { label: note.pinned ? 'Unpin note' : 'Pin note', icon: <IPin size={18} />, onClick: () => db.notes.update(note.id, { pinned: !note.pinned }) },
+            { label: note.pinned ? 'Unpin note' : 'Pin note', icon: <IPin size={18} />, onClick: () => setPinned(note.id, !note.pinned) },
             { label: 'Move to folder…', icon: <IFolder size={18} />, onClick: () => setTimeout(() => openMove(moreAnchor), 0) },
             { label: 'Make flashcards', icon: <ICards size={18} />, onClick: () => openModal({ type: 'generateDeck', from: { kind: 'note', noteId: note.id } }) },
             { label: 'Make a quiz', icon: <ICards size={18} />, onClick: () => openModal({ type: 'generateDeck', from: { kind: 'note', noteId: note.id }, quiz: true }) },
             { label: 'Save to device…', icon: <IDownload size={18} />, onClick: () => setExporting(true) },
+            { label: 'Version history…', icon: <IClock size={18} />, onClick: () => setHistory(true) },
+            { label: 'Share…', icon: <IShare size={18} />, onClick: () => setSharing(true) },
             { divider: true, label: '' },
             { label: 'Delete note', icon: <ITrash size={18} />, danger: true, onClick: deleteNote },
           ]}

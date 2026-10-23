@@ -1,15 +1,16 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState } from 'react';
 import { db, deleteFolder, uid, type Folder } from '../db';
-import { nav, openModal, useNav } from '../lib/nav';
+import { lastStudyTab, nav, openModal, openStudy, STUDY_VIEWS, useNav } from '../lib/nav';
+import { isHidden, type Feature } from '../lib/usage';
 import { computeStreak, deckCounts } from '../lib/study';
 import { updateSettings, useSettings } from '../lib/settings';
 import { useDark } from '../lib/theme';
 import { confirmDialog, Menu, promptDialog } from './ui';
-import { ICalendar, ICards, IChecklist, IChevD, IChevR, IFlame, IGear, IGraph, IMoon, IMore, IPlus, ISearch, ISun, ITimer, ITrash, ITutor, IX } from './Icons';
+import { ICalendar, IChecklist, IChevD, IChevR, IFlame, IGear, IGraph, IMoon, IMore, IPlus, ISearch, ISun, ITrash, ITutor, IX } from './Icons';
 import { canNest, folderTree, visibleRows } from '../lib/folders';
 import { foldersChanged } from '../lib/studyTime';
-import { useRevisionSummary } from './RevisionView';
+import { useRevisionSummary } from './RevisionTimer';
 import { AppIcon, FOLDER_ICONS } from './AppIcon';
 import { IconPicker } from './IconPicker';
 import { NextClass } from './NextClass';
@@ -46,6 +47,11 @@ export function Sidebar() {
   const rows = visibleRows(folderTree(folders));
   const hasChildren = new Set(folders.map((f) => f.parentId).filter(Boolean));
   const revision = useRevisionSummary();
+  const { hiddenFeatures } = useSettings();
+  const hidden = (f: Feature) => isHidden(f, hiddenFeatures);
+  const studyTabs = STUDY_VIEWS.filter((t) => !hidden(t));
+  const inStudy = (STUDY_VIEWS as readonly string[]).includes(view);
+  const bestStreak = Math.max(revision?.bestStreak ?? 0, hidden('study') ? 0 : (streak?.days ?? 0));
   const [q, setQ] = useState(query);
   // Leaving search another way (a folder, the calendar) leaves the box empty too.
   useEffect(() => {
@@ -106,50 +112,54 @@ export function Sidebar() {
       </div>
 
       <nav className="side-scroll">
-        <div className="side-section">Study</div>
-        <button className={`side-row study-row ${view === 'revision' ? 'on' : ''}`} onClick={() => nav({ view: 'revision', pane: 'list', drawer: false })}>
-          <ITimer className="side-icon" />
-          <span className="side-name">Revision</span>
-          {revision && revision.bestStreak > 0 && (
-            <span className="streak-pill" title={`Longest subject streak running: ${revision.bestStreak} days`}>
-              <IFlame size={13} /> {revision.bestStreak}
-            </span>
-          )}
-          {revision?.timerOn && <span className="rec-dot" title="Revision timer running" />}
-        </button>
-        <button className={`side-row study-row ${view === 'tutor' ? 'on' : ''}`} onClick={() => nav({ view: 'tutor', pane: 'list', drawer: false })}>
-          <ITutor className="side-icon" />
-          <span className="side-name">Tutor</span>
-        </button>
-        <button className={`side-row study-row ${view === 'study' ? 'on' : ''}`} onClick={() => nav({ view: 'study', deckId: null, session: null, pane: 'list', drawer: false })}>
-          <ICards className="side-icon" />
-          <span className="side-name">Flashcards & Quizzes</span>
-          {streak && streak.days > 0 && (
-            <span className="streak-pill" title={`${streak.days}-day streak`}>
-              <IFlame size={13} /> {streak.days}
-            </span>
-          )}
-          {!!due?.due && <span className="badge">{due.due}</span>}
-        </button>
+        {!hidden('today') && (
+          <button className={`side-row ${view === 'today' ? 'on' : ''}`} onClick={() => nav({ view: 'today', pane: 'list', drawer: false })}>
+            <ISun className="side-icon" />
+            <span className="side-name">Today</span>
+          </button>
+        )}
+        {studyTabs.length > 0 && (
+          <button className={`side-row study-row ${inStudy ? 'on' : ''}`} onClick={() => openStudy(inStudy ? undefined : studyTabs.includes(lastStudyTab()) ? undefined : studyTabs[0])}>
+            <ITutor className="side-icon" />
+            <span className="side-name">Study</span>
+            {bestStreak > 0 && (
+              <span className="streak-pill" title={`Longest streak running: ${bestStreak} days`}>
+                <IFlame size={13} /> {bestStreak}
+              </span>
+            )}
+            {revision?.timerOn && <span className="rec-dot" title="Revision timer running" />}
+            {!!due?.due && !hidden('study') && (
+              <span className="badge" title={`${due.due} flashcards due`}>
+                {due.due}
+              </span>
+            )}
+          </button>
+        )}
 
         <div className="side-section">Planner</div>
         <NextClass compact />
-        <button className={`side-row ${view === 'calendar' ? 'on' : ''}`} onClick={() => nav({ view: 'calendar', pane: 'list', drawer: false })}>
-          <ICalendar className="side-icon" />
-          <span className="side-name">Calendar</span>
-        </button>
-        <button className={`side-row ${view === 'reminders' ? 'on' : ''}`} onClick={() => nav({ view: 'reminders', pane: 'list', drawer: false })}>
-          <IChecklist className="side-icon" />
-          <span className="side-name">Reminders</span>
-          {!!dueToday && <span className="badge">{dueToday}</span>}
-        </button>
+        {!hidden('calendar') && (
+          <button className={`side-row ${view === 'calendar' ? 'on' : ''}`} onClick={() => nav({ view: 'calendar', pane: 'list', drawer: false })}>
+            <ICalendar className="side-icon" />
+            <span className="side-name">Calendar</span>
+          </button>
+        )}
+        {!hidden('reminders') && (
+          <button className={`side-row ${view === 'reminders' ? 'on' : ''}`} onClick={() => nav({ view: 'reminders', pane: 'list', drawer: false })}>
+            <IChecklist className="side-icon" />
+            <span className="side-name">Reminders</span>
+            {!!dueToday && <span className="badge">{dueToday}</span>}
+          </button>
+        )}
 
         <div className="side-section">
           Folders
           <span className="side-section-actions">
-            <button className={`icon-btn small ${view === 'graph' ? 'on' : ''}`} onClick={() => nav({ view: 'graph', graphFocus: null, pane: 'list', drawer: false })} aria-label="Graph view" title="Graph view">
-              <IGraph size={16} />
-            </button>
+            {!hidden('graph') && (
+              <button className={`icon-btn small ${view === 'graph' ? 'on' : ''}`} onClick={() => nav({ view: 'graph', graphFocus: null, pane: 'list', drawer: false })} aria-label="Graph view" title="Graph view">
+                <IGraph size={16} />
+              </button>
+            )}
             <button className="icon-btn small" onClick={() => newFolder()} aria-label="New folder">
               <IPlus size={16} />
             </button>

@@ -1,6 +1,12 @@
 import { db, inkToNote, type Note, type StoredBlob } from '../db';
 
-const TABLES = ['folders', 'notes', 'sources', 'chunks', 'chats', 'studio', 'decks', 'cards', 'reviews', 'meta', 'subjects', 'lessons', 'reminderLists', 'reminders', 'studyTime', 'tutor'] as const;
+export const TABLES = ['folders', 'notes', 'sources', 'chunks', 'chats', 'studio', 'decks', 'cards', 'reviews', 'meta', 'subjects', 'lessons', 'reminderLists', 'reminders', 'studyTime', 'tutor', 'exams', 'papers', 'shares'] as const;
+
+/**
+ * Tables a backup leaves out: files go under files/ instead, and note history
+ * is this device's undo, not your work (and would make every backup far bigger).
+ */
+export const NOT_BACKED_UP = ['blobs', 'versions'] as const;
 
 /**
  * A zip: the tables as backup.json, and each file (recordings, attachments)
@@ -51,6 +57,7 @@ export async function importBackup(file: Blob) {
   });
   const { reindexAll } = await import('./notes');
   await reindexAll();
+  (await import('./search')).resetSearchIndex();
 }
 
 export async function eraseEverything() {

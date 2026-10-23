@@ -1,24 +1,41 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { db, deleteNotesForever, type Note } from '../db';
 import { nav, toggleSidebar, openModal, useNav } from '../lib/nav';
 import { groupLabel, shortDate } from '../lib/dates';
-import { createNote, createHandwrittenNote, restoreNote } from '../lib/notes';
+import { createNote, createHandwrittenNote, folderPage, restoreNote, setPinned } from '../lib/notes';
 import { HANDWRITING_TEMPLATES } from '../lib/paper';
 import { confirmDialog, Empty, Menu, useMenu } from './ui';
 import { ICompose, IHandwriting, IMic, IPin, ISidebar, ITrash, IChevL } from './Icons';
+import { searchNotes, type Hit } from '../lib/search';
 
-function highlight(text: string, q: string) {
-  if (!q) return text;
-  const i = text.toLowerCase().indexOf(q.toLowerCase());
-  if (i < 0) return text;
-  return (
-    <>
-      {text.slice(0, i)}
-      <mark>{text.slice(i, i + q.length)}</mark>
-      {text.slice(i + q.length)}
-    </>
-  );
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Marks every place any of the words appears. */
+export function highlight(text: string, marks: string[]): ReactNode {
+  const words = marks.filter(Boolean).sort((a, b) => b.length - a.length);
+  if (!words.length || !text) return text;
+  const re = new RegExp(`(${words.map(escapeRe).join('|')})`, 'gi');
+  const parts = text.split(re);
+  return parts.map((p, i) => (i % 2 ? <mark key={i}>{p}</mark> : p));
+}
+
+/** Rows are drawn this many at a time; more appear as the list scrolls to its end. */
+const PAGE = 120;
+
+/** Grows a count as a sentinel at the end of a list comes into view. */
+function useMoreOnScroll(reset: unknown, total: number) {
+  const [shown, setShown] = useState(PAGE);
+  const sentinel = useRef<HTMLDivElement>(null);
+  useEffect(() => setShown(PAGE), [reset]);
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || shown >= total || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && setShown((n) => n + PAGE), { rootMargin: '600px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [shown, total]);
+  return [shown, sentinel] as const;
 }
 
 export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showSidebarToggle: boolean }) {
@@ -26,25 +43,36 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
   const [menu, setMenu] = useState<{ note: Note; el: HTMLElement } | null>(null);
   const [tplAnchor, openTpl, closeTpl] = useMenu();
   const folder = useLiveQuery(() => (folderId ? db.folders.get(folderId) : undefined), [folderId]);
-  const notes =
-    useLiveQuery(async () => {
-      if (view === 'deleted') return (await db.notes.where('deletedAt').above(0).toArray()).sort((a, b) => b.deletedAt! - a.deletedAt!);
-      if (view === 'search') {
-        const q = query.toLowerCase().trim();
-        const all = await db.notes.toArray();
-        return all.filter((n) => !n.deletedAt && (n.title.toLowerCase().includes(q) || n.text.toLowerCase().includes(q))).sort((a, b) => b.updatedAt - a.updatedAt);
-      }
-      if (!folderId) return [];
-      return (await db.notes.where('folderId').equals(folderId).toArray()).filter((n) => !n.deletedAt).sort((a, b) => b.updatedAt - a.updatedAt);
-    }, [view, folderId, query]) ?? [];
+  const [total, setTotal] = useState(0);
+  const [shown, sentinel] = useMoreOnScroll(`${view}:${folderId}:${query}`, total);
+  // Only what is drawn is read: a big folder isn't loaded whole on every save.
+  const page = useLiveQuery(async () => {
+    if (view === 'deleted') {
+      const all = (await db.notes.where('deletedAt').above(0).toArray()).sort((a, b) => b.deletedAt! - a.deletedAt!);
+      return { notes: all, total: all.length };
+    }
+    if (view === 'search' || !folderId) return { notes: [] as Note[], total: 0 };
+    const p = await folderPage(folderId, shown);
+    return { notes: [...p.pinned, ...p.recent], total: p.total };
+  }, [view, folderId, shown]);
+  const listed = page?.notes ?? [];
+  const hits = useLiveQuery(() => (view === 'search' && query.trim() ? searchNotes(query) : Promise.resolve([] as Hit[])), [view, query]);
+  const hitFor = new Map((hits ?? []).map((h) => [h.note.id, h]));
+  const notes = view === 'search' ? (hits ?? []).map((h) => h.note) : listed;
+  const count = view === 'search' ? notes.length : (page?.total ?? 0);
+  useEffect(() => setTotal(count), [count]);
+  const folderNames = useLiveQuery(async () => (view === 'search' ? new Map((await db.folders.toArray()).map((f) => [f.id, f.name])) : null), [view]);
 
   const title = view === 'deleted' ? 'Recently Deleted' : view === 'search' ? 'Search' : folder?.name ?? 'Notes';
 
   const groups: { label: string; items: Note[] }[] = [];
   const pinned = view === 'folder' ? notes.filter((n) => n.pinned) : [];
   if (pinned.length) groups.push({ label: 'Pinned', items: pinned });
+  let drawn = 0;
   for (const n of notes) {
     if (view === 'folder' && n.pinned) continue;
+    // A folder's page is already cut to size; other lists are cut here.
+    if (view !== 'folder' && drawn++ >= shown) break;
     const label = view === 'deleted' ? 'Deleted notes are removed after 30 days' : view === 'search' ? `${notes.length} result${notes.length === 1 ? '' : 's'}` : groupLabel(n.updatedAt);
     const g = groups[groups.length - 1];
     if (g && g.label === label) g.items.push(n);
@@ -52,15 +80,13 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
   }
 
   const snippetFor = (n: Note) => {
-    if (view === 'search' && query) {
-      const i = n.text.toLowerCase().indexOf(query.toLowerCase());
-      if (i >= 0) return highlight(n.text.slice(Math.max(0, i - 30), i + 90), query);
-    }
+    const hit = hitFor.get(n.id);
+    if (hit) return highlight(hit.excerpt || n.snippet, hit.marks);
     return n.snippet || (n.kind === 'lecture' ? 'Lecture recording' : 'No additional text');
   };
 
   return (
-    <section className="list-pane">
+    <section className={`list-pane${view === 'search' ? ' searching' : ''}`}>
       <div className="list-head">
         {narrow ? (
           <button className="icon-btn accent" onClick={() => nav({ pane: 'sidebar' })} aria-label="Folders">
@@ -103,10 +129,18 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
       </div>
       <h1 className="list-title">{title}</h1>
       <div className="list-sub">
-        {notes.length} note{notes.length === 1 ? '' : 's'}
+        {view === 'search' ? (
+          <span className="search-help">
+            Best matches first. Narrow with <code>tag:</code> <code>folder:</code> <code>subject:</code> <code>is:pinned</code> <code>is:lecture</code> <code>is:handwritten</code> or <code>"a phrase"</code>.
+          </span>
+        ) : (
+          <>
+            {count} note{count === 1 ? '' : 's'}
+          </>
+        )}
       </div>
       <div className="list-scroll">
-        {notes.length === 0 && (
+        {count === 0 && (
           <Empty title={view === 'search' ? 'No results' : view === 'deleted' ? 'Nothing here' : 'No notes yet'}>
             {view === 'folder' && 'Type a note, write one by hand with Apple Pencil, or record a lecture.'}
           </Empty>
@@ -129,8 +163,9 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
                 >
                   <div className="note-title">
                     {n.kind === 'lecture' && <IMic size={14} className="note-kind" />}
-                    {n.title || 'New Note'}
+                    <span className="note-title-text">{hitFor.has(n.id) ? highlight(n.title || 'New Note', hitFor.get(n.id)!.marks) : n.title || 'New Note'}</span>
                   </div>
+                  {view === 'search' && folderNames?.get(n.folderId) && <div className="note-folder">{folderNames.get(n.folderId)}</div>}
                   <div className="note-meta">
                     <span className="note-date">{shortDate(view === 'deleted' ? n.deletedAt! : n.updatedAt)}</span>
                     <span className="note-snippet">{snippetFor(n)}</span>
@@ -141,6 +176,13 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
             </div>
           </div>
         ))}
+        {shown < count && (
+          <div ref={sentinel} className="list-more">
+            <button className="btn small" onClick={() => sentinel.current?.scrollIntoView()}>
+              Showing {shown} of {count}
+            </button>
+          </div>
+        )}
       </div>
       {tplAnchor && folderId && (
         <Menu
@@ -171,7 +213,7 @@ export function NoteList({ narrow, showSidebarToggle }: { narrow: boolean; showS
                   },
                 ]
               : [
-                  { label: menu.note.pinned ? 'Unpin' : 'Pin', icon: <IPin size={17} />, onClick: () => db.notes.update(menu.note.id, { pinned: !menu.note.pinned }) },
+                  { label: menu.note.pinned ? 'Unpin' : 'Pin', icon: <IPin size={17} />, onClick: () => setPinned(menu.note.id, !menu.note.pinned) },
                   {
                     label: 'Delete',
                     icon: <ITrash size={17} />,

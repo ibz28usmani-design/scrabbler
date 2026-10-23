@@ -7,7 +7,8 @@
  * websites, Search grounding, speech) stay on Gemini — see lib/llm.ts.
  */
 import { getSettings } from './settings';
-import { emitStatus, sleep } from './events';
+import { sleep } from './events';
+import { inSlot, isOffline, waitBusy, waitOnline } from './aiQueue';
 
 export interface Preset {
   id: string;
@@ -105,12 +106,17 @@ async function call(path: string, init: RequestInit, overrides?: { baseUrl?: str
   const { baseUrl, key } = config(overrides);
   for (let i = 0; i < attempts; i++) {
     let res: Response;
+    if (isOffline() && !(await waitOnline('The AI', signal))) throw new CompatError('You’re offline. Try again once you’re connected.', 0);
     try {
-      res = await fetch(`${baseUrl}${path}`, {
-        ...init,
+      res = await inSlot(
+        () =>
+          fetch(`${baseUrl}${path}`, {
+            ...init,
+            signal,
+            headers: { ...(key ? { Authorization: `Bearer ${key}` } : {}), ...(init.headers ?? {}) },
+          }),
         signal,
-        headers: { ...(key ? { Authorization: `Bearer ${key}` } : {}), ...(init.headers ?? {}) },
-      });
+      );
     } catch (e) {
       if ((e as Error).name === 'AbortError') throw e;
       if (i === attempts - 1) {
@@ -137,8 +143,7 @@ async function call(path: string, init: RequestInit, overrides?: { baseUrl?: str
     if (res.status === 401 || res.status === 403) throw new CompatError(`The API rejected the key: ${msg}`, res.status);
     if (res.status === 404) throw new CompatError(`Not found — check the base URL and model name. (${msg})`, 404);
     if ((res.status === 429 || res.status >= 500) && i < attempts - 1) {
-      emitStatus(res.status === 429 ? 'Rate limited — retrying shortly…' : 'The model is warming up — retrying…');
-      await sleep(4000 * (i + 1), signal);
+      await waitBusy(4000 * (i + 1), res.status === 429 ? 'The AI (rate limited)' : 'The model (warming up)', signal);
       continue;
     }
     if (res.status === 429) throw new CompatError('Rate limit reached. Wait a moment and try again.', 429);

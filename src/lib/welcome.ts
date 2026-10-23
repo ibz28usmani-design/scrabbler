@@ -15,7 +15,7 @@ const HTML = `<h1>Welcome to Scrabbler ✦</h1>
 <ul>
 <li><p>Select text and tap <strong>✦ AI</strong> for writing tools: summarize, proofread, rewrite, make a table…</p></li>
 <li><p>Install to your Home Screen (Share → Add to Home Screen) so it works offline and your data stays put.</p></li>
-<li><p>Back up regularly from Settings → Export backup.</p></li>
+<li><p>Back up regularly from Settings → Back up now (it goes to Files or iCloud Drive), or turn on Sync between devices.</p></li>
 </ul>`;
 
 export function welcomeNote(folderId: string): Note {

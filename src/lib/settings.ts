@@ -59,6 +59,12 @@ export interface Settings {
   autoOcr: boolean;
   /** Exam board and qualification per subject, for the tutor: "AQA A-level Economics". */
   examBoards: Record<string, string>;
+  /** Sync notes between devices through the push server (lib/sync.ts). */
+  syncEnabled: boolean;
+  /** Encrypts everything before it leaves the device; never sent anywhere. */
+  syncPassphrase: string;
+  /** Sidebar rows hidden in Settings → Sidebar (lib/usage.ts). */
+  hiddenFeatures: string[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -100,6 +106,9 @@ export const DEFAULT_SETTINGS: Settings = {
   idleMinutes: 2,
   autoOcr: true,
   examBoards: {},
+  syncEnabled: false,
+  syncPassphrase: '',
+  hiddenFeatures: [],
 };
 
 const KEY = 'scrabbler.settings';

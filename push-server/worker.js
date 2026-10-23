@@ -366,6 +366,136 @@ async function knownOrigin(kv, req) {
 	}
 	return await kv.get("origin") ?? "https://scrabbler.invalid";
 }
+var SCHEMA = [
+	`CREATE TABLE IF NOT EXISTS rows (tbl TEXT NOT NULL, id TEXT NOT NULL, at INTEGER NOT NULL, dev TEXT NOT NULL, seq INTEGER NOT NULL, del INTEGER NOT NULL DEFAULT 0, parts INTEGER NOT NULL DEFAULT 0, data TEXT, PRIMARY KEY (tbl, id))`,
+	`CREATE INDEX IF NOT EXISTS rows_seq ON rows (seq)`,
+	`CREATE TABLE IF NOT EXISTS parts (tbl TEXT NOT NULL, id TEXT NOT NULL, n INTEGER NOT NULL, at INTEGER NOT NULL, data TEXT NOT NULL, PRIMARY KEY (tbl, id, n))`,
+	`CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
+	`CREATE TABLE IF NOT EXISTS shares (id TEXT PRIMARY KEY, title TEXT NOT NULL, html TEXT NOT NULL, created INTEGER NOT NULL, updated INTEGER NOT NULL)`
+];
+var ready = null;
+async function ensureSchema(db) {
+	if (ready === db) return;
+	await db.batch(SCHEMA.map((s) => db.prepare(s)));
+	ready = db;
+}
+var okName = (s, max = 200) => typeof s === "string" && s.length > 0 && s.length <= max;
+function validRow(r) {
+	return !!r && okName(r.t, 40) && okName(r.k) && Number.isFinite(r.at) && (r.del === true || typeof r.data === "string" || Number.isInteger(r.parts) && r.parts > 0);
+}
+/**
+* Stores rows, each only if it is newer than the copy here (ties go to the
+* device id that sorts later, so every device settles on the same winner).
+* Returns how many were taken.
+*/
+async function pushRows(db, dev, rows) {
+	await ensureSchema(db);
+	const before = await currentSeq(db);
+	const stmts = rows.map((r) => db.prepare(`INSERT INTO rows (tbl, id, at, dev, seq, del, parts, data) VALUES (?1, ?2, ?3, ?4, (SELECT COALESCE(MAX(seq), 0) + 1 FROM rows), ?5, ?6, ?7)
+         ON CONFLICT (tbl, id) DO UPDATE SET at = excluded.at, dev = excluded.dev, seq = excluded.seq, del = excluded.del, parts = excluded.parts, data = excluded.data
+         WHERE excluded.at > rows.at OR (excluded.at = rows.at AND excluded.dev > rows.dev)`).bind(r.t, r.k, Math.round(r.at), dev, r.del ? 1 : 0, r.del ? 0 : r.parts ?? 0, r.del ? null : r.data ?? null));
+	const tombs = rows.filter((r) => r.del).map((r) => db.prepare(`DELETE FROM parts WHERE tbl = ?1 AND id = ?2 AND at <= ?3`).bind(r.t, r.k, Math.round(r.at)));
+	for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+	if (tombs.length) await db.batch(tombs);
+	const seq = await currentSeq(db);
+	return {
+		taken: seq - before,
+		seq
+	};
+}
+async function currentSeq(db) {
+	const r = await db.prepare(`SELECT COALESCE(MAX(seq), 0) AS s FROM rows`).first();
+	return Number(r?.s ?? 0);
+}
+/** One part of a large row, stored before the row that points to it. */
+async function putPart(db, t, k, n, at, data) {
+	await ensureSchema(db);
+	await db.prepare(`INSERT INTO parts (tbl, id, n, at, data) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT (tbl, id, n) DO UPDATE SET at = excluded.at, data = excluded.data WHERE excluded.at >= parts.at`).bind(t, k, n, Math.round(at), data).run();
+}
+/** A part, with the change it belongs to: a part from a different change than its row is stale. */
+async function getPart(db, t, k, n) {
+	await ensureSchema(db);
+	const r = await db.prepare(`SELECT data, at FROM parts WHERE tbl = ?1 AND id = ?2 AND n = ?3`).bind(t, k, n).first();
+	return r ? {
+		data: r.data,
+		at: Number(r.at)
+	} : null;
+}
+/** Everything changed after `since`, oldest first, in pages. */
+async function pullRows(db, since, limit = 400) {
+	await ensureSchema(db);
+	const res = await db.prepare(`SELECT tbl, id, at, dev, seq, del, parts, data FROM rows WHERE seq > ?1 ORDER BY seq LIMIT ?2`).bind(Math.max(0, Math.floor(since)), limit + 1).all();
+	const rows = [];
+	let chars = 0;
+	for (const r of res.results.slice(0, limit)) {
+		if (rows.length && chars + (r.data?.length ?? 0) > 6e6) break;
+		chars += r.data?.length ?? 0;
+		rows.push({
+			t: r.tbl,
+			k: r.id,
+			at: Number(r.at),
+			dev: r.dev,
+			seq: Number(r.seq),
+			del: !!r.del,
+			parts: Number(r.parts),
+			data: r.data
+		});
+	}
+	const seq = rows.length ? rows[rows.length - 1].seq : since;
+	return {
+		rows,
+		more: res.results.length > rows.length,
+		seq
+	};
+}
+/** The salt the app's passphrase is stretched with: random, made once, the same for every device. */
+async function syncSalt(db) {
+	await ensureSchema(db);
+	const got = await db.prepare(`SELECT v FROM meta WHERE k = 'salt'`).first();
+	if (got) return got.v;
+	const bytes = crypto.getRandomValues(/* @__PURE__ */ new Uint8Array(16));
+	const salt = btoa(String.fromCharCode(...bytes));
+	await db.prepare(`INSERT OR IGNORE INTO meta (k, v) VALUES ('salt', ?1)`).bind(salt).run();
+	return (await db.prepare(`SELECT v FROM meta WHERE k = 'salt'`).first()).v;
+}
+async function syncStats(db) {
+	await ensureSchema(db);
+	const r = await db.prepare(`SELECT COUNT(*) AS n, COALESCE(MAX(seq), 0) AS s FROM rows WHERE del = 0`).first();
+	return {
+		rows: Number(r?.n ?? 0),
+		seq: Number(r?.s ?? 0)
+	};
+}
+async function putShare(db, id, title, html) {
+	await ensureSchema(db);
+	const now = Date.now();
+	await db.prepare(`INSERT INTO shares (id, title, html, created, updated) VALUES (?1, ?2, ?3, ?4, ?4) ON CONFLICT (id) DO UPDATE SET title = excluded.title, html = excluded.html, updated = excluded.updated`).bind(id, title.slice(0, 200), html, now).run();
+}
+async function deleteShare(db, id) {
+	await ensureSchema(db);
+	await db.prepare(`DELETE FROM shares WHERE id = ?1`).bind(id).run();
+}
+/**
+* A shared page, served so it can do nothing but be read: no scripts, no
+* requests anywhere, no framing.
+*/
+async function serveShare(db, id) {
+	await ensureSchema(db);
+	const row = /^[A-Za-z0-9_-]{8,64}$/.test(id) ? await db.prepare(`SELECT html FROM shares WHERE id = ?1`).bind(id).first() : null;
+	const headers = {
+		"Content-Type": "text/html; charset=utf-8",
+		"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+		"X-Content-Type-Options": "nosniff",
+		"Referrer-Policy": "no-referrer",
+		"Cache-Control": "no-store",
+		"X-Robots-Tag": "noindex"
+	};
+	if (!row) return new Response("<!doctype html><meta charset=\"utf-8\"><title>Not found</title><p>This shared page has been taken down, or the link is wrong.</p>", {
+		status: 404,
+		headers
+	});
+	return new Response(row.html, { headers });
+}
 //#endregion
 //#region push-server/src/worker.ts
 /**
@@ -388,13 +518,18 @@ var worker_default = {
 			headers: CORS
 		});
 		const kv = env.SCRABBLER;
+		if (req.method === "GET" && url.pathname.startsWith("/s/")) {
+			if (!env.SYNC) return new Response("Sharing isn’t set up on this server.", { status: 404 });
+			return serveShare(env.SYNC, url.pathname.slice(3));
+		}
 		if (req.method === "GET" && url.pathname === "/") {
 			const lines = [
 				!!kv && !!env.PASSWORD ? "Scrabbler push server is ready." : "Scrabbler push server needs setting up:",
 				`KV namespace bound as SCRABBLER: ${kv ? "yes" : "NO"}`,
 				`PASSWORD secret set: ${env.PASSWORD ? "yes" : "NO"}`,
 				kv ? `Devices registered: ${(await deviceIds(kv)).length}` : "",
-				"Also add a Cron Trigger \"* * * * *\" under Settings → Triggers."
+				"Also add a Cron Trigger \"* * * * *\" under Settings → Triggers.",
+				`D1 database bound as SYNC (for sync and sharing, optional): ${env.SYNC ? "yes" : "no"}`
 			];
 			return new Response(lines.filter(Boolean).join("\n"), { headers: {
 				"Content-Type": "text/plain; charset=utf-8",
@@ -410,12 +545,48 @@ var worker_default = {
 		if (req.method !== "POST") return fail("Not found", 404);
 		if (!authorised(req, env)) return fail("Wrong password.", 401);
 		const text = await req.text();
-		if (text.length > 262144) return fail("Too much data.", 413);
+		const syncing = url.pathname.startsWith("/sync/") || url.pathname.startsWith("/share/");
+		if (text.length > (syncing ? 8388608 : 262144)) return fail("Too much data.", 413);
 		let body;
 		try {
 			body = JSON.parse(text);
 		} catch {
 			return fail("Bad JSON.", 400);
+		}
+		if (syncing) {
+			const db = env.SYNC;
+			if (!db) return fail("Sync needs a D1 database bound as SYNC in the worker’s settings (push-server/README.md, “Sync and sharing”).", 501);
+			switch (url.pathname) {
+				case "/sync/salt": return json({
+					salt: await syncSalt(db),
+					...await syncStats(db)
+				});
+				case "/sync/push":
+					if (typeof body.dev !== "string" || !Array.isArray(body.rows) || body.rows.length > 2e3) return fail("Bad sync data.", 400);
+					if (!body.rows.every(validRow)) return fail("A row was incomplete.", 400);
+					return json(await pushRows(db, body.dev, body.rows));
+				case "/sync/pull": return json(await pullRows(db, Number(body.since) || 0));
+				case "/sync/part/put":
+					if (typeof body.t !== "string" || typeof body.k !== "string" || !Number.isInteger(body.n) || typeof body.data !== "string" || body.data.length > 15e5) return fail("Bad part.", 400);
+					await putPart(db, body.t, body.k, body.n, Number(body.at) || 0, body.data);
+					return json({ ok: true });
+				case "/sync/part/get": {
+					const part = await getPart(db, String(body.t), String(body.k), Number(body.n) || 0);
+					return part ? json(part) : fail("That part is missing.", 404);
+				}
+				case "/share/put":
+					if (typeof body.id !== "string" || !/^[A-Za-z0-9_-]{8,64}$/.test(body.id) || typeof body.html !== "string" || body.html.length > 2097152) return fail("Bad page.", 400);
+					await putShare(db, body.id, String(body.title ?? ""), body.html);
+					return json({
+						ok: true,
+						url: new URL(`/s/${body.id}`, req.url).href
+					});
+				case "/share/delete":
+					if (typeof body.id !== "string") return fail("Which page?", 400);
+					await deleteShare(db, body.id);
+					return json({ ok: true });
+			}
+			return fail("Not found", 404);
 		}
 		const origin = await knownOrigin(kv, req);
 		if (url.pathname === "/sync") {

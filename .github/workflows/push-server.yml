@@ -30,6 +30,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       KV_ID: ${{ vars.SCRABBLER_KV_ID }}
+      SYNC_ID: ${{ vars.SCRABBLER_SYNC_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -56,4 +57,14 @@ jobs:
           fi
           sed -i "s/^binding = \"SCRABBLER\"$/binding = \"SCRABBLER\"\nid = \"$KV_ID\"/" wrangler.toml
           grep -A1 'binding = "SCRABBLER"' wrangler.toml
+      # The same for the sync database, when its id is known.
+      - name: Pin the sync database
+        if: env.SYNC_ID != ''
+        run: |
+          if ! [[ "$SYNC_ID" =~ ^[0-9a-f-]{36}$ ]]; then
+            echo "::error::The SCRABBLER_SYNC_ID variable should be the D1 database's id (a UUID)."
+            exit 1
+          fi
+          sed -i "s/^database_name = \"scrabbler-sync\"$/database_name = \"scrabbler-sync\"\ndatabase_id = \"$SYNC_ID\"/" wrangler.toml
+          grep -A2 'binding = "SYNC"' wrangler.toml
       - run: npx wrangler deploy

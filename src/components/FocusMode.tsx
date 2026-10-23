@@ -1,10 +1,12 @@
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { nav, useNav } from '../lib/nav';
 import { Sidebar } from './Sidebar';
 import { NoteList } from './NoteList';
-import { NotebookPanel } from './NotebookPanel';
+import { lazyNamed } from '../lib/lazy';
 import { ErrorBoundary } from './ui';
 import { IBook, IExpand, IShrink, ISidebar } from './Icons';
+
+const NotebookPanel = lazyNamed(() => import('./NotebookPanel'), 'NotebookPanel');
 
 /**
  * Full-screen focus: the page fills the screen and the side panels retract.
@@ -126,7 +128,9 @@ export function FocusChrome({ folderId }: { folderId: string | null }) {
         <aside className={`glass-panel glass right ${focusPanel === 'notebook' ? 'open' : ''}`} aria-hidden={focusPanel !== 'notebook'} inert={focusPanel !== 'notebook' ? true : undefined}>
           {focusPanel === 'notebook' && (
             <ErrorBoundary label="the notebook">
-              <NotebookPanel folderId={folderId} overlay />
+              <Suspense fallback={null}>
+                <NotebookPanel folderId={folderId} overlay />
+              </Suspense>
             </ErrorBoundary>
           )}
         </aside>

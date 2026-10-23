@@ -1,140 +1,35 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useEffect, useMemo, useState } from 'react';
-import { db, type StudySession } from '../db';
+import { useState } from 'react';
+import { db, type Exam, type StudySession } from '../db';
+import { addExam, countdown, daysBetween, pullCardsBefore } from '../lib/exams';
 import type { Subject } from '../lib/timetable';
-import { dayKey, fmtClock, prevDay } from '../lib/dates';
+import { dayKey, prevDay } from '../lib/dates';
 import { OTHER_SUBJECT } from '../lib/folders';
-import { nav, useNav } from '../lib/nav';
 import { useSettings } from '../lib/settings';
 import { getGame, levelFor } from '../lib/study';
 import { seriesVar } from '../lib/subjectColors';
 import {
   addManual,
   fmtMinutes,
-  minutesByDay,
   minutesOf,
   pauseTimer,
-  phaseElapsed,
   resumeTimer,
   startTimer,
   stopTimer,
-  subjectStreak,
-  tickTimer,
   timeXp,
   useTimer,
   weekDays,
-  weekMinutes,
   weekStart,
   type RevisionTimer,
 } from '../lib/studyTime';
 import { toast } from '../lib/events';
 import { PageHead } from './PageHead';
 import { confirmDialog, Modal, Segmented } from './ui';
-import { IFlame, IPause, IPlay, IPlus, IStop, ITimer, ITrash } from './Icons';
+import { IFlame, IPause, IPlay, IPlus, IStop, ITrash } from './Icons';
+
+import { clockFor, useNow, useRevisionData, type SubjectStats } from './RevisionTimer';
 
 const HEAT_WEEKS = 12;
-
-/** Ticks once a second while the timer runs, so phase changes happen on time. */
-function useNow(on: boolean) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (!on) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [on]);
-  return now;
-}
-
-/**
- * Runs the revision timer wherever you are in the app: moves Pomodoro phases
- * on, logs focus blocks, and says so.
- */
-export function useTimerEngine() {
-  const timer = useTimer();
-  useEffect(() => {
-    if (!timer) return;
-    const run = async () => {
-      const ev = await tickTimer();
-      if (!ev) return;
-      if (ev.kind === 'focus-done') {
-        toast(`Focus block done — ${Math.round(ev.minutes)} minutes logged. Take a break.`, 'success');
-        navigator.vibrate?.([120, 80, 120]);
-      } else if (ev.kind === 'break-done') {
-        toast('Break over — back to it.', 'info');
-        navigator.vibrate?.(120);
-      } else toast('The timer had run four hours, so it stopped and logged four hours. Edit the entry if that’s wrong.', 'info');
-    };
-    void run();
-    const t = setInterval(run, 1000);
-    return () => clearInterval(t);
-  }, [timer]);
-}
-
-/** The running timer, pinned to a corner when you're elsewhere in the app. */
-export function TimerChip() {
-  const timer = useTimer();
-  const { view } = useNav();
-  const now = useNow(!!timer);
-  const subjects = useLiveQuery(() => db.subjects.toArray(), []) ?? [];
-  if (!timer || view === 'revision') return null;
-  const name = subjects.find((s) => s.id === timer.subjectId)?.short ?? subjects.find((s) => s.id === timer.subjectId)?.name ?? 'Other';
-  return (
-    <button className={`timer-chip ${timer.phase}`} onClick={() => nav({ view: 'revision', pane: 'list' })} aria-label="Revision timer">
-      <ITimer size={16} />
-      <span className="timer-chip-clock">{clockFor(timer, now)}</span>
-      <span className="timer-chip-label">{timer.phase === 'break' ? 'Break' : name}</span>
-    </button>
-  );
-}
-
-function clockFor(t: RevisionTimer, now: number) {
-  const elapsed = phaseElapsed(t, now) / 1000;
-  if (t.mode === 'stopwatch') return fmtClock(elapsed);
-  const total = (t.phase === 'focus' ? t.focusMin : t.breakMin) * 60;
-  return fmtClock(Math.max(0, total - elapsed));
-}
-
-interface SubjectStats {
-  subject: Subject | { id: string; name: string; short?: string };
-  streak: ReturnType<typeof subjectStreak>;
-  week: number;
-  perDay: Map<string, number> | undefined;
-}
-
-function useRevisionData() {
-  const settings = useSettings();
-  const since = useMemo(() => {
-    let d = dayKey();
-    for (let i = 0; i < 400; i++) d = prevDay(d);
-    return d;
-  }, []);
-  const sessions = useLiveQuery(() => db.studyTime.where('day').aboveOrEqual(since).toArray(), [since]);
-  const subjects = useLiveQuery(() => db.subjects.toArray(), []);
-  return useMemo(() => {
-    if (!sessions || !subjects) return null;
-    const today = dayKey();
-    const monday = weekStart(today);
-    const byDay = minutesByDay(sessions);
-    const tracked = settings.revisionSubjects.map((id) => subjects.find((s) => s.id === id) ?? { id, name: id });
-    const stats: SubjectStats[] = tracked.map((subject) => ({
-      subject,
-      streak: subjectStreak(byDay.get(subject.id), settings.streakMinMinutes, today),
-      week: weekMinutes(byDay.get(subject.id), monday),
-      perDay: byDay.get(subject.id),
-    }));
-    const otherIds = [...byDay.keys()].filter((id) => !settings.revisionSubjects.includes(id));
-    const otherWeek = otherIds.reduce((sum, id) => sum + weekMinutes(byDay.get(id), monday), 0);
-    return { sessions, subjects, stats, otherWeek, byDay, today, monday };
-  }, [sessions, subjects, settings.revisionSubjects, settings.streakMinMinutes]);
-}
-
-/** For the sidebar: the longest streak running, and whether a timer is going. */
-export function useRevisionSummary() {
-  const data = useRevisionData();
-  const timer = useTimer();
-  if (!data) return null;
-  return { bestStreak: Math.max(0, ...data.stats.map((s) => s.streak.days)), timerOn: !!timer };
-}
 
 export function RevisionView({ narrow, showSidebarToggle }: { narrow: boolean; showSidebarToggle: boolean }) {
   const settings = useSettings();
@@ -158,7 +53,7 @@ export function RevisionView({ narrow, showSidebarToggle }: { narrow: boolean; s
         <div className="rev-dateline">
           <span>Week of {weekLabel}</span>
           <span>
-            Target {settings.weeklyTargetHours}h a subject · streak needs {settings.streakMinMinutes}m a day
+            Target {settings.weeklyTargetHours}h a subject, more before an exam · streak needs {settings.streakMinMinutes}m a day
           </span>
           <span className="rev-level" title={`${xp.toLocaleString()} XP from cards, quizzes and revision time`}>
             Lv {lvl.level} · {xp.toLocaleString()} XP
@@ -169,9 +64,10 @@ export function RevisionView({ narrow, showSidebarToggle }: { narrow: boolean; s
 
         <section className="rev-columns" aria-label="This week by subject">
           {data.stats.map((s) => (
-            <SubjectColumn key={s.subject.id} s={s} target={target} monday={data.monday} today={data.today} revised={settings.revisionSubjects} />
+            <SubjectColumn key={s.subject.id} s={s} target={s.target} monday={data.monday} today={data.today} revised={settings.revisionSubjects} />
           ))}
         </section>
+        <ExamsPanel exams={data.exams} subjects={data.subjects} revised={settings.revisionSubjects} today={data.today} />
         {data.otherWeek > 0 && <p className="rev-other">Plus {fmtMinutes(data.otherWeek)} this week on other subjects.</p>}
 
         <Heatmap data={data} revised={settings.revisionSubjects} min={settings.streakMinMinutes} />
@@ -184,6 +80,7 @@ export function RevisionView({ narrow, showSidebarToggle }: { narrow: boolean; s
 }
 
 function SubjectColumn({ s, target, monday, today, revised }: { s: SubjectStats; target: number; monday: string; today: string; revised: string[] }) {
+  const baseTarget = useSettings().weeklyTargetHours * 60;
   const days = weekDays(monday);
   const pct = Math.min(1, s.week / target);
   const color = seriesVar(s.subject.id, revised);
@@ -194,6 +91,12 @@ function SubjectColumn({ s, target, monday, today, revised }: { s: SubjectStats;
         <span className="rev-key" aria-hidden="true" />
         {s.subject.name}
       </h2>
+      {s.exam && s.examIn !== undefined && (
+        <p className="rev-exam">
+          <strong>{s.exam.name}</strong> {countdown(s.examIn)}
+          {s.target > baseTarget ? ` · target raised to ${fmtMinutes(s.target)}` : ''}
+        </p>
+      )}
       <div className={`rev-streak ${s.streak.todayMet ? 'lit' : ''}`}>
         <IFlame size={30} />
         <span className="rev-streak-num">{s.streak.days}</span>
@@ -504,6 +407,110 @@ function AddTime({ subjects, revised, onClose }: { subjects: Subject[]; revised:
         <span>What (optional)</span>
         <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Past paper, flashcards on paper…" />
       </label>
+    </Modal>
+  );
+}
+
+/** Exam dates per subject: they raise the weekly target, steer the plan and bring flashcards forward. */
+function ExamsPanel({ exams, subjects, revised, today }: { exams: Exam[]; subjects: Subject[]; revised: string[]; today: string }) {
+  const [adding, setAdding] = useState(false);
+  const upcoming = [...exams].filter((e) => e.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+  const past = exams.filter((e) => e.date < today);
+  const name = (id: string) => subjects.find((x) => x.id === id)?.name ?? id;
+  return (
+    <section className="rev-exams" aria-labelledby="rev-exams-h">
+      <div className="rev-exams-head">
+        <h2 id="rev-exams-h">Exams</h2>
+        <button className="btn small" onClick={() => setAdding(true)}>
+          <IPlus size={14} /> Add an exam
+        </button>
+      </div>
+      {!upcoming.length ? (
+        <p className="muted">Add your exam dates: each subject’s weekly target grows as its exam nears, the week’s plan gives it more time, and its flashcards are brought forward so none is left until after the exam.</p>
+      ) : (
+        <ul className="exam-list">
+          {upcoming.map((e) => {
+            const d = daysBetween(today, e.date);
+            return (
+              <li key={e.id} style={{ ['--ink' as string]: seriesVar(e.subjectId, revised) }}>
+                <span className="exam-days" aria-label={`${d} days`}>
+                  <strong>{d}</strong>
+                  <small>{d === 1 ? 'day' : 'days'}</small>
+                </span>
+                <span className="exam-what">
+                  <strong>{e.name}</strong>
+                  <span className="muted">
+                    {name(e.subjectId)} · {new Date(`${e.date}T12:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'long' })}
+                    {e.time ? ` at ${e.time}` : ''}
+                  </span>
+                </span>
+                <button
+                  className="icon-btn small"
+                  aria-label={`Remove ${e.name}`}
+                  onClick={async () => {
+                    if (await confirmDialog(`Remove ${e.name}?`, 'Remove')) await db.exams.delete(e.id);
+                  }}
+                >
+                  <ITrash size={15} />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {past.length > 0 && <p className="muted small">{past.length} past exam{past.length === 1 ? '' : 's'} kept for the record.</p>}
+      {adding && <AddExam subjects={subjects} revised={revised} onClose={() => setAdding(false)} />}
+    </section>
+  );
+}
+
+function AddExam({ subjects, revised, onClose }: { subjects: Subject[]; revised: string[]; onClose: () => void }) {
+  const [subjectId, setSubjectId] = useState(revised[0] ?? subjects[0]?.id ?? '');
+  const [name, setName] = useState('');
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('09:00');
+  const save = async () => {
+    if (!subjectId || !date) return;
+    const subject = subjects.find((x) => x.id === subjectId)?.name ?? 'Exam';
+    const exam = await addExam({ subjectId, name: name.trim() || `${subject} exam`, date, ...(time ? { time } : {}) });
+    const moved = await pullCardsBefore(subjectId, exam);
+    toast(moved ? `Exam added. ${moved} flashcard${moved === 1 ? '' : 's'} brought forward to come up before it.` : 'Exam added.', 'success');
+    onClose();
+  };
+  return (
+    <Modal
+      title="Add an exam"
+      onClose={onClose}
+      footer={
+        <button className="btn primary" disabled={!subjectId || !date} onClick={save}>
+          Add exam
+        </button>
+      }
+    >
+      <div className="form-grid">
+        <label>
+          Subject
+          <select className="input" value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
+            {subjects.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Paper
+          <input className="input" placeholder="e.g. Paper 1: Contract" value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
+        <label>
+          Date
+          <input className="input" type="date" value={date} min={dayKey()} onChange={(e) => setDate(e.target.value)} required />
+        </label>
+        <label>
+          Start time
+          <input className="input" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+        </label>
+      </div>
     </Modal>
   );
 }

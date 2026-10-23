@@ -2,6 +2,7 @@ import { createEmptyCard, fsrs, generatorParameters, Rating, State, type Card as
 import { db, getMeta, setMeta, uid, type Card, type ReviewEntry, type SchedState } from '../db';
 import { dayKey, prevDay } from './dates';
 import { getSettings } from './settings';
+import { capForExam, examForCard, examStart } from './exams';
 
 export { Rating, State };
 
@@ -130,7 +131,9 @@ export async function recordReview(
 ): Promise<RecordResult> {
   const now = Date.now();
   const wasNew = card.sched.state === State.New;
-  const updated: Card = mode === 'study' ? { ...card, sched: nextSched(card.sched, rating, new Date(now)) } : card;
+  // Never scheduled past its subject's next exam (lib/exams.ts).
+  const exam = mode === 'study' ? await examForCard(card).catch(() => undefined) : undefined;
+  const updated: Card = mode === 'study' ? { ...card, sched: capForExam(nextSched(card.sched, rating, new Date(now)), exam && examStart(exam), now) } : card;
   // Read and write the game inside one transaction, so two quick reviews can't undo each other's XP and lives.
   return db.transaction('rw', db.cards, db.reviews, db.meta, async () => {
     const game = await getGame();

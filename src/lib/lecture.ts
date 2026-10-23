@@ -8,6 +8,8 @@ import { mdToEditorHtml, escapeHtml } from './markdown';
 import { getSettings } from './settings';
 import { fmtClock } from './dates';
 import { toast, toastError } from './events';
+import { autoLinkMarkdown, type LinkTarget } from './autolink';
+import { linksFor } from './notes';
 
 export async function processLecture(noteId: string, opts: { context?: string; liveText?: string } = {}) {
   // Claimed before anything is awaited: the note may already say "transcribing".
@@ -51,7 +53,11 @@ async function lecture(noteId: string, opts: { context?: string; liveText?: stri
     await db.notes.update(noteId, { status: 'writing' });
     const text = transcriptToText(segs);
     const { title, markdown } = await lectureNotes(text, opts.context);
-    const html = mdToEditorHtml(markdown);
+    // The first mention of each note you already have becomes a link to it.
+    const others: LinkTarget[] = [];
+    await db.notes.each((n) => !n.deletedAt && others.push({ id: n.id, title: n.title }));
+    const { md: linkedMd, linked } = autoLinkMarkdown(markdown, others, noteId);
+    const html = mdToEditorHtml(linkedMd);
     const plain = new DOMParser().parseFromString(html, 'text/html').body.textContent ?? '';
     await db.notes.update(noteId, {
       status: 'ready',
@@ -59,10 +65,11 @@ async function lecture(noteId: string, opts: { context?: string; liveText?: stri
       snippet: plain.replace(/\s+/g, ' ').slice(title.length, title.length + 160).trim(),
       content: html,
       text: plain,
+      ...(await linksFor({ id: noteId, content: html, text: plain })),
       updatedAt: Date.now(),
     });
     await addTranscriptSource(note.folderId, noteId, title, segs);
-    toast('Lecture notes are ready ✦', 'success');
+    toast(linked.length ? `Lecture notes are ready ✦ Linked to ${linked.length} of your notes.` : 'Lecture notes are ready ✦', 'success');
   } catch (e) {
     await db.notes.update(noteId, { status: 'error', error: e instanceof Error ? e.message : String(e) });
     toastError(e);

@@ -8,6 +8,7 @@ import { dayKey, prevDay } from '../lib/dates';
 import { confirmDialog, Empty, Menu, Modal, promptDialog, useMenu } from './ui';
 import { ICards, IChevL, IFlame, IHeart, IBolt, IPlus, IMore, ISparkle, IUpload, ITrash, ISidebar } from './Icons';
 import { Session } from './Session';
+import { ShareDialog } from './ShareDialog';
 import { AppIcon } from './AppIcon';
 import { IconPicker } from './IconPicker';
 
@@ -137,7 +138,7 @@ function StudyHome({ narrow, showSidebarToggle }: { narrow: boolean; showSidebar
     <div className="study">
       <div className="study-head">
         {narrow ? (
-          <button className="icon-btn accent" onClick={() => nav({ pane: 'sidebar' })}>
+          <button aria-label="Folders" className="icon-btn accent" onClick={() => nav({ pane: 'sidebar' })}>
             <IChevL /> <span className="back-label">Folders</span>
           </button>
         ) : (
@@ -224,12 +225,14 @@ function DeckDetail({ deckId }: { deckId: string }) {
   const [edit, setEdit] = useState<Card | 'new' | null>(null);
   const [anchor, open, close] = useMenu();
   const [iconAnchor, setIconAnchor] = useState<HTMLElement | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [shown, setShown] = useState(200);
   const counts = deckCounts(cards);
   if (!deck) return null;
   return (
     <div className="study">
       <div className="study-head">
-        <button className="icon-btn accent" onClick={() => nav({ deckId: null })}>
+        <button aria-label="Decks" className="icon-btn accent" onClick={() => nav({ deckId: null })}>
           <IChevL /> <span className="back-label">Decks</span>
         </button>
         <span className="spacer" />
@@ -263,7 +266,7 @@ function DeckDetail({ deckId }: { deckId: string }) {
           </button>
         </div>
         <ul className="card-list">
-          {cards.map((c) => (
+          {cards.slice(0, shown).map((c) => (
             <li key={c.id} className={`card-row ${c.suspended ? 'suspended' : ''}`} onClick={() => setEdit(c)}>
               <span className="type-badge">{TYPE_LABEL[c.type]}</span>
               <span className="card-front">{c.type === 'cloze' ? clozeFront(c.front) : c.front}</span>
@@ -272,7 +275,15 @@ function DeckDetail({ deckId }: { deckId: string }) {
             </li>
           ))}
         </ul>
+        {cards.length > shown && (
+          <div className="list-more">
+            <button className="btn small" onClick={() => setShown((n) => n + 200)}>
+              Show more ({shown} of {cards.length})
+            </button>
+          </div>
+        )}
       </div>
+      {sharing && <ShareDialog kind="deck" refId={deckId} title={deck.name} onClose={() => setSharing(false)} />}
       {edit && <CardEditor deckId={deckId} card={edit === 'new' ? null : edit} onClose={() => setEdit(null)} />}
       {iconAnchor && <IconPicker anchor={iconAnchor} icons={DECK_ICONS} onClose={() => setIconAnchor(null)} onPick={(icon) => db.decks.update(deckId, { icon })} />}
       {anchor && (
@@ -281,6 +292,7 @@ function DeckDetail({ deckId }: { deckId: string }) {
           align="right"
           onClose={close}
           items={[
+            { label: 'Share…', onClick: () => setSharing(true) },
             {
               label: 'Rename…',
               onClick: async () => {

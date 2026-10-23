@@ -224,4 +224,4 @@ export async function weakSpots(subjectOfDeck: (deckId: string) => string | unde
   return [...out.values()].sort((a, b) => b.weight - a.weight);
 }
 
-export const TOOL_LABEL: Record<TutorTool, string> = { blurt: 'Blurt', feynman: 'Feynman', exam: 'Exam question', socratic: 'Socratic', mock: 'Mock paper' };
+export const TOOL_LABEL: Record<TutorTool, string> = { blurt: 'Blurt', feynman: 'Feynman', exam: 'Exam question', socratic: 'Socratic', mock: 'Mock paper', paper: 'Past paper' };
