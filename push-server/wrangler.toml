@@ -14,12 +14,11 @@ keep_vars = true
 [[kv_namespaces]]
 binding = "SCRABBLER"
 
-# Sync and shared pages (optional). Like the KV namespace above, no id on
-# purpose: a deploy keeps the database already bound as SYNC, or creates one.
-# The GitHub deploy pins it to SCRABBLER_SYNC_ID when that variable is set.
-[[d1_databases]]
-binding = "SYNC"
-database_name = "scrabbler-sync"
+# Sync and shared pages (optional) use a D1 database bound as SYNC. It is not
+# declared here: finding a database by name needs D1 permission that the
+# "Edit Cloudflare Workers" token doesn't have, and that failed the deploy. The
+# GitHub deploy adds the binding, by id, when the SCRABBLER_SYNC_ID variable is
+# set; deploying from a computer, add it yourself (README.md, "Sync and sharing").
 
 [triggers]
 crons = ["* * * * *"]

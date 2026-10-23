@@ -57,14 +57,17 @@ jobs:
           fi
           sed -i "s/^binding = \"SCRABBLER\"$/binding = \"SCRABBLER\"\nid = \"$KV_ID\"/" wrangler.toml
           grep -A1 'binding = "SCRABBLER"' wrangler.toml
-      # The same for the sync database, when its id is known.
-      - name: Pin the sync database
+      # The sync database is bound by id, and only when its id is known: looking
+      # one up by name needs D1 permission the Workers token doesn't have.
+      # Without the variable the deploy binds no database, so a SYNC binding
+      # added in the dashboard would be dropped: set SCRABBLER_SYNC_ID with it.
+      - name: Bind the sync database
         if: env.SYNC_ID != ''
         run: |
           if ! [[ "$SYNC_ID" =~ ^[0-9a-f-]{36}$ ]]; then
             echo "::error::The SCRABBLER_SYNC_ID variable should be the D1 database's id (a UUID)."
             exit 1
           fi
-          sed -i "s/^database_name = \"scrabbler-sync\"$/database_name = \"scrabbler-sync\"\ndatabase_id = \"$SYNC_ID\"/" wrangler.toml
-          grep -A2 'binding = "SYNC"' wrangler.toml
+          printf '\n[[d1_databases]]\nbinding = "SYNC"\ndatabase_name = "scrabbler-sync"\ndatabase_id = "%s"\n' "$SYNC_ID" >> wrangler.toml
+          tail -n 5 wrangler.toml
       - run: npx wrangler deploy

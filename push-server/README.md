@@ -60,8 +60,12 @@ classmate. Both need a free D1 database:
 2. In your worker open **Bindings → Add binding → D1 database**: variable
    name `SYNC`, database `scrabbler-sync`. (The worker creates its tables on
    first use.)
-3. Paste in the latest server code again (step 3 above), unless the worker
-   deploys from GitHub.
+3. Paste in the latest server code again (step 3 above). If the worker
+   deploys from GitHub instead, copy the database's ID (**Storage &
+   Databases → D1**, open `scrabbler-sync`) into a repository variable named
+   `SCRABBLER_SYNC_ID` (see "Deploy from GitHub" below) and run the deploy
+   once: without that variable a GitHub deploy binds no database, and the
+   binding you added in step 2 is dropped.
 4. Open your worker's address: it should now say *"D1 database bound as
    SYNC: yes"*.
 5. In Scrabbler open **Settings → Sync between devices**, choose a
@@ -101,9 +105,9 @@ whenever `push-server/` changes on the main branch
 4. **Pin the KV namespace (recommended).** In Cloudflare open **Storage &
    Databases → KV**, copy the ID of the namespace bound to the worker as
    `SCRABBLER`, and add it in the same GitHub page under the **Variables** tab
-   as `SCRABBLER_KV_ID`. If you set up sync, do the same for the D1 database
-   bound as `SYNC` (**Storage & Databases → D1**, its ID) as
-   `SCRABBLER_SYNC_ID`.
+   as `SCRABBLER_KV_ID`. If you set up sync, add the D1 database's ID
+   (**Storage & Databases → D1**) as `SCRABBLER_SYNC_ID` too — required, not
+   just recommended: the deploy binds the database only by that ID.
 5. **Turn off Cloudflare's own builds**, if you connected them before: in the
    worker open **Settings → Build** and disconnect the repository, so pushes
    aren't built twice.
@@ -123,6 +127,16 @@ cd push-server
 npm install
 npx wrangler secret put PASSWORD
 npx wrangler deploy   # the first deploy creates the KV namespace and binds it
+```
+
+For sync and sharing from a computer, first add the database to
+`wrangler.toml` (its ID is in **Storage & Databases → D1**):
+
+```toml
+[[d1_databases]]
+binding = "SYNC"
+database_name = "scrabbler-sync"
+database_id = "<the database's ID>"
 ```
 
 ## Notes
