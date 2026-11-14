@@ -1,259 +1,97 @@
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Suspense, useEffect } from 'react';
-import { db, deleteNotesForever } from './db';
-import { closeModal, nav, PAGE_VIEWS, setSidebarInline, STUDY_VIEWS, useNav } from './lib/nav';
-import { noteUse, type Feature } from './lib/usage';
-import { StudyTabs } from './components/StudyTabs';
-import { usePushSync } from './lib/calendarData';
-import { useApplyTheme } from './lib/theme';
-import { restoreNote } from './lib/notes';
-import { hasTextKey } from './lib/llm';
-import { Sidebar } from './components/Sidebar';
-import { NoteList } from './components/NoteList';
-import { NoteEditor } from './components/NoteEditor';
-import { FocusChrome, useFocusShortcuts } from './components/FocusMode';
-import { TimerChip, useTimerEngine } from './components/RevisionTimer';
-import { ConfirmHost, confirmDialog, Empty, ErrorBoundary, PromptHost, Spinner, Toasts, useMediaQuery } from './components/ui';
-import { lazyNamed } from './lib/lazy';
+import { NotebookPen, Waypoints, Presentation, ListChecks, CalendarDays, Timer, Calculator as CalcIcon, Sparkles, Settings as Cog, Moon, Sun } from 'lucide-react';
+import { db } from './lib/db';
+import { Toasts, notify, toast, useS, setS, getS, ymd, hm, mins } from './lib/ui';
+import { usePomo, mmss } from './lib/pomo';
+import { onLocalChange, sendSchedule, syncNow } from './lib/cloud';
+import { importLegacy } from './lib/legacy';
+import Notes from './views/Notes';
+import Graph from './views/Graph';
+import Slides from './views/Slides';
+import Reminders from './views/Reminders';
+import Calendar, { eventsOn, nowNext, useNow } from './views/Calendar';
+import Focus from './views/Focus';
+import Study from './views/Study';
+import Settings from './views/Settings';
 
-// Each page loads the first time it is opened, so the app starts on the notes alone.
-const CalendarView = lazyNamed(() => import('./components/CalendarView'), 'CalendarView');
-const RemindersView = lazyNamed(() => import('./components/RemindersView'), 'RemindersView');
-const RevisionView = lazyNamed(() => import('./components/RevisionView'), 'RevisionView');
-const GraphView = lazyNamed(() => import('./components/GraphView'), 'GraphView');
-const TutorView = lazyNamed(() => import('./components/TutorView'), 'TutorView');
-const StudyView = lazyNamed(() => import('./components/StudyView'), 'StudyView');
-const TodayView = lazyNamed(() => import('./components/TodayView'), 'TodayView');
-const NotebookPanel = lazyNamed(() => import('./components/NotebookPanel'), 'NotebookPanel');
-const SourceViewer = lazyNamed(() => import('./components/NotebookPanel'), 'SourceViewer');
-const SettingsModal = lazyNamed(() => import('./components/SettingsModal'), 'SettingsModal');
-const Recorder = lazyNamed(() => import('./components/Recorder'), 'Recorder');
-const GenerateDeckDialog = lazyNamed(() => import('./components/DeckDialogs'), 'GenerateDeckDialog');
-const ImportDeckDialog = lazyNamed(() => import('./components/DeckDialogs'), 'ImportDeckDialog');
-
-function Loading() {
-  return (
-    <div className="page-loading" role="status" aria-label="Loading">
-      <Spinner size={22} />
-    </div>
-  );
-}
-import { ICompose, ISparkle } from './components/Icons';
-import { createNote } from './lib/notes';
-import { mdToHtml } from './lib/markdown';
-import { SafetyBanner } from './components/SafetyBanner';
-import { AiStatus } from './components/AiStatus';
-
-const PAGE_LABEL: Partial<Record<string, string>> = { today: 'Today', calendar: 'Calendar', reminders: 'Reminders', revision: 'Revision', graph: 'the graph', tutor: 'the tutor' };
+const Calculator = lazy(() => import('./views/Calculator'));
+const VIEWS = [['notes', 'Notes', NotebookPen], ['graph', 'Graph', Waypoints], ['slides', 'Slides', Presentation], ['reminders', 'Reminders', ListChecks], ['calendar', 'Timetable', CalendarDays], ['focus', 'Focus', Timer], ['calc', 'Calculator', CalcIcon], ['study', 'Study', Sparkles], ['settings', 'Settings', Cog]] as const;
 
 export default function App() {
-  useApplyTheme();
-  useFocusShortcuts();
-  useTimerEngine();
-  const s = useNav();
-  const narrow = useMediaQuery('(max-width: 699px)');
-  const wide = useMediaQuery('(min-width: 1100px)');
-  const xwide = useMediaQuery('(min-width: 1440px)');
-  const roomy = useMediaQuery('(min-width: 1250px)');
-  const folders = useLiveQuery(() => db.folders.orderBy('order').toArray(), []);
-  usePushSync();
+  const s = useS(), p = usePomo(), now = useNow();
+  const [view, setViewState] = useState<string>(new URLSearchParams(location.search).has('clip') ? 'notes' : localStorage.getItem('scr2-view') || 'notes');
+  const [noteId, setNoteId] = useState<string | undefined>(localStorage.getItem('scr2-note') || undefined);
+  const [deckId, setDeckId] = useState<string>();
+  const evs = useLiveQuery(() => db.events.toArray(), []) || [];
+  const alerted = useRef(new Set<string>());
+  const setView = (v: string) => { setViewState(v); localStorage.setItem('scr2-view', v); };
+  const openNote = (id?: string) => { setNoteId(id); id ? localStorage.setItem('scr2-note', id) : localStorage.removeItem('scr2-note'); };
+  const [sysDark, setSysDark] = useState(matchMedia('(prefers-color-scheme: dark)').matches);
+  const dark = s.theme === 'dark' || (s.theme === 'auto' && sysDark);
 
-  // A tapped notification opens the calendar or reminders (?open=… on launch, a message if already open).
+  useEffect(() => { const m = matchMedia('(prefers-color-scheme: dark)'), f = () => setSysDark(m.matches); m.addEventListener('change', f); return () => m.removeEventListener('change', f); }, []);
   useEffect(() => {
-    const open = (url: string) => {
-      const view = new URL(url, location.href).searchParams.get('open');
-      if (view === 'calendar' || view === 'reminders') nav({ view, pane: 'list', drawer: false });
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    document.querySelector('meta[name=theme-color]')?.setAttribute('content', dark ? '#151412' : '#f3eee3');
+  }, [dark]);
+
+  // Reminder and class alerts while the app is open.
+  useEffect(() => {
+    const check = async () => {
+      const d = new Date(), today = ymd(d), t = hm(d);
+      for (const r of await db.reminders.filter(r => !r.done && r.due === today && !!r.time && r.time <= t && r.notified !== `${r.due}T${r.time}`).toArray()) {
+        notify('Reminder', r.title); db.reminders.update(r.id, { notified: `${r.due}T${r.time}` });
+      }
+      for (const e of eventsOn(await db.events.toArray(), d)) {
+        const k = today + e.id, left = mins(e.start) - mins(t);
+        if (left > 0 && left <= 5 && !alerted.current.has(k)) { alerted.current.add(k); notify(`${e.title} in ${left} min`, e.room || ''); }
+      }
     };
-    open(location.href);
-    if (location.search.includes('open=')) history.replaceState(null, '', location.pathname + location.hash);
-    const onMsg = (e: MessageEvent) => e.data?.type === 'scrabbler-open' && open(e.data.url);
-    navigator.serviceWorker?.addEventListener('message', onMsg);
-    return () => navigator.serviceWorker?.removeEventListener('message', onMsg);
+    check(); const i = setInterval(check, 30000); return () => clearInterval(i);
   }, []);
-  const note = useLiveQuery(() => (s.noteId ? db.notes.get(s.noteId) : undefined), [s.noteId]);
 
-  // What gets used, for Settings → Sidebar (lib/usage.ts).
+  // Sync on start, every minute, on return to the app and a few seconds after each change; keep the push server's schedule current.
   useEffect(() => {
-    if (PAGE_VIEWS.includes(s.view)) noteUse(s.view as Feature);
-  }, [s.view]);
-  useEffect(() => {
-    if (s.notebookOpen) noteUse('notebook');
-  }, [s.notebookOpen]);
+    let syncT: ReturnType<typeof setTimeout>, pushT: ReturnType<typeof setTimeout>;
+    const sync = () => { if (getS().syncOn && navigator.onLine) syncNow().catch(e => console.warn('sync', e)); };
+    const off = onLocalChange(t => {
+      clearTimeout(syncT); syncT = setTimeout(sync, 4000);
+      if (t === 'events' || t === 'reminders') { clearTimeout(pushT); pushT = setTimeout(() => sendSchedule().catch(() => {}), 3000); }
+    });
+    const vis = () => { if (!document.hidden) sync(); };
+    const open = (url: string) => { const v = new URL(url, location.href).searchParams.get('open'); if (v === 'calendar' || v === 'reminders') setView(v); };
+    const msg = (e: MessageEvent) => { if (e.data?.type === 'scrabbler-open') open(e.data.url); };
+    open(location.href); sync(); sendSchedule().catch(() => {});
+    const i = setInterval(sync, 60000);
+    document.addEventListener('visibilitychange', vis); navigator.serviceWorker?.addEventListener('message', msg);
+    if (!localStorage.getItem('scr2-legacy')) importLegacy().then(n => { localStorage.setItem('scr2-legacy', '1'); if (n) toast(`Brought across ${n} notes from the previous Scrabbler.`); }).catch(() => {});
+    return () => { off(); clearInterval(i); clearTimeout(syncT); clearTimeout(pushT); document.removeEventListener('visibilitychange', vis); navigator.serviceWorker?.removeEventListener('message', msg); };
+  }, []);
 
-  // Keep the selected folder valid.
-  useEffect(() => {
-    if (!folders?.length) return;
-    if (!s.folderId || !folders.some((f) => f.id === s.folderId)) nav({ folderId: folders[0].id });
-  }, [folders, s.folderId]);
-
-  // Global shortcuts.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key.toLowerCase() === 'n' && s.folderId) {
-        e.preventDefault();
-        createNote(s.folderId);
-      }
-      if (mod && e.key === ',') {
-        e.preventDefault();
-        nav({ modal: { type: 'settings' } });
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [s.folderId]);
-
-  if (!folders) return null;
-
-  // Study, Calendar and Reminders each fill the main area on their own.
-  const isStudy = PAGE_VIEWS.includes(s.view);
-  const notebookFolder = note?.folderId ?? s.folderId;
-  // Full-screen focus: only the page stays; panels float in on demand (FocusChrome).
-  const focus = s.focus && !isStudy && !!note && !note.deletedAt;
-  // On iPad landscape the notebook docks beside the editor and the side panes fold away.
-  const notebookDocked = !focus && s.notebookOpen && wide && !isStudy && !!notebookFolder;
-  const notebookOverlay = !focus && s.notebookOpen && !notebookDocked && !isStudy && !!notebookFolder;
-  const canInline = wide && (!notebookDocked || xwide);
-  setSidebarInline(canInline);
-  const showSidebar = !focus && (narrow ? s.pane === 'sidebar' : canInline && s.sidebarOpen);
-  const sidebarOverlay = !focus && !narrow && !showSidebar && s.drawer;
-
-  const showList = !focus && !isStudy && (narrow ? s.pane === 'list' : !notebookDocked || roomy);
-  const showEditor = focus || (!isStudy && (narrow ? s.pane === 'editor' : true));
-  const showStudy = isStudy && (narrow ? s.pane !== 'sidebar' : true);
-
+  const nn = nowNext(evs, now);
   return (
-    <div className={`app ${narrow ? 'narrow' : wide ? 'wide' : 'medium'}${focus ? ' focus' : ''}`}>
-      {showSidebar && (
-        <ErrorBoundary label="the sidebar">
-          <Sidebar />
-        </ErrorBoundary>
-      )}
-      {sidebarOverlay && (
-        <div className="drawer-backdrop" onClick={() => nav({ drawer: false })}>
-          <div className="drawer" onClick={(e) => e.stopPropagation()}>
-            <Sidebar />
-          </div>
-        </div>
-      )}
-      {showList && (
-        <ErrorBoundary label="the note list">
-          <NoteList narrow={narrow} showSidebarToggle={!showSidebar} />
-        </ErrorBoundary>
-      )}
-      {showEditor && (
-        <main className="main">
-          <ErrorBoundary label="the editor" key={s.noteId ?? 'none'}>
-          {note && !note.deletedAt ? (
-            <NoteEditor key={note.id} note={note} narrow={narrow && !focus} wide={focus || showSidebar || showList} />
-          ) : note?.deletedAt ? (
-            <DeletedPreview id={note.id} title={note.title} text={note.text} />
-          ) : (
-            <div className="editor-empty">
-              <Empty icon={<ICompose size={34} />} title="No note selected">
-                Pick a note, or create one.
-                <div className="empty-actions">
-                  {s.folderId && (
-                    <button className="btn primary" onClick={() => createNote(s.folderId!)}>
-                      New note
-                    </button>
-                  )}
-                  {!hasTextKey() && (
-                    <button className="btn" onClick={() => nav({ modal: { type: 'settings' } })}>
-                      <ISparkle size={16} /> Set up free AI
-                    </button>
-                  )}
-                </div>
-              </Empty>
-            </div>
-          )}
-          </ErrorBoundary>
-        </main>
-      )}
-      {showStudy && (
-        <main className="main study-main">
-          <ErrorBoundary label={PAGE_LABEL[s.view] ?? 'Study'} key={s.view}>
-            {(STUDY_VIEWS as readonly string[]).includes(s.view) && <StudyTabs />}
-            <Suspense fallback={<Loading />}>
-            {s.view === 'today' ? (
-              <TodayView narrow={narrow} showSidebarToggle={!showSidebar} />
-            ) : s.view === 'calendar' ? (
-              <CalendarView narrow={narrow} showSidebarToggle={!showSidebar} />
-            ) : s.view === 'reminders' ? (
-              <RemindersView narrow={narrow} showSidebarToggle={!showSidebar} />
-            ) : s.view === 'revision' ? (
-              <RevisionView narrow={narrow} showSidebarToggle={!showSidebar} />
-            ) : s.view === 'graph' ? (
-              <GraphView narrow={narrow} showSidebarToggle={!showSidebar} />
-            ) : s.view === 'tutor' ? (
-              <TutorView narrow={narrow} showSidebarToggle={!showSidebar} />
-            ) : (
-              <StudyView narrow={narrow} showSidebarToggle={!showSidebar} />
-            )}
-            </Suspense>
-          </ErrorBoundary>
-        </main>
-      )}
-      {notebookDocked && (
-        <ErrorBoundary label="the notebook">
-          <Suspense fallback={<Loading />}>
-            <NotebookPanel folderId={notebookFolder!} overlay={false} />
-          </Suspense>
-        </ErrorBoundary>
-      )}
-      {notebookOverlay && (
-        <div className="drawer-backdrop right" onClick={() => nav({ notebookOpen: false })}>
-          <div className="drawer right" onClick={(e) => e.stopPropagation()}>
-            <ErrorBoundary label="the notebook">
-              <Suspense fallback={<Loading />}>
-                <NotebookPanel folderId={notebookFolder!} overlay />
-              </Suspense>
-            </ErrorBoundary>
-          </div>
-        </div>
-      )}
-
-      {focus && <FocusChrome folderId={notebookFolder ?? null} />}
-
-      <Suspense fallback={null}>
-        {s.modal?.type === 'settings' && <SettingsModal />}
-        {s.modal?.type === 'recorder' && <Recorder folderId={s.modal.folderId} />}
-        {s.modal?.type === 'generateDeck' && <GenerateDeckDialog from={s.modal.from} quiz={s.modal.quiz} />}
-        {s.modal?.type === 'importDeck' && <ImportDeckDialog />}
-        {s.modal?.type === 'source' && <SourceViewer sourceId={s.modal.sourceId} chunkId={s.modal.chunkId} onClose={closeModal} />}
-      </Suspense>
-      <TimerChip />
-      <SafetyBanner />
-      <AiStatus />
+    <div className="app">
+      <nav className="rail" aria-label="Sections">
+        <div className="brand" aria-hidden>S</div>
+        {VIEWS.map(([k, n, I]) => <button key={k} className={'rail-btn' + (view === k ? ' on' : '')} onClick={() => setView(k)} aria-current={view === k}><I size={20} /><span>{n}</span></button>)}
+        <span className="grow" />
+        {(p.running || p.phase !== 'work') && <button className="rail-mini" onClick={() => setView('focus')} title="Pomodoro">{mmss(p.left)}</button>}
+        {(nn.now || nn.next) && <button className="rail-mini class" onClick={() => setView('calendar')} title="Timetable">{nn.now ? `${nn.now.title.slice(0, 5)} →${nn.now.end}` : `${nn.next!.title.slice(0, 5)} ${nn.next!.start}`}</button>}
+        <button className="rail-btn" onClick={() => setS({ theme: dark ? 'light' : 'dark' })} aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}>{dark ? <Sun size={20} /> : <Moon size={20} />}<span>{dark ? 'Light' : 'Dark'}</span></button>
+      </nav>
+      <main className="main">
+        {view === 'notes' ? <Notes openId={noteId} open={openNote} />
+          : view === 'graph' ? <Graph open={id => { openNote(id); setView('notes'); }} />
+          : view === 'slides' ? <Slides openId={deckId} open={setDeckId} />
+          : view === 'reminders' ? <Reminders />
+          : view === 'calendar' ? <Calendar />
+          : view === 'focus' ? <Focus />
+          : view === 'calc' ? <Suspense fallback={<div className="view muted">Loading calculator…</div>}><Calculator /></Suspense>
+          : view === 'study' ? <Study goNote={id => { openNote(id); setView('notes'); }} goDeck={id => { setDeckId(id); setView('slides'); }} />
+          : <Settings />}
+      </main>
       <Toasts />
-      <ConfirmHost />
-      <PromptHost />
-    </div>
-  );
-}
-
-function DeletedPreview({ id, title, text }: { id: string; title: string; text: string }) {
-  return (
-    <div className="deleted-preview">
-      <div className="deleted-banner">
-        This note is in Recently Deleted.
-        <button className="btn small primary" onClick={() => restoreNote(id)}>
-          Recover
-        </button>
-        <button
-          className="btn small danger"
-          onClick={async () => {
-            if (!(await confirmDialog('Delete this note for good? This can’t be undone.', 'Delete permanently'))) return;
-            await deleteNotesForever([id]);
-            nav({ noteId: null });
-          }}
-        >
-          Delete permanently
-        </button>
-      </div>
-      <div className="editor-scroll">
-        <div className="prose md" dangerouslySetInnerHTML={{ __html: mdToHtml(`# ${title}\n\n${text.split('\n').slice(1).join('\n\n')}`) }} />
-      </div>
     </div>
   );
 }
