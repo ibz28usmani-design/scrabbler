@@ -15,6 +15,8 @@ export interface Reminder { id: string; title: string; notes?: string; list: str
 export interface RList { id: string; name: string; color: string }
 export interface Ev { id: string; title: string; color: string; weekly: boolean; day?: number; date?: string; start: string; end: string; room?: string; teacher?: string }
 export interface Session { id: string; subject: string; start: number; mins: number }
+export interface Version { id: string; note: string; at: number; title: string; layout: string; content: Record<string, string>; ink: Stroke[] }
+export interface Lecture { id: string; audio: Blob; secs: number }
 export interface Source { id: string; name: string; mime: string; data: string }
 
 class DB extends Dexie {
@@ -22,6 +24,7 @@ class DB extends Dexie {
   cardSets!: Table<CardSet, string>; cards!: Table<Card, string>; quizzes!: Table<Quiz, string>;
   podcasts!: Table<Podcast, string>; artifacts!: Table<Artifact, string>; reminders!: Table<Reminder, string>;
   lists!: Table<RList, string>; events!: Table<Ev, string>; sessions!: Table<Session, string>; sources!: Table<Source, string>;
+  versions!: Table<Version, string>; lectures!: Table<Lecture, string>;
   constructor() {
     super('scrabbler2');
     this.version(1).stores({
@@ -29,6 +32,7 @@ class DB extends Dexie {
       quizzes: 'id', podcasts: 'id', artifacts: 'id', reminders: 'id,list,due', lists: 'id', events: 'id',
       sessions: 'id,start', sources: 'id',
     });
+    this.version(2).stores({ versions: 'id,note,at', lectures: 'id' });
   }
 }
 export const db = new DB();
@@ -41,8 +45,26 @@ export function newNote(p: Partial<Note> = {}): Note {
   return { id: uid(), title: '', folder: 'notes', layout: 'free', paper: 'plain', content: {}, ink: [], h: 1100, created: now, updated: now, ...p };
 }
 
+const lastSnap = new Map<string, number>();
+/** Keeps the note as it was before this burst of editing (at most one version per ten minutes, thirty per note). */
+export async function snapshot(id: string, force = false) {
+  const now = Date.now();
+  if (!force && now - (lastSnap.get(id) || 0) < 600000) return;
+  lastSnap.set(id, now);
+  const cur = await db.notes.get(id);
+  if (!cur || !(Object.values(cur.content).some(Boolean) || cur.ink.length)) return;
+  await db.versions.add({ id: uid(), note: id, at: cur.updated, title: cur.title, layout: cur.layout, content: cur.content, ink: cur.ink });
+  const all = await db.versions.where('note').equals(id).sortBy('at');
+  if (all.length > 30) await db.versions.bulkDelete(all.slice(0, all.length - 30).map(v => v.id));
+}
+/** Saves an edit to a note, keeping a version of what was there before. */
+export async function saveNote(id: string, patch: Record<string, unknown>) {
+  await snapshot(id);
+  return db.notes.update(id, { ...patch, updated: Date.now() } as any);
+}
+
 const L = (title: string, color: string, day: number, start: string, end: string, room: string, teacher = ''): Ev =>
-  ({ id: uid(), title, color, weekly: true, day, start, end, room, teacher });
+  ({ id: `seed-${day}-${start}`, title, color, weekly: true, day, start, end, room, teacher }); // fixed ids, so two synced devices share one timetable
 
 db.on('populate', () => {
   db.folders.bulkAdd([
@@ -69,7 +91,7 @@ db.on('populate', () => {
     L('Law', law, 5, '13:55', '14:50', 'John Shields JS203', 'Immie Phelps'),
   ]);
   db.notes.add(newNote({
-    title: 'Welcome to Scrabbler', pinned: true,
+    id: 'welcome', title: 'Welcome to Scrabbler', pinned: true,
     content: { body: `<p>One place for notes, handwriting, slides, reminders, your timetable, a focus clock, a graphing calculator and AI study tools.</p>
 <h2>Notes</h2><ul><li>Press <strong>+</strong> for a typed note, a handwritten page, a document template or a web clipping.</li><li>Use <strong>Layout</strong> for Cornell, Maths, Law and Economics pages, and <strong>Paper</strong> for ruled, square grid, graph or dotted paper. Every layout works typed and handwritten.</li><li>Touch the page with Apple Pencil, or press the pen button, to write anywhere.</li><li>Link notes by typing [[Note title]]. Links and #tags appear in the <strong>Graph</strong>.</li></ul>
 <h2>Study</h2><p>Add a free Gemini key in <strong>Settings</strong>, tick your sources in <strong>Study</strong>, then generate flashcards, quizzes, podcasts, slide decks and interactive web artefacts.</p>

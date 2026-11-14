@@ -1,0 +1,12 @@
+{
+  "name": "scrabbler-push",
+  "private": true,
+  "type": "module",
+  "description": "Scrabbler's push server, a Cloudflare Worker. worker.js is built from src/ with `npm run build:push` in the repo root.",
+  "scripts": {
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.149.0"
+  }
+}

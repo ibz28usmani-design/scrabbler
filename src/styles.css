@@ -252,3 +252,11 @@ h1, h2, h3, p { margin: 0; }
   #print.print-deck .slide-outer { break-after: page; } #print .ink path { mix-blend-mode: normal; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* ---------- restored features ---------- */
+.sel-box { fill: none; stroke: var(--blue); stroke-width: 1.5; stroke-dasharray: 6 4; pointer-events: none; }
+.lecture-bar { display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid var(--line); background: var(--bg); flex: none; } .lecture-bar audio { height: 34px; flex: 1; min-width: 0; }
+.version { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.rec-time { font: 600 64px/1 var(--cond); text-align: center; }
+.tiptap [data-type='inline-math'], .tiptap [data-type='block-math'] { cursor: pointer; border-radius: 4px; padding: 0 2px; } .tiptap [data-type='inline-math']:hover, .tiptap [data-type='block-math']:hover { background: var(--panel); }
+.tiptap [data-type='block-math'] { display: block; text-align: center; padding: 6px 0; }

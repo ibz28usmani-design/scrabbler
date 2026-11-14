@@ -8,7 +8,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon.svg', 'apple-touch-icon.png'],
+      includeAssets: ['icon.svg', 'apple-touch-icon.png', 'scrabbler-push-worker.js'],
       manifest: {
         name: 'Scrabbler',
         short_name: 'Scrabbler',
@@ -25,7 +25,7 @@ export default defineConfig({
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
-      workbox: { globPatterns: ['**/*.{js,css,html,svg,png,woff2}'], maximumFileSizeToCacheInBytes: 8 * 1024 * 1024 },
+      workbox: { globPatterns: ['**/*.{js,css,html,svg,png,woff2}'], maximumFileSizeToCacheInBytes: 8 * 1024 * 1024, importScripts: ['push-sw.js'] },
     }),
   ],
   test: { environment: 'node' },

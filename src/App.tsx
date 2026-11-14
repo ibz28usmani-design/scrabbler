@@ -2,8 +2,10 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { NotebookPen, Waypoints, Presentation, ListChecks, CalendarDays, Timer, Calculator as CalcIcon, Sparkles, Settings as Cog, Moon, Sun } from 'lucide-react';
 import { db } from './lib/db';
-import { Toasts, notify, useS, setS, ymd, hm, mins } from './lib/ui';
+import { Toasts, notify, toast, useS, setS, getS, ymd, hm, mins } from './lib/ui';
 import { usePomo, mmss } from './lib/pomo';
+import { onLocalChange, sendSchedule, syncNow } from './lib/cloud';
+import { importLegacy } from './lib/legacy';
 import Notes from './views/Notes';
 import Graph from './views/Graph';
 import Slides from './views/Slides';
@@ -47,6 +49,24 @@ export default function App() {
       }
     };
     check(); const i = setInterval(check, 30000); return () => clearInterval(i);
+  }, []);
+
+  // Sync on start, every minute, on return to the app and a few seconds after each change; keep the push server's schedule current.
+  useEffect(() => {
+    let syncT: ReturnType<typeof setTimeout>, pushT: ReturnType<typeof setTimeout>;
+    const sync = () => { if (getS().syncOn && navigator.onLine) syncNow().catch(e => console.warn('sync', e)); };
+    const off = onLocalChange(t => {
+      clearTimeout(syncT); syncT = setTimeout(sync, 4000);
+      if (t === 'events' || t === 'reminders') { clearTimeout(pushT); pushT = setTimeout(() => sendSchedule().catch(() => {}), 3000); }
+    });
+    const vis = () => { if (!document.hidden) sync(); };
+    const open = (url: string) => { const v = new URL(url, location.href).searchParams.get('open'); if (v === 'calendar' || v === 'reminders') setView(v); };
+    const msg = (e: MessageEvent) => { if (e.data?.type === 'scrabbler-open') open(e.data.url); };
+    open(location.href); sync(); sendSchedule().catch(() => {});
+    const i = setInterval(sync, 60000);
+    document.addEventListener('visibilitychange', vis); navigator.serviceWorker?.addEventListener('message', msg);
+    if (!localStorage.getItem('scr2-legacy')) importLegacy().then(n => { localStorage.setItem('scr2-legacy', '1'); if (n) toast(`Brought across ${n} notes from the previous Scrabbler.`); }).catch(() => {});
+    return () => { off(); clearInterval(i); clearTimeout(syncT); clearTimeout(pushT); document.removeEventListener('visibilitychange', vis); navigator.serviceWorker?.removeEventListener('message', msg); };
   }, []);
 
   const nn = nowNext(evs, now);

@@ -6,6 +6,7 @@ import type { Note } from './db';
 const DEF = {
   theme: 'auto' as 'auto' | 'light' | 'dark', key: '', textModel: 'gemini-2.5-flash', ttsModel: 'gemini-2.5-flash-preview-tts',
   work: 25, short: 5, long: 15, rounds: 4, deg: true, srcSel: [] as string[], clock24: true,
+  server: '', password: '', syncPass: '', syncOn: false, syncAt: 0, pushOn: false, lead: 10, firstLead: 60,
 };
 export type Settings = typeof DEF;
 const LS = typeof localStorage === 'undefined' ? null : localStorage;

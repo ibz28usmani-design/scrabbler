@@ -1,27 +1,19 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEditor, EditorContent, type Editor } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import { TaskList } from '@tiptap/extension-task-list';
-import { TaskItem } from '@tiptap/extension-task-item';
-import { TableKit } from '@tiptap/extension-table';
-import Highlight from '@tiptap/extension-highlight';
-import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
-import TextAlign from '@tiptap/extension-text-align';
-import { TextStyleKit } from '@tiptap/extension-text-style';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-import { Plus, Trash2, Pin, Search, Bold, Italic, Underline, Strikethrough, List, ListOrdered, ListTodo, AlignLeft, AlignCenter, AlignRight, Highlighter, Link, Image as ImageIcon, Table, Quote, Code, Minus, Undo2, Redo2, PenLine, Type, Printer, PanelLeft, FolderPlus, Globe, LayoutTemplate, RotateCcw } from 'lucide-react';
-import { db, newNote, uid, type Note } from '../lib/db';
+import { Plus, Trash2, Pin, Search, Bold, Italic, Underline, Strikethrough, List, ListOrdered, ListTodo, AlignLeft, AlignCenter, AlignRight, Highlighter, Link, Image as ImageIcon, Table, Quote, Code, Minus, Undo2, Redo2, PenLine, Type, Printer, PanelLeft, FolderPlus, Globe, LayoutTemplate, RotateCcw, History, Mic, Sigma, Pause, Play, Square } from 'lucide-react';
+import { db, newNote, uid, saveNote, snapshot, type Note, type Version } from '../lib/db';
+import { EXT, setActiveEditor } from '../lib/editor';
+import { useRev } from '../lib/cloud';
+import { transcribe } from '../lib/ai';
+import { startRecording, type RecorderHandle } from '../lib/record';
 import { Ink, InkBar, defaultTool, type InkHandle } from '../lib/ink';
 import { LAYOUTS, PAPERS, DOC_TEMPLATES, type Region } from '../lib/layouts';
 import { IB, Field, Modal, guard, toast, noteText, strip, linksOf, tagsOf, nice, printNodes, fileToDataUrl } from '../lib/ui';
 
-const EXT = [
-  StarterKit.configure({ link: { openOnClick: false } }), TaskList, TaskItem.configure({ nested: true }), TableKit,
-  Highlight.configure({ multicolor: true }), Image.configure({ allowBase64: true }), TextAlign.configure({ types: ['heading', 'paragraph'] }), TextStyleKit,
-];
 const PAGE_W = 820;
 
 export default function Notes({ openId, open }: { openId?: string; open: (id?: string) => void }) {
@@ -31,7 +23,7 @@ export default function Notes({ openId, open }: { openId?: string; open: (id?: s
   const [q, setQ] = useState('');
   const [side, setSide] = useState(window.innerWidth > 1000);
   const [menu, setMenu] = useState(false);
-  const [modal, setModal] = useState<'' | 'tpl' | 'clip'>(new URLSearchParams(location.search).has('clip') ? 'clip' : '');
+  const [modal, setModal] = useState<'' | 'tpl' | 'clip' | 'rec'>(new URLSearchParams(location.search).has('clip') ? 'clip' : '');
   const live = notes.filter(n => !n.deleted);
   const shown = useMemo(() => {
     const base = folder === 'trash' ? notes.filter(n => n.deleted) : live.filter(n => folder === 'all' || n.folder === folder);
@@ -39,6 +31,8 @@ export default function Notes({ openId, open }: { openId?: string; open: (id?: s
     return base.filter(n => !s || (n.title + ' ' + noteText(n)).toLowerCase().includes(s)).sort((a, b) => +!!b.pinned - +!!a.pinned);
   }, [notes, folder, q]);
   const note = notes.find(n => n.id === openId);
+  const rev = useRev(openId);
+  const [ver, setVer] = useState(0);
 
   const create = async (p: Partial<Note> = {}) => {
     const n = newNote({ folder: ['all', 'trash'].includes(folder) ? 'notes' : folder, ...p });
@@ -79,6 +73,7 @@ export default function Notes({ openId, open }: { openId?: string; open: (id?: s
                 <button onClick={() => create({ paper: 'grid', draw: true })}><PenLine size={15} /> Handwritten page</button>
                 <button onClick={() => { setModal('tpl'); setMenu(false); }}><LayoutTemplate size={15} /> From a template…</button>
                 <button onClick={() => { setModal('clip'); setMenu(false); }}><Globe size={15} /> Clip a web page…</button>
+                <button onClick={() => { setModal('rec'); setMenu(false); }}><Mic size={15} /> Record a lecture…</button>
               </div>}
             </div>
           </div>
@@ -94,16 +89,17 @@ export default function Notes({ openId, open }: { openId?: string; open: (id?: s
           </div>
         </section>
       </>}
-      {note ? <NotePage key={note.id} note={note} notes={live} folders={folders} open={open} side={side} setSide={setSide} />
+      {note ? <NotePage key={`${note.id}:${rev}:${ver}`} reload={() => setVer(v => v + 1)} note={note} notes={live} folders={folders} open={open} side={side} setSide={setSide} />
         : <div className="empty"><button className="ib" onClick={() => setSide(!side)} aria-label="Toggle sidebar"><PanelLeft size={18} /></button><h2>Pick a note, or press + to start one.</h2></div>}
       {modal === 'tpl' && <TemplateModal onClose={() => setModal('')} create={create} />}
       {modal === 'clip' && <ClipModal onClose={() => setModal('')} create={create} />}
+      {modal === 'rec' && <RecorderModal onClose={() => setModal('')} create={create} />}
     </div>
   );
 }
 
 /* ---------- one note: page, regions, handwriting ---------- */
-function NotePage({ note, notes, folders, open, side, setSide }: { note: Note; notes: Note[]; folders: { id: string; name: string }[]; open: (id?: string) => void; side: boolean; setSide: (b: boolean) => void }) {
+function NotePage({ note, notes, folders, open, side, setSide, reload }: { reload: () => void; note: Note; notes: Note[]; folders: { id: string; name: string }[]; open: (id?: string) => void; side: boolean; setSide: (b: boolean) => void }) {
   const [ed, setEd] = useState<Editor | null>(null);
   const [draw, setDrawState] = useState(!!note.draw);
   const [tool, setTool] = useState(defaultTool);
@@ -111,7 +107,15 @@ function NotePage({ note, notes, folders, open, side, setSide }: { note: Note; n
   const [zoom, setZoom] = useState(1);
   useEffect(() => { const el = wrap.current!; const ro = new ResizeObserver(() => setZoom(Math.min(1, (el.clientWidth - 28) / PAGE_W))); ro.observe(el); return () => ro.disconnect(); }, []);
   const L = LAYOUTS[note.layout] || LAYOUTS.free;
-  const up = (p: Partial<Note>) => db.notes.update(note.id, { ...p, updated: Date.now() });
+  const up = (p: Partial<Note>) => saveNote(note.id, p);
+  const [hist, setHist] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const lec = useLiveQuery(() => db.lectures.get(note.id), [note.id]);
+  const lecUrl = useMemo(() => (lec ? URL.createObjectURL(lec.audio) : ''), [lec]);
+  const runTranscribe = () => guard(async () => {
+    setBusy(true);
+    try { const html = await transcribe(lec!.audio); await saveNote(note.id, { layout: 'free', content: { ...note.content, body: html } }); reload(); } finally { setBusy(false); }
+  });
   const setDraw = (d: boolean) => { setDrawState(d); db.notes.update(note.id, { draw: d }); };
   const changeLayout = (id: string) => {
     const nl = LAYOUTS[id], ids = nl.regions.map(r => r.id);
@@ -148,11 +152,14 @@ function NotePage({ note, notes, folders, open, side, setSide }: { note: Note; n
           {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
         </select>
         <IB title="Pin" on={note.pinned} onClick={() => up({ pinned: !note.pinned })}><Pin size={17} /></IB>
+        <IB title="Version history" onClick={() => setHist(true)}><History size={17} /></IB>
         <IB title="Print or save as PDF" onClick={() => page.current && printNodes([page.current], 'size:A4;margin:10mm', 'print-note')}><Printer size={17} /></IB>
         {note.deleted
           ? <><IB title="Restore" onClick={() => db.notes.update(note.id, { deleted: undefined })}><RotateCcw size={17} /></IB><IB title="Delete forever" onClick={() => { if (confirm('Delete this note forever?')) { db.notes.delete(note.id); open(); } }}><Trash2 size={17} /></IB></>
           : <IB title="Delete" onClick={() => { db.notes.update(note.id, { deleted: Date.now() }); open(); }}><Trash2 size={17} /></IB>}
       </div>
+      {lec && <div className="lecture-bar"><Mic size={16} /><audio controls src={lecUrl} /><button className="btn small primary" disabled={busy} onClick={runTranscribe}>{busy ? 'Transcribing… this can take a minute' : 'Transcribe into notes'}</button></div>}
+      {hist && <HistoryModal note={note} onClose={() => setHist(false)} reload={reload} />}
       <div ref={wrap} className="scroller grow page-wrap">
         <div ref={page} className={`page paper-${note.paper}` + (draw ? ' drawing' : '')} style={{ width: PAGE_W, minHeight: note.h, zoom }}
           onPointerDownCapture={e => { if (e.pointerType === 'pen' && !draw) setDraw(true); }}>
@@ -178,11 +185,11 @@ function NotePage({ note, notes, folders, open, side, setSide }: { note: Note; n
 
 function RegionEd({ note, r, onFocus }: { note: Note; r: Region; onFocus: (e: Editor) => void }) {
   const t = useRef<ReturnType<typeof setTimeout>>(undefined), pending = useRef<string | null>(null);
-  const flush = () => { if (pending.current !== null) { db.notes.update(note.id, { ['content.' + r.id]: pending.current, updated: Date.now() } as any); pending.current = null; } };
+  const flush = () => { if (pending.current !== null) { saveNote(note.id, { ['content.' + r.id]: pending.current }); pending.current = null; } };
   const editor = useEditor({
     extensions: [...EXT, Placeholder.configure({ placeholder: r.hint || (r.id === 'body' ? 'Start writing, or pick up the Pencil…' : '') })],
     content: note.content[r.id] || '',
-    onFocus: ({ editor }) => onFocus(editor),
+    onFocus: ({ editor }) => { setActiveEditor(editor); onFocus(editor); },
     onUpdate: ({ editor }) => { pending.current = editor.getHTML(); clearTimeout(t.current); t.current = setTimeout(flush, 400); },
   });
   useEffect(() => () => { clearTimeout(t.current); flush(); }, []);
@@ -231,6 +238,7 @@ function TextBar({ ed }: { ed: Editor | null }) {
       {B('Divider', false, () => c().setHorizontalRule().run(), <Minus size={16} />)}
       {B('Link', ed.isActive('link'), () => { const href = prompt('Link address', ed.getAttributes('link').href || 'https://'); if (href === null) return; href ? c().extendMarkRange('link').setLink({ href }).run() : c().unsetLink().run(); }, <Link size={16} />)}
       {B('Picture', false, () => file.current?.click(), <ImageIcon size={16} />)}
+      {B('Equation (LaTeX). You can also type $$x^2$$', false, () => { const latex = prompt('Equation in LaTeX, e.g. \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}'); if (latex) c().insertInlineMath({ latex }).run(); }, <Sigma size={16} />)}
       {B('Table', ed.isActive('table'), () => (ed.isActive('table') ? c().addRowAfter().run() : c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()), <Table size={16} />)}
       {B('Undo', false, () => c().undo().run(), <Undo2 size={16} />)}
       {B('Redo', false, () => c().redo().run(), <Redo2 size={16} />)}
@@ -293,6 +301,60 @@ function ClipModal({ onClose, create }: { onClose: () => void; create: (p: Parti
       <div className="row"><input className="input grow" placeholder="https://…" value={url} onChange={e => setUrl(e.target.value)} onKeyDown={e => e.key === 'Enter' && clip()} autoFocus />
         <button className="btn primary" disabled={busy} onClick={clip}>{busy ? 'Clipping…' : 'Clip'}</button></div>
       <p className="muted small">Pages are read through the free r.jina.ai reader, which sees the address you clip. To clip from any site in one tap, save this as a bookmark: <a href={bookmarklet} onClick={e => e.preventDefault()}>Clip to Scrabbler</a> (drag it to your bookmarks bar, or copy its address into a new bookmark on iPad).</p>
+    </Modal>
+  );
+}
+
+/* ---------- version history and lecture recording ---------- */
+function HistoryModal({ note, onClose, reload }: { note: Note; onClose: () => void; reload: () => void }) {
+  const list = useLiveQuery(() => db.versions.where('note').equals(note.id).reverse().sortBy('at'), [note.id]) || [];
+  const restore = async (v: Version) => {
+    await snapshot(note.id, true);
+    await db.notes.update(note.id, { title: v.title, layout: v.layout, content: v.content, ink: v.ink, updated: Date.now() });
+    toast('Restored. The version you replaced is in the history too.'); reload();
+  };
+  return (
+    <Modal title="Version history" onClose={onClose}>
+      <p className="muted small">A version is kept before each burst of editing (at most one every ten minutes, thirty per note).</p>
+      {list.map(v => { const text = Object.values(v.content).map(strip).join(' ').trim(); return (
+        <div key={v.id} className="row version">
+          <div className="grow"><strong>{new Date(v.at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</strong>
+            <div className="muted small">{text.split(/\s+/).filter(Boolean).length} words{v.ink.length ? ` · ${v.ink.length} pen strokes` : ''} · {text.slice(0, 70)}</div></div>
+          <button className="btn small" onClick={() => restore(v)}>Restore</button>
+        </div>); })}
+      {!list.length && <p className="muted">No earlier versions yet. They appear as you edit.</p>}
+    </Modal>
+  );
+}
+
+function RecorderModal({ onClose, create }: { onClose: () => void; create: (p: Partial<Note>) => void }) {
+  const [rec, setRec] = useState<RecorderHandle | null>(null);
+  const [tick, setTick] = useState({ secs: 0, level: 0 });
+  const [paused, setPaused] = useState(false);
+  const level = useRef(0), file = useRef<HTMLInputElement>(null), live = useRef<RecorderHandle | null>(null);
+  useEffect(() => { if (!rec) return; const t = setInterval(() => setTick({ secs: rec.elapsed, level: level.current }), 150); return () => clearInterval(t); }, [rec]);
+  useEffect(() => () => { live.current?.stop().catch(() => {}); }, []);
+  const save = async (audio: Blob, secs: number) => {
+    const id = uid();
+    await db.lectures.add({ id, audio, secs });
+    create({ id, title: `Lecture · ${new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}`, content: { body: '<p><em>Recording saved. Press “Transcribe into notes” above to turn it into study notes and a transcript.</em></p>' } });
+  };
+  const start = () => guard(async () => { const r = await startRecording(l => { level.current = l; }); live.current = r; setRec(r); });
+  const stop = () => guard(async () => { const r = live.current!; live.current = null; const secs = r.elapsed; await save(await r.stop(), secs); });
+  const mm = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  return (
+    <Modal title="Record a lecture" onClose={onClose}>
+      {rec ? <>
+        <div className="rec-time">{mm(tick.secs)}</div>
+        <div className="bar"><i style={{ width: `${Math.round(tick.level * 100)}%` }} /></div>
+        <div className="row"><button className="btn" onClick={() => { paused ? rec.resume() : rec.pause(); setPaused(!paused); }}>{paused ? <><Play size={15} /> Resume</> : <><Pause size={15} /> Pause</>}</button>
+          <span className="grow" /><button className="btn primary" onClick={stop}><Square size={15} /> Stop and save</button></div>
+        <p className="muted small">Keep Scrabbler open and on screen while recording. The recording stays on this device.</p>
+      </> : <>
+        <p className="muted">Records the lesson as a compact MP3 (about 14 MB an hour), saves it with a new note, then Gemini turns it into study notes and a transcript.</p>
+        <div className="row"><button className="btn primary" onClick={start}><Mic size={15} /> Start recording</button><button className="btn" onClick={() => file.current?.click()}>Use an audio file…</button></div>
+        <input ref={file} type="file" accept="audio/*,video/mp4" hidden onChange={e => { const f = e.target.files?.[0]; if (f) save(f, 0); }} />
+      </>}
     </Modal>
   );
 }

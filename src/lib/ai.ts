@@ -1,10 +1,10 @@
 /** Gemini (free tier, the user's own key) and everything the Study tab generates with it. */
 import { db, uid, newNote, type Note } from './db';
-import { getS, noteText } from './ui';
+import { getS, noteText, fileToDataUrl } from './ui';
 import { inkPng } from './ink';
 import { buildDeck, type Outline } from './slides';
 
-type Part = { text: string } | { inlineData: { mimeType: string; data: string } };
+type Part = { text: string } | { inlineData: { mimeType: string; data: string } } | { fileData: { mimeType: string; fileUri: string } };
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
 
 async function call(model: string, body: unknown) {
@@ -84,6 +84,25 @@ export async function makeDeck(ctx: Part[], topic: string, theme = 'poster', n =
 export async function makeArtifact(prompt: string, ctx: Part[] = [], prev?: string) {
   const html = await ask([...ctx, { text: prev ? `Here is an existing web page:\n${prev}\n\nChange it as follows and return the complete updated page: ${prompt}` : `Build this as an interactive web page: ${prompt}` }],
     { system: 'You build self-contained interactive web artefacts for studying (simulations, visualisers, games, calculators, timelines). Return one complete HTML document with inline CSS and JavaScript, no external files except optional CDN scripts from cdnjs.cloudflare.com. Make it responsive, polished and usable by touch. Return only the HTML, no commentary.' });
+  return html.replace(/^```(?:html)?\s*|```\s*$/gm, '').trim();
+}
+
+/** A file as model input: inline when small, through Gemini's File API when large (kept 48 hours on Google's side). */
+export async function filePart(blob: Blob, mime: string): Promise<Part> {
+  if (blob.size < 14e6) return { inlineData: { mimeType: mime, data: (await fileToDataUrl(blob)).split(',')[1] } };
+  const key = getS().key, root = 'https://generativelanguage.googleapis.com';
+  if (!key) throw new Error('Add your free Gemini API key in Settings first.');
+  const start = await fetch(`${root}/upload/v1beta/files`, { method: 'POST', body: JSON.stringify({ file: { display_name: 'lecture' } }), headers: { 'x-goog-api-key': key, 'X-Goog-Upload-Protocol': 'resumable', 'X-Goog-Upload-Command': 'start', 'X-Goog-Upload-Header-Content-Length': String(blob.size), 'X-Goog-Upload-Header-Content-Type': mime, 'Content-Type': 'application/json' } });
+  const url = start.headers.get('x-goog-upload-url');
+  if (!start.ok || !url) throw new Error('The upload to Gemini failed to start.');
+  let file = (await (await fetch(url, { method: 'POST', headers: { 'X-Goog-Upload-Offset': '0', 'X-Goog-Upload-Command': 'upload, finalize' }, body: blob })).json()).file;
+  for (let i = 0; file?.state === 'PROCESSING' && i < 120; i++) { await new Promise(r => setTimeout(r, 2500)); file = await (await fetch(`${root}/v1beta/${file.name}`, { headers: { 'x-goog-api-key': key } })).json(); }
+  if (!file?.uri || file.state === 'FAILED') throw new Error('Gemini could not process that recording.');
+  return { fileData: { mimeType: file.mimeType || mime, fileUri: file.uri } };
+}
+/** A lecture recording as study notes followed by a timestamped transcript (HTML). */
+export async function transcribe(audio: Blob) {
+  const html = await ask([await filePart(audio, audio.type || 'audio/mpeg'), { text: 'This is a recording of a lesson. Return HTML only, using h2, h3, p, ul, li, strong and em tags. First an <h2>Study notes</h2> section: the key ideas, definitions, examples and any homework or dates mentioned, organised under h3 headings. Then an <h2>Transcript</h2> section: the full transcript as paragraphs, each starting with <strong>[mm:ss] Speaker:</strong>. Label speakers Teacher or Student where you can tell.' }]);
   return html.replace(/^```(?:html)?\s*|```\s*$/gm, '').trim();
 }
 
