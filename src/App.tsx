@@ -33,7 +33,7 @@ export default function App() {
   useEffect(() => { const m = matchMedia('(prefers-color-scheme: dark)'), f = () => setSysDark(m.matches); m.addEventListener('change', f); return () => m.removeEventListener('change', f); }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-    document.querySelector('meta[name=theme-color]')?.setAttribute('content', dark ? '#151412' : '#f3eee3');
+    document.querySelector('meta[name=theme-color]')?.setAttribute('content', dark ? '#000000' : '#f5f5f7');
   }, [dark]);
 
   // Reminder and class alerts while the app is open.
@@ -74,7 +74,10 @@ export default function App() {
     <div className="app">
       <nav className="rail" aria-label="Sections">
         <div className="brand" aria-hidden>S</div>
-        {VIEWS.map(([k, n, I]) => <button key={k} className={'rail-btn' + (view === k ? ' on' : '')} onClick={() => setView(k)} aria-current={view === k}><I size={20} /><span>{n}</span></button>)}
+        <div className="rail-tabs">
+          <span className="rail-ind" aria-hidden style={{ ['--i' as any]: Math.max(0, VIEWS.findIndex(v => v[0] === view)) }} />
+          {VIEWS.map(([k, n, I]) => <button key={k} className={'rail-btn' + (view === k ? ' on' : '')} onClick={() => setView(k)} aria-current={view === k}><I size={20} /><span>{n}</span></button>)}
+        </div>
         <span className="grow" />
         {(p.running || p.phase !== 'work') && <button className="rail-mini" onClick={() => setView('focus')} title="Pomodoro">{mmss(p.left)}</button>}
         {(nn.now || nn.next) && <button className="rail-mini class" onClick={() => setView('calendar')} title="Timetable">{nn.now ? `${nn.now.title.slice(0, 5)} →${nn.now.end}` : `${nn.next!.title.slice(0, 5)} ${nn.next!.start}`}</button>}

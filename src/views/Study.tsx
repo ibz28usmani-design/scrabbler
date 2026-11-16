@@ -72,10 +72,10 @@ function Notebook({ setTab, goNote, goDeck }: { setTab: (t: Tab) => void; goNote
       </section>
       <aside className="nb-col scroller">
         <div className="label">Studio</div>
-        {studio.map(([name, I, fn]) => <button key={name} className="studio-btn" disabled={!!busy} onClick={fn}><I size={18} /><span>{busy === name ? `Making ${name.toLowerCase()}…` : name}</span></button>)}
+        <div className="studio">{studio.map(([name, I, fn]) => <button key={name} className="studio-btn" disabled={!!busy} onClick={fn}><I size={18} /><span>{busy === name ? `Making ${name.toLowerCase()}…` : name}</span></button>)}</div>
         <div className="label">Web artefact</div>
         <textarea className="input" placeholder="e.g. An interactive supply and demand diagram with sliders" value={idea} onChange={e => setIdea(e.target.value)} />
-        <button className="studio-btn" disabled={!!busy || !idea.trim()} onClick={() => guard(async () => {
+        <button className="btn primary" disabled={!!busy || !idea.trim()} onClick={() => guard(async () => {
           setBusy('Artefact');
           try { const html = await makeArtifact(idea, sel.length ? await context(sel) : []); await db.artifacts.add({ id: uid(), title: idea.slice(0, 60), html, updated: Date.now() }); setIdea(''); setTab('artefacts'); } finally { setBusy(''); }
         })}><AppWindow size={18} /><span>{busy === 'Artefact' ? 'Building…' : 'Build artefact'}</span></button>

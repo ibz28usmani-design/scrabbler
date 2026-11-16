@@ -39,11 +39,11 @@ export default function Reminders() {
   const [draft, setDraft] = useState('');
   const today = ymd(new Date());
   const smart: Record<string, { name: string; color: string; icon: any; f: (r: Reminder) => boolean }> = {
-    today: { name: 'Today', color: '#2f6fb3', icon: CalendarDays, f: r => !r.done && !!r.due && r.due <= today },
-    scheduled: { name: 'Scheduled', color: '#d64933', icon: CalendarClock, f: r => !r.done && !!r.due },
-    all: { name: 'All', color: '#3f3b3d', icon: Inbox, f: r => !r.done },
-    flagged: { name: 'Flagged', color: '#e0a100', icon: Flag, f: r => !r.done && !!r.flag },
-    done: { name: 'Completed', color: '#6f6a5f', icon: CheckCircle2, f: r => !!r.done },
+    today: { name: 'Today', color: '#007aff', icon: CalendarDays, f: r => !r.done && !!r.due && r.due <= today },
+    scheduled: { name: 'Scheduled', color: '#ff3b30', icon: CalendarClock, f: r => !r.done && !!r.due },
+    all: { name: 'All', color: '#48484a', icon: Inbox, f: r => !r.done },
+    flagged: { name: 'Flagged', color: '#ff9500', icon: Flag, f: r => !r.done && !!r.flag },
+    done: { name: 'Completed', color: '#8e8e93', icon: CheckCircle2, f: r => !!r.done },
   };
   const list = lists.find(l => l.id === view);
   const filter = smart[view]?.f || ((r: Reminder) => !r.done && r.list === view);

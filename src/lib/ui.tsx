@@ -18,16 +18,19 @@ export const setS = (p: Partial<Settings>) => { S = { ...S, ...p }; LS?.setItem(
 export const useS = () => useSyncExternalStore(sub, getS);
 
 /* ---------- toasts ---------- */
-let toasts: { id: number; msg: string }[] = [];
+let toasts: { id: number; msg: string; leaving?: boolean }[] = [];
 const tsubs = new Set<() => void>();
+/** How long an overlay's exit transition runs (matches styles.css) before it is taken out of the page. */
+const EXIT_MS = 220;
 export function toast(msg: string) {
   const id = Date.now() + Math.random();
   toasts = [...toasts, { id, msg }]; tsubs.forEach(f => f());
+  setTimeout(() => { toasts = toasts.map(t => t.id === id ? { ...t, leaving: true } : t); tsubs.forEach(f => f()); }, 4500 - EXIT_MS);
   setTimeout(() => { toasts = toasts.filter(t => t.id !== id); tsubs.forEach(f => f()); }, 4500);
 }
 export function Toasts() {
   const list = useSyncExternalStore(cb => { tsubs.add(cb); return () => { tsubs.delete(cb); }; }, () => toasts);
-  return <div className="toasts" role="status">{list.map(t => <div key={t.id} className="toast">{t.msg}</div>)}</div>;
+  return <div className="toasts" role="status">{list.map(t => <div key={t.id} className={'toast' + (t.leaving ? ' leaving' : '')}>{t.msg}</div>)}</div>;
 }
 /** Wraps an async action: shows errors as a toast instead of throwing. */
 export const guard = async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
@@ -55,10 +58,16 @@ export function beep(times = 3) {
 
 /* ---------- small components ---------- */
 export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+  // Dismissing plays the exit along the entry path, then tells the owner to unmount. Escape always gets you out.
+  const [closing, setClosing] = useState(false), latest = useRef(onClose);
+  latest.current = onClose;
+  const close = () => setClosing(true);
+  useEffect(() => { if (!closing) return; const t = setTimeout(() => latest.current(), EXIT_MS); return () => clearTimeout(t); }, [closing]);
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); }; addEventListener('keydown', k); return () => removeEventListener('keydown', k); }, []);
   return (
-    <div className="modal-bg" onPointerDown={e => e.target === e.currentTarget && onClose()}>
-      <div className={'modal' + (wide ? ' wide' : '')} role="dialog" aria-label={title}>
-        <div className="modal-head"><h2>{title}</h2><button className="ib" onClick={onClose} aria-label="Close"><X size={18} /></button></div>
+    <div className="modal-bg" data-closing={closing || undefined} onPointerDown={e => e.target === e.currentTarget && close()}>
+      <div className={'modal' + (wide ? ' wide' : '')} role="dialog" aria-modal aria-label={title}>
+        <div className="modal-head"><h2>{title}</h2><button className="ib" onClick={close} aria-label="Close"><X size={18} /></button></div>
         <div className="modal-body">{children}</div>
       </div>
     </div>
